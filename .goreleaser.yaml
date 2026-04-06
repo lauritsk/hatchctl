@@ -1,0 +1,19 @@
+version: 2
+
+builds:
+  - main: ./cmd/hatchctl
+    ldflags:
+      - -s -w -X github.com/lauritsk/hatchctl/internal/version.Version={{ .Version }}
+
+checksum:
+  name_template: checksums.txt
+
+signs:
+  - cmd: cosign
+    signature: "${artifact}.sigstore.json"
+    args:
+      - sign-blob
+      - --bundle=${signature}
+      - ${artifact}
+      - --yes
+    artifacts: checksum
