@@ -73,6 +73,7 @@ type ReadConfigResult struct {
 	HasStartCommand      bool              `json:"hasStartCommand"`
 	HasAttachCommand     bool              `json:"hasAttachCommand"`
 	Image                string            `json:"image"`
+	ImageUser            string            `json:"imageUser,omitempty"`
 	ContainerName        string            `json:"containerName"`
 	StateDir             string            `json:"stateDir"`
 	RemoteUser           string            `json:"remoteUser,omitempty"`
@@ -220,12 +221,12 @@ func (r *Runner) Exec(ctx context.Context, opts ExecOptions) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	user, err := r.effectiveRemoteUser(ctx, resolved, image, containerID)
+	if err != nil {
+		return 0, err
+	}
 
 	args := []string{"exec", "-i"}
-	user := resolved.Merged.RemoteUser
-	if user == "" {
-		user = resolved.Merged.ContainerUser
-	}
 	if user != "" {
 		args = append(args, "-u", user)
 	}
@@ -256,7 +257,6 @@ func (r *Runner) Exec(ctx context.Context, opts ExecOptions) (int, error) {
 }
 
 func (r *Runner) ReadConfig(ctx context.Context, opts ReadConfigOptions) (ReadConfigResult, error) {
-	_ = ctx
 	resolved, err := devcontainer.Resolve(opts.Workspace, opts.ConfigPath)
 	if err != nil {
 		return ReadConfigResult{}, err
@@ -276,6 +276,14 @@ func (r *Runner) ReadConfig(ctx context.Context, opts ReadConfigOptions) (ReadCo
 	if err != nil {
 		return ReadConfigResult{}, err
 	}
+	resolvedUser, err := r.effectiveRemoteUser(ctx, resolved, image, "")
+	if err != nil {
+		return ReadConfigResult{}, err
+	}
+	imageUser, err := r.inspectImageUser(ctx, image)
+	if err != nil {
+		return ReadConfigResult{}, err
+	}
 	managedContainer, err := r.readManagedContainerState(ctx, resolved)
 	if err != nil {
 		return ReadConfigResult{}, err
@@ -290,9 +298,10 @@ func (r *Runner) ReadConfig(ctx context.Context, opts ReadConfigOptions) (ReadCo
 		HasStartCommand:      len(resolved.Merged.PostStartCommands) > 0,
 		HasAttachCommand:     len(resolved.Merged.PostAttachCommands) > 0,
 		Image:                image,
+		ImageUser:            imageUser,
 		ContainerName:        resolved.ContainerName,
 		StateDir:             resolved.StateDir,
-		RemoteUser:           resolved.Merged.RemoteUser,
+		RemoteUser:           resolvedUser,
 		ContainerUser:        resolved.Merged.ContainerUser,
 		RemoteEnv:            resolved.Merged.RemoteEnv,
 		ContainerEnv:         resolved.Merged.ContainerEnv,
@@ -481,6 +490,31 @@ func (r *Runner) applyBridgeConfig(resolved *devcontainer.ResolvedConfig, enable
 	return (*bridge.Report)(report), nil
 }
 
+func (r *Runner) effectiveRemoteUser(ctx context.Context, resolved devcontainer.ResolvedConfig, image string, containerID string) (string, error) {
+	if user := firstNonEmpty(resolved.Merged.RemoteUser, resolved.Merged.ContainerUser); user != "" {
+		return user, nil
+	}
+	if containerID != "" {
+		inspect, err := r.docker.InspectContainer(ctx, containerID)
+		if err != nil {
+			return "", err
+		}
+		return inspect.Config.User, nil
+	}
+	return r.inspectImageUser(ctx, image)
+}
+
+func (r *Runner) inspectImageUser(ctx context.Context, image string) (string, error) {
+	inspect, err := r.docker.InspectImage(ctx, image)
+	if err != nil {
+		if strings.Contains(err.Error(), "No such image") || strings.Contains(err.Error(), "not found") {
+			return "", nil
+		}
+		return "", err
+	}
+	return inspect.Config.User, nil
+}
+
 func (r *Runner) readManagedContainerState(ctx context.Context, resolved devcontainer.ResolvedConfig) (*ManagedContainer, error) {
 	containerID, err := r.findContainer(ctx, resolved)
 	if err != nil {
@@ -498,13 +532,14 @@ func (r *Runner) readManagedContainerState(ctx context.Context, resolved devcont
 		return nil, err
 	}
 	merged := devcontainer.MergeMetadata(resolved.Config, metadata)
+	effectiveUser := firstNonEmpty(merged.RemoteUser, merged.ContainerUser, inspect.Config.User)
 	return &ManagedContainer{
 		ID:            inspect.ID,
 		Name:          strings.TrimPrefix(inspect.Name, "/"),
 		Image:         inspect.Image,
 		Status:        inspect.State.Status,
 		Running:       inspect.State.Running,
-		RemoteUser:    firstNonEmpty(merged.RemoteUser, merged.ContainerUser, inspect.Config.User),
+		RemoteUser:    effectiveUser,
 		ContainerEnv:  envListToMap(inspect.Config.Env),
 		Labels:        inspect.Config.Labels,
 		ForwardPorts:  []string(merged.ForwardPorts),

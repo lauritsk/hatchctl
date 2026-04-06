@@ -289,6 +289,84 @@ func TestUpPersistsMergedMetadataAndHonorsMergedRuntimeConfig(t *testing.T) {
 	}
 }
 
+func TestReadConfigAndExecFallBackToImageUser(t *testing.T) {
+	client := dockerClientForTest(t)
+	ctx := context.Background()
+	workspace := t.TempDir()
+	configDir := filepath.Join(workspace, ".devcontainer")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	baseImage := "hatchctl-image-user-test-" + sanitizeName(filepath.Base(workspace))
+	baseDockerfileDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(baseDockerfileDir, "Dockerfile"), []byte("FROM alpine:3.20\nRUN adduser -D -u 1000 app\nUSER app\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.Run(ctx, docker.RunOptions{Args: []string{"build", "-t", baseImage, baseDockerfileDir}}); err != nil {
+		t.Fatalf("build base image: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rmi", "-f", baseImage}})
+	})
+
+	configPath := filepath.Join(configDir, "devcontainer.json")
+	config := `{
+		"name": "image-user-fallback-test",
+		"image": "` + baseImage + `",
+		"workspaceFolder": "/workspaces/demo"
+	}`
+	if err := os.WriteFile(configPath, []byte(config), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	runner := NewRunner(client)
+	var containerID string
+	t.Cleanup(func() {
+		if containerID != "" {
+			_ = client.Run(ctx, docker.RunOptions{Args: []string{"rm", "-f", containerID}})
+		}
+	})
+
+	upResult, err := runner.Up(ctx, UpOptions{Workspace: workspace, Recreate: true})
+	if err != nil {
+		t.Fatalf("up container: %v", err)
+	}
+	containerID = upResult.ContainerID
+
+	configResult, err := runner.ReadConfig(ctx, ReadConfigOptions{Workspace: workspace})
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	if configResult.ImageUser != "app" {
+		t.Fatalf("unexpected image user %q", configResult.ImageUser)
+	}
+	if configResult.RemoteUser != "app" {
+		t.Fatalf("unexpected resolved remote user %q", configResult.RemoteUser)
+	}
+	if configResult.ManagedContainer == nil || configResult.ManagedContainer.RemoteUser != "app" {
+		t.Fatalf("unexpected managed container %#v", configResult.ManagedContainer)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode, err := runner.Exec(ctx, ExecOptions{
+		Workspace: workspace,
+		Args:      []string{"id", "-un"},
+		Stdout:    &stdout,
+		Stderr:    &stderr,
+	})
+	if err != nil {
+		t.Fatalf("exec image-user check: %v (stderr: %s)", err, stderr.String())
+	}
+	if exitCode != 0 {
+		t.Fatalf("unexpected image-user exit code %d (stderr: %s)", exitCode, stderr.String())
+	}
+	if got := strings.TrimSpace(stdout.String()); got != "app" {
+		t.Fatalf("unexpected exec user %q", got)
+	}
+}
+
 func dockerClientForTest(t *testing.T) *docker.Client {
 	t.Helper()
 	if testing.Short() {

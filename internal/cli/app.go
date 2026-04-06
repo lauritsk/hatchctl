@@ -183,6 +183,11 @@ func (a *App) runConfig(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
+	if result.ImageUser != "" {
+		if _, err := fmt.Fprintf(a.out, "Image user: %s\n", result.ImageUser); err != nil {
+			return err
+		}
+	}
 	if len(result.ForwardPorts) > 0 {
 		if _, err := fmt.Fprintf(a.out, "Forward ports: %s\n", strings.Join(result.ForwardPorts, ", ")); err != nil {
 			return err
