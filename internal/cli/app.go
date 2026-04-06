@@ -195,6 +195,18 @@ func (a *App) runConfig(ctx context.Context, args []string) error {
 			result.Bridge.HelperPath,
 			result.Bridge.Status,
 		)
+		if err != nil {
+			return err
+		}
+	}
+	if result.ManagedContainer != nil {
+		_, err = fmt.Fprintf(a.out, "Managed container: id=%s status=%s running=%t user=%s metadata=%d\n",
+			result.ManagedContainer.ID,
+			result.ManagedContainer.Status,
+			result.ManagedContainer.Running,
+			result.ManagedContainer.RemoteUser,
+			result.ManagedContainer.MetadataCount,
+		)
 	}
 	return err
 }

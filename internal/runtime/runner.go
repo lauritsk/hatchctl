@@ -83,6 +83,21 @@ type ReadConfigResult struct {
 	ForwardPorts         []string          `json:"forwardPorts,omitempty"`
 	Bridge               *bridge.Report    `json:"bridge,omitempty"`
 	MetadataCount        int               `json:"metadataCount"`
+	ManagedContainer     *ManagedContainer `json:"managedContainer,omitempty"`
+}
+
+type ManagedContainer struct {
+	ID            string            `json:"id"`
+	Name          string            `json:"name,omitempty"`
+	Image         string            `json:"image,omitempty"`
+	Status        string            `json:"status,omitempty"`
+	Running       bool              `json:"running"`
+	RemoteUser    string            `json:"remoteUser,omitempty"`
+	ContainerEnv  map[string]string `json:"containerEnv,omitempty"`
+	Labels        map[string]string `json:"labels,omitempty"`
+	ForwardPorts  []string          `json:"forwardPorts,omitempty"`
+	MetadataCount int               `json:"metadataCount"`
+	BridgeEnabled bool              `json:"bridgeEnabled,omitempty"`
 }
 
 type RunLifecycleOptions struct {
@@ -261,6 +276,10 @@ func (r *Runner) ReadConfig(ctx context.Context, opts ReadConfigOptions) (ReadCo
 	if err != nil {
 		return ReadConfigResult{}, err
 	}
+	managedContainer, err := r.readManagedContainerState(ctx, resolved)
+	if err != nil {
+		return ReadConfigResult{}, err
+	}
 	return ReadConfigResult{
 		WorkspaceFolder:      resolved.WorkspaceFolder,
 		ConfigPath:           resolved.ConfigPath,
@@ -281,6 +300,7 @@ func (r *Runner) ReadConfig(ctx context.Context, opts ReadConfigOptions) (ReadCo
 		ForwardPorts:         []string(resolved.Merged.ForwardPorts),
 		Bridge:               bridgeReport,
 		MetadataCount:        len(resolved.Merged.Metadata),
+		ManagedContainer:     managedContainer,
 	}, nil
 }
 
@@ -443,8 +463,10 @@ func (r *Runner) findContainer(ctx context.Context, resolved devcontainer.Resolv
 			return line, nil
 		}
 	}
-	return "", errors.New("managed container not found")
+	return "", errManagedContainerNotFound
 }
+
+var errManagedContainerNotFound = errors.New("managed container not found")
 
 func (r *Runner) removeContainer(ctx context.Context, containerID string) error {
 	return r.docker.Run(ctx, docker.RunOptions{Args: []string{"rm", "-f", containerID}, Stdout: os.Stdout, Stderr: os.Stderr})
@@ -457,6 +479,38 @@ func (r *Runner) applyBridgeConfig(resolved *devcontainer.ResolvedConfig, enable
 	}
 	resolved.Merged = merged
 	return (*bridge.Report)(report), nil
+}
+
+func (r *Runner) readManagedContainerState(ctx context.Context, resolved devcontainer.ResolvedConfig) (*ManagedContainer, error) {
+	containerID, err := r.findContainer(ctx, resolved)
+	if err != nil {
+		if errors.Is(err, errManagedContainerNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	inspect, err := r.docker.InspectContainer(ctx, containerID)
+	if err != nil {
+		return nil, err
+	}
+	metadata, err := devcontainer.MetadataFromLabel(inspect.Config.Labels[devcontainer.ImageMetadataLabel])
+	if err != nil {
+		return nil, err
+	}
+	merged := devcontainer.MergeMetadata(resolved.Config, metadata)
+	return &ManagedContainer{
+		ID:            inspect.ID,
+		Name:          strings.TrimPrefix(inspect.Name, "/"),
+		Image:         inspect.Image,
+		Status:        inspect.State.Status,
+		Running:       inspect.State.Running,
+		RemoteUser:    firstNonEmpty(merged.RemoteUser, merged.ContainerUser, inspect.Config.User),
+		ContainerEnv:  envListToMap(inspect.Config.Env),
+		Labels:        inspect.Config.Labels,
+		ForwardPorts:  []string(merged.ForwardPorts),
+		MetadataCount: len(metadata),
+		BridgeEnabled: inspect.Config.Labels[devcontainer.BridgeEnabledLabel] == "true",
+	}, nil
 }
 
 func (r *Runner) runLifecycleForUp(ctx context.Context, resolved devcontainer.ResolvedConfig, containerID string, created bool, lifecycleReady bool) error {
@@ -549,4 +603,31 @@ func (r *Runner) runContainerLifecycle(ctx context.Context, containerID string, 
 		dockerArgs = append(dockerArgs, args...)
 		return r.docker.Run(ctx, docker.RunOptions{Args: dockerArgs, Stdout: os.Stdout, Stderr: os.Stderr})
 	}, command)
+}
+
+func envListToMap(values []string) map[string]string {
+	if len(values) == 0 {
+		return nil
+	}
+	result := make(map[string]string, len(values))
+	for _, entry := range values {
+		key, value, ok := strings.Cut(entry, "=")
+		if !ok {
+			continue
+		}
+		result[key] = value
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }

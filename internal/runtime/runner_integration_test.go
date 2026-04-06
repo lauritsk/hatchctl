@@ -176,6 +176,44 @@ func TestUpPersistsMergedMetadataAndHonorsMergedRuntimeConfig(t *testing.T) {
 	if configResult.Bridge == nil || !configResult.Bridge.Enabled {
 		t.Fatalf("expected bridge in config result, got %#v", configResult.Bridge)
 	}
+	if configResult.ManagedContainer == nil {
+		t.Fatal("expected managed container state in config result")
+	}
+	if configResult.ManagedContainer.ID != containerID {
+		t.Fatalf("unexpected managed container id %q", configResult.ManagedContainer.ID)
+	}
+	if !configResult.ManagedContainer.Running || configResult.ManagedContainer.Status != "running" {
+		t.Fatalf("unexpected managed container state %#v", configResult.ManagedContainer)
+	}
+	if configResult.ManagedContainer.RemoteUser != "root" {
+		t.Fatalf("unexpected managed container user %#v", configResult.ManagedContainer)
+	}
+	if got := configResult.ManagedContainer.ContainerEnv["BROWSER"]; got != "/var/run/hatchctl/bridge/devcontainer-open" {
+		t.Fatalf("unexpected managed container env %#v", configResult.ManagedContainer.ContainerEnv)
+	}
+	if !configResult.ManagedContainer.BridgeEnabled {
+		t.Fatalf("expected managed container bridge to be enabled %#v", configResult.ManagedContainer)
+	}
+	if got := strings.Join(configResult.ManagedContainer.ForwardPorts, ","); got != "localhost:7000,api:9000,localhost:8080" {
+		t.Fatalf("unexpected managed container forward ports %q", got)
+	}
+
+	workspace2 := t.TempDir()
+	configDir2 := filepath.Join(workspace2, ".devcontainer")
+	if err := os.MkdirAll(configDir2, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	configPath2 := filepath.Join(configDir2, "devcontainer.json")
+	if err := os.WriteFile(configPath2, []byte(`{"image":"`+baseImage+`","workspaceFolder":"/workspaces/demo"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	configResult2, err := runner.ReadConfig(ctx, ReadConfigOptions{Workspace: workspace2})
+	if err != nil {
+		t.Fatalf("read config without container: %v", err)
+	}
+	if configResult2.ManagedContainer != nil {
+		t.Fatalf("expected no managed container state, got %#v", configResult2.ManagedContainer)
+	}
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer

@@ -24,6 +24,8 @@ type ContainerState struct {
 
 type ContainerInspect struct {
 	ID     string         `json:"Id"`
+	Name   string         `json:"Name"`
+	Image  string         `json:"Image"`
 	Config InspectConfig  `json:"Config"`
 	State  ContainerState `json:"State"`
 }
