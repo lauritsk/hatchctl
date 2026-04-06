@@ -80,6 +80,8 @@ type ReadConfigResult struct {
 	RemoteEnv            map[string]string `json:"remoteEnv,omitempty"`
 	ContainerEnv         map[string]string `json:"containerEnv,omitempty"`
 	Mounts               []string          `json:"mounts,omitempty"`
+	ForwardPorts         []string          `json:"forwardPorts,omitempty"`
+	Bridge               *bridge.Report    `json:"bridge,omitempty"`
 	MetadataCount        int               `json:"metadataCount"`
 }
 
@@ -136,13 +138,12 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 	if err := r.enrichMergedConfig(ctx, &resolved, image); err != nil {
 		return UpResult{}, err
 	}
-
-	containerID, created, err := r.ensureContainer(ctx, resolved, image, opts.BridgeEnabled)
+	bridgeReport, err := r.applyBridgeConfig(&resolved, opts.BridgeEnabled)
 	if err != nil {
 		return UpResult{}, err
 	}
 
-	bridgeReport, err := r.prepareBridge(resolved.StateDir, opts.BridgeEnabled)
+	containerID, created, err := r.ensureContainer(ctx, resolved, image, opts.BridgeEnabled)
 	if err != nil {
 		return UpResult{}, err
 	}
@@ -252,6 +253,14 @@ func (r *Runner) ReadConfig(ctx context.Context, opts ReadConfigOptions) (ReadCo
 	if err := r.enrichMergedConfig(ctx, &resolved, image); err != nil {
 		return ReadConfigResult{}, err
 	}
+	state, err := devcontainer.ReadState(resolved.StateDir)
+	if err != nil {
+		return ReadConfigResult{}, err
+	}
+	bridgeReport, err := r.applyBridgeConfig(&resolved, state.BridgeEnabled)
+	if err != nil {
+		return ReadConfigResult{}, err
+	}
 	return ReadConfigResult{
 		WorkspaceFolder:      resolved.WorkspaceFolder,
 		ConfigPath:           resolved.ConfigPath,
@@ -269,6 +278,8 @@ func (r *Runner) ReadConfig(ctx context.Context, opts ReadConfigOptions) (ReadCo
 		RemoteEnv:            resolved.Merged.RemoteEnv,
 		ContainerEnv:         resolved.Merged.ContainerEnv,
 		Mounts:               resolved.Merged.Mounts,
+		ForwardPorts:         []string(resolved.Merged.ForwardPorts),
+		Bridge:               bridgeReport,
 		MetadataCount:        len(resolved.Merged.Metadata),
 	}, nil
 }
@@ -439,11 +450,12 @@ func (r *Runner) removeContainer(ctx context.Context, containerID string) error 
 	return r.docker.Run(ctx, docker.RunOptions{Args: []string{"rm", "-f", containerID}, Stdout: os.Stdout, Stderr: os.Stderr})
 }
 
-func (r *Runner) prepareBridge(stateDir string, enabled bool) (*bridge.Report, error) {
-	report, err := bridge.Prepare(stateDir, enabled)
+func (r *Runner) applyBridgeConfig(resolved *devcontainer.ResolvedConfig, enabled bool) (*bridge.Report, error) {
+	report, merged, err := bridge.Apply(resolved.StateDir, enabled, resolved.Merged)
 	if err != nil {
 		return nil, err
 	}
+	resolved.Merged = merged
 	return (*bridge.Report)(report), nil
 }
 

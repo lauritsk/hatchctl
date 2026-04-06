@@ -27,7 +27,7 @@ type MetadataEntry struct {
 	RemoteEnv            map[string]string `json:"remoteEnv,omitempty"`
 	ContainerEnv         map[string]string `json:"containerEnv,omitempty"`
 	OverrideCommand      *bool             `json:"overrideCommand,omitempty"`
-	ForwardPorts         []string          `json:"forwardPorts,omitempty"`
+	ForwardPorts         ForwardPorts      `json:"forwardPorts,omitempty"`
 	Customizations       map[string]any    `json:"customizations,omitempty"`
 }
 
@@ -106,7 +106,7 @@ type MergedConfig struct {
 	ContainerEnv          map[string]string
 	OverrideCommand       *bool
 	WaitFor               string
-	ForwardPorts          []string
+	ForwardPorts          ForwardPorts
 	OnCreateCommands      []LifecycleCommand
 	UpdateContentCommands []LifecycleCommand
 	PostCreateCommands    []LifecycleCommand
@@ -164,6 +164,7 @@ func ConfigMetadata(config Config) MetadataEntry {
 		RemoteEnv:            cloneMap(config.RemoteEnv),
 		ContainerEnv:         cloneMap(config.ContainerEnv),
 		OverrideCommand:      config.OverrideCommand,
+		ForwardPorts:         cloneForwardPorts(config.ForwardPorts),
 		Customizations:       config.Customizations,
 	}
 }
@@ -178,7 +179,7 @@ func MergeMetadata(config Config, metadata []MetadataEntry) MergedConfig {
 		Mounts:                mergeMounts(entries),
 		RemoteEnv:             mergeStringMaps(entries, func(entry MetadataEntry) map[string]string { return entry.RemoteEnv }),
 		ContainerEnv:          mergeStringMaps(entries, func(entry MetadataEntry) map[string]string { return entry.ContainerEnv }),
-		ForwardPorts:          unionStrings(entries, func(entry MetadataEntry) []string { return entry.ForwardPorts }),
+		ForwardPorts:          mergeForwardPorts(entries),
 		OnCreateCommands:      collectCommands(entries, func(entry MetadataEntry) LifecycleCommand { return entry.OnCreateCommand }),
 		UpdateContentCommands: collectCommands(entries, func(entry MetadataEntry) LifecycleCommand { return entry.UpdateContentCommand }),
 		PostCreateCommands:    collectCommands(entries, func(entry MetadataEntry) LifecycleCommand { return entry.PostCreateCommand }),
@@ -200,6 +201,14 @@ func MergeMetadata(config Config, metadata []MetadataEntry) MergedConfig {
 	merged.ContainerUser = pickLastString(reversed, func(entry MetadataEntry) string { return entry.ContainerUser })
 	merged.OverrideCommand = pickLastBool(reversed, func(entry MetadataEntry) *bool { return entry.OverrideCommand })
 	return merged
+}
+
+func mergeForwardPorts(entries []MetadataEntry) ForwardPorts {
+	ports := make([]ForwardPorts, 0, len(entries))
+	for _, entry := range entries {
+		ports = append(ports, entry.ForwardPorts)
+	}
+	return MergeForwardPorts(ports...)
 }
 
 func SortedMapKeys(values map[string]string) []string {
@@ -364,4 +373,13 @@ func cloneMap(values map[string]string) map[string]string {
 		result[key] = value
 	}
 	return result
+}
+
+func cloneForwardPorts(values ForwardPorts) ForwardPorts {
+	if len(values) == 0 {
+		return nil
+	}
+	result := make([]string, len(values))
+	copy(result, values)
+	return ForwardPorts(result)
 }

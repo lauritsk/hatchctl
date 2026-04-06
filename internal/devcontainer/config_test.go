@@ -105,6 +105,7 @@ func TestMergeMetadataMatchesExpectedPrecedence(t *testing.T) {
 	merged := MergeMetadata(Config{
 		RemoteUser:    "config-remote",
 		ContainerUser: "config-container",
+		ForwardPorts:  ForwardPorts{"localhost:3000", "service:9000"},
 		RemoteEnv: map[string]string{
 			"BASE":   "config",
 			"CONFIG": "yes",
@@ -124,6 +125,7 @@ func TestMergeMetadataMatchesExpectedPrecedence(t *testing.T) {
 	}, []MetadataEntry{{
 		RemoteUser:      "image-remote",
 		ContainerUser:   "image-container",
+		ForwardPorts:    ForwardPorts{"localhost:3000", "localhost:8080"},
 		RemoteEnv:       map[string]string{"BASE": "image", "IMAGE": "yes"},
 		ContainerEnv:    map[string]string{"KEEP": "image", "IMAGE": "yes"},
 		Mounts:          []string{"type=bind,source=/image,target=/shared", "type=volume,target=/image-only"},
@@ -153,6 +155,9 @@ func TestMergeMetadataMatchesExpectedPrecedence(t *testing.T) {
 	}
 	if len(merged.CapAdd) != 2 || len(merged.SecurityOpt) != 2 {
 		t.Fatalf("unexpected merged security values %#v %#v", merged.CapAdd, merged.SecurityOpt)
+	}
+	if got := []string(merged.ForwardPorts); strings.Join(got, ",") != "localhost:3000,localhost:8080,service:9000" {
+		t.Fatalf("unexpected merged forward ports %#v", got)
 	}
 	if merged.OverrideCommand == nil || *merged.OverrideCommand {
 		t.Fatalf("unexpected overrideCommand %#v", merged.OverrideCommand)
@@ -202,5 +207,27 @@ func TestMetadataLabelValueUsesObjectForSingleEntryAndArrayForMultiple(t *testin
 	}
 	if multi != `[{"remoteUser":"root"},{"remoteUser":"vscode"}]` {
 		t.Fatalf("unexpected multi metadata label %q", multi)
+	}
+}
+
+func TestLoadNormalizesForwardPorts(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "devcontainer.json")
+	contents := `{
+		"image": "alpine:3.20",
+		"forwardPorts": [3000, "localhost:3000", "service:9000"]
+	}`
+	if err := os.WriteFile(configPath, []byte(contents), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	config, err := Load(configPath)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if got := []string(config.ForwardPorts); strings.Join(got, ",") != "localhost:3000,service:9000" {
+		t.Fatalf("unexpected normalized forward ports %#v", got)
 	}
 }

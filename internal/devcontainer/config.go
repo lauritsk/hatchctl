@@ -32,7 +32,7 @@ type Config struct {
 	ContainerUser        string            `json:"containerUser,omitempty"`
 	RemoteUser           string            `json:"remoteUser,omitempty"`
 	RunArgs              []string          `json:"runArgs,omitempty"`
-	ForwardPorts         []any             `json:"forwardPorts,omitempty"`
+	ForwardPorts         ForwardPorts      `json:"forwardPorts,omitempty"`
 	InitializeCommand    LifecycleCommand  `json:"initializeCommand,omitempty"`
 	OnCreateCommand      LifecycleCommand  `json:"onCreateCommand,omitempty"`
 	UpdateContentCommand LifecycleCommand  `json:"updateContentCommand,omitempty"`
@@ -68,6 +68,43 @@ type LifecycleCommand struct {
 	Args   []string
 	Steps  map[string]LifecycleCommand
 	Exists bool
+}
+
+type ForwardPorts []string
+
+func (p ForwardPorts) MarshalJSON() ([]byte, error) {
+	values := make([]any, 0, len(p))
+	for _, port := range p {
+		if port == "" {
+			continue
+		}
+		if normalized, ok := parseLocalhostPort(port); ok {
+			values = append(values, normalized)
+			continue
+		}
+		values = append(values, port)
+	}
+	if len(values) == 0 {
+		return []byte("null"), nil
+	}
+	return json.Marshal(values)
+}
+
+func (p *ForwardPorts) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		*p = nil
+		return nil
+	}
+	var raw []any
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	ports, err := NormalizeForwardPorts(raw)
+	if err != nil {
+		return err
+	}
+	*p = ports
+	return nil
 }
 
 func (c LifecycleCommand) MarshalJSON() ([]byte, error) {
@@ -315,4 +352,83 @@ func RemoteExecUser(config Config) string {
 
 func ShellQuote(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'"
+}
+
+func NormalizeForwardPorts(raw []any) (ForwardPorts, error) {
+	if len(raw) == 0 {
+		return nil, nil
+	}
+	result := make([]string, 0, len(raw))
+	seen := map[string]struct{}{}
+	for _, value := range raw {
+		port, err := normalizeForwardPort(value)
+		if err != nil {
+			return nil, err
+		}
+		if _, ok := seen[port]; ok {
+			continue
+		}
+		seen[port] = struct{}{}
+		result = append(result, port)
+	}
+	if len(result) == 0 {
+		return nil, nil
+	}
+	return ForwardPorts(result), nil
+}
+
+func normalizeForwardPort(value any) (string, error) {
+	switch v := value.(type) {
+	case string:
+		v = strings.TrimSpace(v)
+		if v == "" {
+			return "", fmt.Errorf("forward port cannot be empty")
+		}
+		if strings.HasPrefix(v, "localhost:") {
+			if port, ok := parseLocalhostPort(v); ok {
+				return fmt.Sprintf("localhost:%d", port), nil
+			}
+		}
+		return v, nil
+	case float64:
+		if v != float64(int(v)) {
+			return "", fmt.Errorf("forward port %v must be an integer", v)
+		}
+		return fmt.Sprintf("localhost:%d", int(v)), nil
+	default:
+		return "", fmt.Errorf("unsupported forward port type %T", value)
+	}
+}
+
+func MergeForwardPorts(entries ...ForwardPorts) ForwardPorts {
+	seen := map[string]struct{}{}
+	var result []string
+	for _, entry := range entries {
+		for _, port := range entry {
+			if port == "" {
+				continue
+			}
+			if _, ok := seen[port]; ok {
+				continue
+			}
+			seen[port] = struct{}{}
+			result = append(result, port)
+		}
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return ForwardPorts(result)
+}
+
+func parseLocalhostPort(value string) (int, bool) {
+	if !strings.HasPrefix(value, "localhost:") {
+		return 0, false
+	}
+	var port int
+	_, err := fmt.Sscanf(value, "localhost:%d", &port)
+	if err != nil || port <= 0 {
+		return 0, false
+	}
+	return port, true
 }

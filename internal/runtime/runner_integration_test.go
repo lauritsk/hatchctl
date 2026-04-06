@@ -85,6 +85,7 @@ func TestUpPersistsMergedMetadataAndHonorsMergedRuntimeConfig(t *testing.T) {
 	}
 	imageMetadata, err := devcontainer.MetadataLabelValue([]devcontainer.MetadataEntry{{
 		RemoteUser:        "root",
+		ForwardPorts:      devcontainer.ForwardPorts{"localhost:7000", "api:9000"},
 		RemoteEnv:         map[string]string{"FROM_IMAGE": "1", "SHARED": "image"},
 		ContainerEnv:      map[string]string{"IMAGE_CONTAINER": "1", "SHARED_CONTAINER": "image"},
 		OnCreateCommand:   devcontainer.LifecycleCommand{Kind: "string", Value: "echo image-onCreate >> /workspaces/demo/events", Exists: true},
@@ -108,6 +109,7 @@ func TestUpPersistsMergedMetadataAndHonorsMergedRuntimeConfig(t *testing.T) {
 		"name": "up-runtime-test",
 		"image": "` + baseImage + `",
 		"workspaceFolder": "/workspaces/demo",
+		"forwardPorts": [7000, 8080, "api:9000"],
 		"remoteEnv": {
 			"SHARED": "config",
 			"CONFIG_ONLY": "1"
@@ -134,11 +136,14 @@ func TestUpPersistsMergedMetadataAndHonorsMergedRuntimeConfig(t *testing.T) {
 		}
 	})
 
-	upResult, err := runner.Up(ctx, UpOptions{Workspace: workspace, Recreate: true})
+	upResult, err := runner.Up(ctx, UpOptions{Workspace: workspace, Recreate: true, BridgeEnabled: true})
 	if err != nil {
 		t.Fatalf("up container: %v", err)
 	}
 	containerID = upResult.ContainerID
+	if upResult.Bridge == nil || !upResult.Bridge.Enabled {
+		t.Fatalf("expected bridge report, got %#v", upResult.Bridge)
+	}
 
 	inspect, err := client.InspectContainer(ctx, containerID)
 	if err != nil {
@@ -153,6 +158,23 @@ func TestUpPersistsMergedMetadataAndHonorsMergedRuntimeConfig(t *testing.T) {
 	}
 	if entries[0].RemoteEnv["FROM_IMAGE"] != "1" || entries[1].RemoteEnv["CONFIG_ONLY"] != "1" {
 		t.Fatalf("unexpected persisted entries %#v", entries)
+	}
+	if got := []string(entries[0].ForwardPorts); strings.Join(got, ",") != "localhost:7000,api:9000" {
+		t.Fatalf("unexpected image forward ports %#v", entries[0].ForwardPorts)
+	}
+	if got := []string(entries[1].ForwardPorts); strings.Join(got, ",") != "localhost:7000,localhost:8080,api:9000" {
+		t.Fatalf("unexpected config forward ports %#v", entries[1].ForwardPorts)
+	}
+
+	configResult, err := runner.ReadConfig(ctx, ReadConfigOptions{Workspace: workspace})
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	if got := strings.Join(configResult.ForwardPorts, ","); got != "localhost:7000,api:9000,localhost:8080" {
+		t.Fatalf("unexpected merged forward ports %q", got)
+	}
+	if configResult.Bridge == nil || !configResult.Bridge.Enabled {
+		t.Fatalf("expected bridge in config result, got %#v", configResult.Bridge)
 	}
 
 	var stdout bytes.Buffer
@@ -189,6 +211,24 @@ func TestUpPersistsMergedMetadataAndHonorsMergedRuntimeConfig(t *testing.T) {
 	}
 	if got := strings.TrimSpace(stdout.String()); got != "root" {
 		t.Fatalf("unexpected exec user %q", got)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	exitCode, err = runner.Exec(ctx, ExecOptions{
+		Workspace: workspace,
+		Args:      []string{"sh", "-lc", `printf '%s|%s' "$BROWSER" "$DEVCONTAINER_BRIDGE_ENABLED"`},
+		Stdout:    &stdout,
+		Stderr:    &stderr,
+	})
+	if err != nil {
+		t.Fatalf("exec bridge env check: %v (stderr: %s)", err, stderr.String())
+	}
+	if exitCode != 0 {
+		t.Fatalf("unexpected bridge env exit code %d (stderr: %s)", exitCode, stderr.String())
+	}
+	if got := strings.TrimSpace(stdout.String()); got != "/var/run/hatchctl/bridge/devcontainer-open|true" {
+		t.Fatalf("unexpected bridge env output %q", got)
 	}
 
 	eventsData, err := os.ReadFile(filepath.Join(workspace, "events"))

@@ -180,6 +180,22 @@ func (a *App) runConfig(ctx context.Context, args []string) error {
 		result.HasStartCommand,
 		result.HasAttachCommand,
 	)
+	if err != nil {
+		return err
+	}
+	if len(result.ForwardPorts) > 0 {
+		if _, err := fmt.Fprintf(a.out, "Forward ports: %s\n", strings.Join(result.ForwardPorts, ", ")); err != nil {
+			return err
+		}
+	}
+	if result.Bridge != nil {
+		_, err = fmt.Fprintf(a.out, "Bridge: enabled=%t mount=%s helper=%s status=%s\n",
+			result.Bridge.Enabled,
+			result.Bridge.MountPath,
+			result.Bridge.HelperPath,
+			result.Bridge.Status,
+		)
+	}
 	return err
 }
 

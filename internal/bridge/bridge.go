@@ -14,10 +14,13 @@ type Session struct {
 	Enabled    bool   `json:"enabled"`
 	StatePath  string `json:"statePath"`
 	HelperPath string `json:"helperPath"`
+	MountPath  string `json:"mountPath"`
 	Status     string `json:"status"`
 }
 
 type Report = Session
+
+const containerBridgeMountPath = "/var/run/hatchctl/bridge"
 
 func Prepare(stateDir string, enabled bool) (*Session, error) {
 	if err := os.MkdirAll(filepath.Join(stateDir, "bridge"), 0o755); err != nil {
@@ -36,8 +39,31 @@ func Prepare(stateDir string, enabled bool) (*Session, error) {
 		Enabled:    enabled,
 		StatePath:  filepath.Join(stateDir, "bridge"),
 		HelperPath: helperPath,
+		MountPath:  containerBridgeMountPath,
 		Status:     status,
 	}, nil
+}
+
+func Apply(stateDir string, enabled bool, merged devcontainer.MergedConfig) (*Session, devcontainer.MergedConfig, error) {
+	if !enabled {
+		return nil, merged, nil
+	}
+	session, err := Prepare(stateDir, enabled)
+	if err != nil {
+		return nil, devcontainer.MergedConfig{}, err
+	}
+	if session == nil {
+		return session, merged, nil
+	}
+	containerEnv := cloneEnv(merged.ContainerEnv)
+	containerEnv["BROWSER"] = filepath.ToSlash(filepath.Join(session.MountPath, "devcontainer-open"))
+	containerEnv["DEVCONTAINER_BRIDGE_ENABLED"] = "true"
+	containerEnv["PATH"] = prependPath(session.MountPath, containerEnv["PATH"])
+
+	mount := fmt.Sprintf("type=bind,source=%s,target=%s", session.StatePath, session.MountPath)
+	merged.ContainerEnv = containerEnv
+	merged.Mounts = appendMount(merged.Mounts, mount)
+	return session, merged, nil
 }
 
 func Doctor(stateDir string) (Report, error) {
@@ -57,6 +83,7 @@ func Doctor(stateDir string) (Report, error) {
 		Enabled:    enabled,
 		StatePath:  filepath.Join(stateDir, "bridge"),
 		HelperPath: helperPath,
+		MountPath:  containerBridgeMountPath,
 		Status:     status,
 	}, nil
 }
@@ -80,4 +107,36 @@ fi
 
 exec %s "$url"
 `, launcher)
+}
+
+func cloneEnv(values map[string]string) map[string]string {
+	if len(values) == 0 {
+		return map[string]string{}
+	}
+	result := make(map[string]string, len(values))
+	for key, value := range values {
+		result[key] = value
+	}
+	return result
+}
+
+func prependPath(prefix string, existing string) string {
+	if existing == "" {
+		return prefix + ":/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+	}
+	for _, entry := range filepath.SplitList(existing) {
+		if entry == prefix {
+			return existing
+		}
+	}
+	return prefix + ":" + existing
+}
+
+func appendMount(mounts []string, mount string) []string {
+	for _, existing := range mounts {
+		if existing == mount {
+			return mounts
+		}
+	}
+	return append(mounts, mount)
 }
