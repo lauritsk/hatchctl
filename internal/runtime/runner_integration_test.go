@@ -535,6 +535,148 @@ func TestUpUpdatesNamedNonRootUserUID(t *testing.T) {
 	}
 }
 
+func TestUpReconcilesMissingStateContainerToExistingManagedContainer(t *testing.T) {
+	client := dockerClientForTest(t)
+	ctx := context.Background()
+	workspace := t.TempDir()
+	configDir := filepath.Join(workspace, ".devcontainer")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(configDir, "devcontainer.json")
+	config := `{
+		"image": "alpine:3.20",
+		"workspaceFolder": "/workspaces/demo",
+		"postStartCommand": "echo started >> /workspaces/demo/events"
+	}`
+	if err := os.WriteFile(configPath, []byte(config), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	baseImage := "hatchctl-reconcile-test-" + sanitizeName(filepath.Base(workspace))
+	baseDockerfileDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(baseDockerfileDir, "Dockerfile"), []byte("FROM alpine:3.20\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.Run(ctx, docker.RunOptions{Args: []string{"build", "-t", baseImage, baseDockerfileDir}}); err != nil {
+		t.Fatalf("build base image: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rmi", "-f", baseImage}})
+	})
+	if err := os.WriteFile(configPath, []byte(strings.ReplaceAll(config, "alpine:3.20", baseImage)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	resolved, err := devcontainer.Resolve(workspace, "")
+	if err != nil {
+		t.Fatalf("resolve config: %v", err)
+	}
+	stateDir := resolved.StateDir
+	containerName := resolved.ContainerName
+	labels := []string{
+		"--label", devcontainer.HostFolderLabel + "=" + workspace,
+		"--label", devcontainer.ConfigFileLabel + "=" + configPath,
+		"--label", devcontainer.ManagedByLabel + "=" + devcontainer.ManagedByValue,
+	}
+	containerID, err := client.Output(ctx, append([]string{"run", "-d", "--name", containerName}, append(labels, "--mount", resolved.WorkspaceMount, baseImage, "/bin/sh", "-lc", "trap 'exit 0' TERM INT; while sleep 1000; do :; done")...)...)
+	if err != nil {
+		t.Fatalf("create managed container: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rm", "-f", containerID}})
+	})
+	if err := devcontainer.WriteState(stateDir, devcontainer.State{ContainerID: "missing-container", LifecycleReady: true}); err != nil {
+		t.Fatalf("write stale state: %v", err)
+	}
+
+	runner := NewRunner(client)
+	upResult, err := runner.Up(ctx, UpOptions{Workspace: workspace})
+	if err != nil {
+		t.Fatalf("up with reconciled state: %v", err)
+	}
+	if !strings.HasPrefix(containerID, upResult.ContainerID) && !strings.HasPrefix(upResult.ContainerID, containerID) {
+		t.Fatalf("unexpected reconciled container id %q want %q", upResult.ContainerID, containerID)
+	}
+	state, err := devcontainer.ReadState(stateDir)
+	if err != nil {
+		t.Fatalf("read reconciled state: %v", err)
+	}
+	if !strings.HasPrefix(containerID, state.ContainerID) && !strings.HasPrefix(state.ContainerID, containerID) {
+		t.Fatalf("unexpected stored container id %q want %q", state.ContainerID, containerID)
+	}
+	if !state.LifecycleReady {
+		t.Fatalf("expected lifecycle ready after reconciliation %#v", state)
+	}
+	data, err := os.ReadFile(filepath.Join(workspace, "events"))
+	if err != nil {
+		t.Fatalf("read lifecycle events: %v", err)
+	}
+	if got := strings.TrimSpace(string(data)); got != "started" {
+		t.Fatalf("unexpected lifecycle output %q", got)
+	}
+}
+
+func TestUpRecreateRemovesReconciledManagedContainer(t *testing.T) {
+	client := dockerClientForTest(t)
+	ctx := context.Background()
+	workspace := t.TempDir()
+	configDir := filepath.Join(workspace, ".devcontainer")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(configDir, "devcontainer.json")
+	baseImage := "hatchctl-recreate-test-" + sanitizeName(filepath.Base(workspace))
+	baseDockerfileDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(baseDockerfileDir, "Dockerfile"), []byte("FROM alpine:3.20\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.Run(ctx, docker.RunOptions{Args: []string{"build", "-t", baseImage, baseDockerfileDir}}); err != nil {
+		t.Fatalf("build base image: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rmi", "-f", baseImage}})
+	})
+	if err := os.WriteFile(configPath, []byte(`{"image":"`+baseImage+`","workspaceFolder":"/workspaces/demo"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	resolved, err := devcontainer.Resolve(workspace, "")
+	if err != nil {
+		t.Fatalf("resolve config: %v", err)
+	}
+	labels := []string{
+		"--label", devcontainer.HostFolderLabel + "=" + workspace,
+		"--label", devcontainer.ConfigFileLabel + "=" + configPath,
+		"--label", devcontainer.ManagedByLabel + "=" + devcontainer.ManagedByValue,
+	}
+	oldContainerID, err := client.Output(ctx, append([]string{"run", "-d", "--name", resolved.ContainerName}, append(labels, "--mount", resolved.WorkspaceMount, baseImage, "/bin/sh", "-lc", "trap 'exit 0' TERM INT; while sleep 1000; do :; done")...)...)
+	if err != nil {
+		t.Fatalf("create managed container: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rm", "-f", oldContainerID}})
+	})
+	if err := devcontainer.WriteState(resolved.StateDir, devcontainer.State{ContainerID: "missing-container", LifecycleReady: true}); err != nil {
+		t.Fatalf("write stale state: %v", err)
+	}
+
+	runner := NewRunner(client)
+	upResult, err := runner.Up(ctx, UpOptions{Workspace: workspace, Recreate: true})
+	if err != nil {
+		t.Fatalf("up recreate: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rm", "-f", upResult.ContainerID}})
+	})
+	if upResult.ContainerID == oldContainerID {
+		t.Fatalf("expected recreated container id to differ from %q", oldContainerID)
+	}
+	if _, err := client.InspectContainer(ctx, oldContainerID); err == nil {
+		t.Fatalf("expected old container %q to be removed", oldContainerID)
+	}
+}
+
 func dockerClientForTest(t *testing.T) *docker.Client {
 	t.Helper()
 	if testing.Short() {

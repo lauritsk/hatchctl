@@ -143,6 +143,10 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 	if err != nil {
 		return UpResult{}, err
 	}
+	state, err = r.reconcileState(ctx, resolved, state)
+	if err != nil {
+		return UpResult{}, err
+	}
 
 	if opts.Recreate && state.ContainerID != "" {
 		_ = r.removeContainer(ctx, state.ContainerID)
@@ -289,6 +293,10 @@ func (r *Runner) ReadConfig(ctx context.Context, opts ReadConfigOptions) (ReadCo
 		return ReadConfigResult{}, err
 	}
 	state, err := devcontainer.ReadState(resolved.StateDir)
+	if err != nil {
+		return ReadConfigResult{}, err
+	}
+	state, err = r.reconcileState(ctx, resolved, state)
 	if err != nil {
 		return ReadConfigResult{}, err
 	}
@@ -555,6 +563,26 @@ var errManagedContainerNotFound = errors.New("managed container not found")
 
 func (r *Runner) removeContainer(ctx context.Context, containerID string) error {
 	return r.docker.Run(ctx, docker.RunOptions{Args: []string{"rm", "-f", containerID}, Stdout: os.Stdout, Stderr: os.Stderr})
+}
+
+func (r *Runner) reconcileState(ctx context.Context, resolved devcontainer.ResolvedConfig, state devcontainer.State) (devcontainer.State, error) {
+	if state.ContainerID != "" {
+		if _, err := r.docker.InspectContainer(ctx, state.ContainerID); err == nil {
+			return state, nil
+		} else if !strings.Contains(err.Error(), "No such object") && !strings.Contains(err.Error(), "not found") {
+			return devcontainer.State{}, err
+		}
+	}
+	containerID, err := r.findContainer(ctx, resolved)
+	if err != nil {
+		if errors.Is(err, errManagedContainerNotFound) {
+			return devcontainer.State{BridgeEnabled: state.BridgeEnabled, BridgeSessionID: state.BridgeSessionID}, nil
+		}
+		return devcontainer.State{}, err
+	}
+	state.ContainerID = containerID
+	state.LifecycleReady = false
+	return state, nil
 }
 
 func (r *Runner) applyBridgeConfig(resolved *devcontainer.ResolvedConfig, enabled bool) (*bridge.Report, error) {
