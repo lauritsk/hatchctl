@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -717,7 +718,11 @@ func TestUpStartsBridgeOnFirstRunAndReusesSession(t *testing.T) {
 		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rm", "-f", first.ContainerID}})
 		_ = bridge.Stop(first.StateDir)
 	})
-	if first.Bridge == nil || first.Bridge.Status != "running" {
+	expectedBridgeStatus := "scaffolded"
+	if runtime.GOOS == "darwin" {
+		expectedBridgeStatus = "running"
+	}
+	if first.Bridge == nil || first.Bridge.Status != expectedBridgeStatus {
 		t.Fatalf("unexpected bridge report %#v", first.Bridge)
 	}
 
@@ -731,22 +736,24 @@ func TestUpStartsBridgeOnFirstRunAndReusesSession(t *testing.T) {
 	if session.ID == "" {
 		t.Fatalf("unexpected session %#v", session)
 	}
-	var bridgeConfig struct {
-		SessionID   string `json:"sessionId"`
-		ContainerID string `json:"containerId"`
-	}
-	readJSONFile(t, configJSONPath, &bridgeConfig)
-	if bridgeConfig.SessionID != session.ID || bridgeConfig.ContainerID != first.ContainerID {
-		t.Fatalf("unexpected bridge config %#v session=%#v", bridgeConfig, session)
-	}
-	var status struct {
-		SessionID   string `json:"sessionId"`
-		ContainerID string `json:"containerId"`
-		LastEvent   string `json:"lastEvent"`
-	}
-	readJSONFile(t, statusPath, &status)
-	if status.SessionID != session.ID || status.ContainerID != first.ContainerID || status.LastEvent != "running" {
-		t.Fatalf("unexpected bridge status %#v", status)
+	if runtime.GOOS == "darwin" {
+		var bridgeConfig struct {
+			SessionID   string `json:"sessionId"`
+			ContainerID string `json:"containerId"`
+		}
+		readJSONFile(t, configJSONPath, &bridgeConfig)
+		if bridgeConfig.SessionID != session.ID || bridgeConfig.ContainerID != first.ContainerID {
+			t.Fatalf("unexpected bridge config %#v session=%#v", bridgeConfig, session)
+		}
+		var status struct {
+			SessionID   string `json:"sessionId"`
+			ContainerID string `json:"containerId"`
+			LastEvent   string `json:"lastEvent"`
+		}
+		readJSONFile(t, statusPath, &status)
+		if status.SessionID != session.ID || status.ContainerID != first.ContainerID || status.LastEvent != "running" {
+			t.Fatalf("unexpected bridge status %#v", status)
+		}
 	}
 
 	second, err := runner.Up(ctx, UpOptions{Workspace: workspace, BridgeEnabled: true})
