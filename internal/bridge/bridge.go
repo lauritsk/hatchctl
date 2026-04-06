@@ -7,8 +7,10 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"syscall"
 
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
@@ -52,6 +54,9 @@ func Prepare(stateDir string, enabled bool) (*Session, error) {
 		return nil, err
 	}
 	if err := os.WriteFile(filepath.Join(binPath, "xdg-open"), []byte(xdgOpenShim()), 0o755); err != nil {
+		return nil, err
+	}
+	if err := ensureHelperBinary(binPath); err != nil {
 		return nil, err
 	}
 	session.Enabled = enabled
@@ -192,6 +197,31 @@ exec %s "$url"
 
 func xdgOpenShim() string {
 	return "#!/bin/sh\nexec /var/run/hatchctl/bridge/bin/devcontainer-open \"$@\"\n"
+}
+
+func ensureHelperBinary(binPath string) error {
+	helperPath := filepath.Join(binPath, "hatchctl-bridge-helper")
+	if _, err := os.Stat(helperPath); err == nil {
+		return nil
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	cmd := exec.Command("go", "build", "-o", helperPath, "./cmd/hatchctl-bridge-helper")
+	cmd.Dir = repoRoot()
+	cmd.Env = append(os.Environ(), "CGO_ENABLED=0", "GOOS=linux", "GOARCH="+runtime.GOARCH)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("build bridge helper: %w: %s", err, strings.TrimSpace(string(output)))
+	}
+	return os.Chmod(helperPath, 0o755)
+}
+
+func repoRoot() string {
+	_, file, _, ok := runtime.Caller(0)
+	if !ok {
+		return "."
+	}
+	return filepath.Clean(filepath.Join(filepath.Dir(file), "..", ".."))
 }
 
 func loadOrCreateSession(bridgeDir string, enabled bool) (*Session, error) {

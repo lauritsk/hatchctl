@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -11,20 +12,49 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 )
 
+const containerHelperBin = "/var/run/hatchctl/bridge/bin/hatchctl-bridge-helper"
+
 type statusFile struct {
-	SessionID   string `json:"sessionId"`
-	ContainerID string `json:"containerId"`
-	ControlPort int    `json:"controlPort"`
-	PID         int    `json:"pid,omitempty"`
-	LastEvent   string `json:"lastEvent,omitempty"`
-	LastError   string `json:"lastError,omitempty"`
-	UpdatedAt   string `json:"updatedAt"`
+	SessionID   string          `json:"sessionId"`
+	ContainerID string          `json:"containerId"`
+	ControlPort int             `json:"controlPort"`
+	PID         int             `json:"pid,omitempty"`
+	Forwarded   []forwardStatus `json:"forwarded,omitempty"`
+	LastPort    int             `json:"lastForwardedPort,omitempty"`
+	LastExact   bool            `json:"lastExactPort,omitempty"`
+	LastEvent   string          `json:"lastEvent,omitempty"`
+	LastError   string          `json:"lastError,omitempty"`
+	UpdatedAt   string          `json:"updatedAt"`
+}
+
+type forwardStatus struct {
+	ContainerPort int  `json:"containerPort"`
+	HostPort      int  `json:"hostPort"`
+	ExactPort     bool `json:"exactPort"`
+}
+
+type forwardedPort struct {
+	server   net.Listener
+	hostPort int
+	exact    bool
+}
+
+type bridgeHostService struct {
+	session     *Session
+	containerID string
+	openURL     func(string) error
+	forwardURL  func(int) (int, bool, error)
+	execArgs    func(string, int) []string
+	mu          sync.Mutex
+	forwarded   map[int]forwardedPort
 }
 
 func Start(stateDir string, enabled bool, containerID string) (*Session, error) {
@@ -45,7 +75,7 @@ func Start(stateDir string, enabled bool, containerID string) (*Session, error) 
 	if err := writeBridgeConfig(session, containerID); err != nil {
 		return nil, err
 	}
-	if err := writeStatus(session, containerID, "starting", ""); err != nil {
+	if err := writeStatus(session, containerID, "starting", "", nil, 0, false); err != nil {
 		return nil, err
 	}
 	exe, err := os.Executable()
@@ -54,7 +84,7 @@ func Start(stateDir string, enabled bool, containerID string) (*Session, error) 
 	}
 	if strings.HasSuffix(exe, ".test") {
 		session.Status = "running"
-		if err := writeStatus(session, containerID, "running", ""); err != nil {
+		if err := writeStatus(session, containerID, "running", "", nil, 0, false); err != nil {
 			return nil, err
 		}
 		return session, nil
@@ -86,10 +116,11 @@ func Serve(ctx context.Context, stateDir string, containerID string) error {
 	if err := os.WriteFile(session.PIDPath, []byte(strconv.Itoa(os.Getpid())), 0o644); err != nil {
 		return err
 	}
-	if err := writeStatus(session, containerID, "running", ""); err != nil {
+	if err := writeStatus(session, containerID, "running", "", nil, 0, false); err != nil {
 		return err
 	}
-	handler := openHandler(session, containerID, defaultOpen)
+	service := newBridgeHostService(session, containerID, defaultOpen)
+	handler := service.handler()
 	server := &http.Server{Addr: fmt.Sprintf("0.0.0.0:%d", session.Port), Handler: handler}
 	go func() {
 		<-ctx.Done()
@@ -101,11 +132,23 @@ func Serve(ctx context.Context, stateDir string, containerID string) error {
 	if err == nil || err == http.ErrServerClosed {
 		return nil
 	}
-	_ = writeStatus(session, containerID, "error", err.Error())
+	_ = writeStatus(session, containerID, "error", err.Error(), nil, 0, false)
 	return err
 }
 
-func openHandler(session *Session, containerID string, opener func(string) error) http.Handler {
+func newBridgeHostService(session *Session, containerID string, opener func(string) error) *bridgeHostService {
+	service := &bridgeHostService{
+		session:     session,
+		containerID: containerID,
+		openURL:     opener,
+		forwarded:   map[int]forwardedPort{},
+	}
+	service.forwardURL = service.ensureForward
+	service.execArgs = connectorExecArgs
+	return service
+}
+
+func (s *bridgeHostService) handler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost || r.URL.Path != "/open" {
 			http.NotFound(w, r)
@@ -129,7 +172,7 @@ func openHandler(session *Session, containerID string, opener func(string) error
 			payload.URL = r.Form.Get("url")
 			payload.Token = r.Form.Get("token")
 		}
-		if payload.Token != session.Token || payload.URL == "" {
+		if payload.Token != s.session.Token || payload.URL == "" {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
@@ -137,14 +180,154 @@ func openHandler(session *Session, containerID string, opener func(string) error
 			http.Error(w, "invalid url", http.StatusBadRequest)
 			return
 		}
-		if err := opener(payload.URL); err != nil {
-			_ = writeStatus(session, containerID, "open failed", err.Error())
+		rewritten, err := s.rewriteLocalURL(payload.URL)
+		if err != nil {
+			_ = writeStatus(s.session, s.containerID, "rewrite failed", err.Error(), nil, 0, false)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		_ = writeStatus(session, containerID, "open forwarded", "")
+		if err := s.openURL(rewritten); err != nil {
+			_ = writeStatus(s.session, s.containerID, "open failed", err.Error(), s.forwardSnapshot(), 0, false)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		_ = writeStatus(s.session, s.containerID, "open forwarded", "", s.forwardSnapshot(), 0, false)
 		w.WriteHeader(http.StatusNoContent)
 	})
+}
+
+func (s *bridgeHostService) rewriteLocalURL(raw string) (string, error) {
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return raw, nil
+	}
+	if parsed.Hostname() != "localhost" && parsed.Hostname() != "127.0.0.1" {
+		return raw, nil
+	}
+	portText := parsed.Port()
+	if portText == "" {
+		if parsed.Scheme == "https" {
+			portText = "443"
+		} else {
+			portText = "80"
+		}
+	}
+	port, err := strconv.Atoi(portText)
+	if err != nil || port <= 0 {
+		return "", fmt.Errorf("invalid localhost port %q", portText)
+	}
+	hostPort, _, err := s.forwardURL(port)
+	if err != nil {
+		return "", err
+	}
+	parsed.Host = net.JoinHostPort("127.0.0.1", strconv.Itoa(hostPort))
+	return parsed.String(), nil
+}
+
+func (s *bridgeHostService) ensureForward(port int) (int, bool, error) {
+	s.mu.Lock()
+	if forward, ok := s.forwarded[port]; ok {
+		s.mu.Unlock()
+		return forward.hostPort, forward.exact, nil
+	}
+	s.mu.Unlock()
+
+	listener, exact, err := listenForwardPort(port)
+	if err != nil {
+		return 0, false, err
+	}
+	hostPort := listener.Addr().(*net.TCPAddr).Port
+	forward := forwardedPort{server: listener, hostPort: hostPort, exact: exact}
+
+	s.mu.Lock()
+	s.forwarded[port] = forward
+	snapshot := s.forwardSnapshotLocked()
+	s.mu.Unlock()
+
+	go func() {
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			go s.handleForwardConn(port, conn)
+		}
+	}()
+
+	_ = writeStatus(s.session, s.containerID, forwardEvent(port, hostPort), "", snapshot, port, exact)
+	return hostPort, exact, nil
+}
+
+func (s *bridgeHostService) handleForwardConn(port int, conn net.Conn) {
+	defer conn.Close()
+	cmd := exec.Command("docker", s.execArgs(s.containerID, port)...)
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return
+	}
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		_ = stdin.Close()
+		return
+	}
+	cmd.Stderr = io.Discard
+	if err := cmd.Start(); err != nil {
+		_ = stdin.Close()
+		return
+	}
+	done := make(chan struct{}, 2)
+	go func() {
+		_, _ = io.Copy(stdin, conn)
+		_ = stdin.Close()
+		done <- struct{}{}
+	}()
+	go func() {
+		_, _ = io.Copy(conn, stdout)
+		done <- struct{}{}
+	}()
+	<-done
+	<-done
+	_ = cmd.Wait()
+}
+
+func (s *bridgeHostService) forwardSnapshot() []forwardStatus {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.forwardSnapshotLocked()
+}
+
+func (s *bridgeHostService) forwardSnapshotLocked() []forwardStatus {
+	result := make([]forwardStatus, 0, len(s.forwarded))
+	for containerPort, forward := range s.forwarded {
+		result = append(result, forwardStatus{ContainerPort: containerPort, HostPort: forward.hostPort, ExactPort: forward.exact})
+	}
+	sort.Slice(result, func(i int, j int) bool {
+		return result[i].ContainerPort < result[j].ContainerPort
+	})
+	return result
+}
+
+func listenForwardPort(port int) (net.Listener, bool, error) {
+	listener, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)))
+	if err == nil {
+		return listener, true, nil
+	}
+	listener, err = net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return nil, false, err
+	}
+	return listener, false, nil
+}
+
+func forwardEvent(containerPort int, hostPort int) string {
+	if containerPort == hostPort {
+		return fmt.Sprintf("forwarded %d on exact host port", containerPort)
+	}
+	return fmt.Sprintf("forwarded %d on host port %d", containerPort, hostPort)
+}
+
+func connectorExecArgs(containerID string, port int) []string {
+	return []string{"exec", "-i", containerID, containerHelperBin, "connect", "--port", strconv.Itoa(port)}
 }
 
 func defaultOpen(target string) error {
@@ -231,12 +414,15 @@ func writeBridgeConfig(session *Session, containerID string) error {
 	return os.WriteFile(session.ConfigPath, data, 0o644)
 }
 
-func writeStatus(session *Session, containerID string, event string, lastError string) error {
+func writeStatus(session *Session, containerID string, event string, lastError string, forwarded []forwardStatus, lastPort int, lastExact bool) error {
 	status := statusFile{
 		SessionID:   session.ID,
 		ContainerID: containerID,
 		ControlPort: session.Port,
 		PID:         os.Getpid(),
+		Forwarded:   forwarded,
+		LastPort:    lastPort,
+		LastExact:   lastExact,
 		LastEvent:   event,
 		LastError:   lastError,
 		UpdatedAt:   time.Now().UTC().Format(time.RFC3339),
