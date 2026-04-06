@@ -96,3 +96,91 @@ func TestResolveFindsDefaultConfigAndBuildsRuntimeShape(t *testing.T) {
 		t.Fatalf("unexpected labels %#v", resolved.Labels)
 	}
 }
+
+func TestMergeMetadataMatchesExpectedPrecedence(t *testing.T) {
+	t.Parallel()
+
+	falseValue := false
+	trueValue := true
+	merged := MergeMetadata(Config{
+		RemoteUser:    "config-remote",
+		ContainerUser: "config-container",
+		RemoteEnv: map[string]string{
+			"BASE":   "config",
+			"CONFIG": "yes",
+		},
+		ContainerEnv: map[string]string{
+			"KEEP":   "config",
+			"CONFIG": "yes",
+		},
+		Mounts: []string{
+			"type=volume,target=/config-only",
+			"type=bind,source=/config,target=/shared",
+		},
+		CapAdd:          []string{"SYS_PTRACE"},
+		SecurityOpt:     []string{"seccomp=unconfined"},
+		OverrideCommand: &falseValue,
+		OnCreateCommand: LifecycleCommand{Kind: "string", Value: "config-create", Exists: true},
+	}, []MetadataEntry{{
+		RemoteUser:      "image-remote",
+		ContainerUser:   "image-container",
+		RemoteEnv:       map[string]string{"BASE": "image", "IMAGE": "yes"},
+		ContainerEnv:    map[string]string{"KEEP": "image", "IMAGE": "yes"},
+		Mounts:          []string{"type=bind,source=/image,target=/shared", "type=volume,target=/image-only"},
+		CapAdd:          []string{"NET_ADMIN"},
+		SecurityOpt:     []string{"label=disable"},
+		OverrideCommand: &trueValue,
+		OnCreateCommand: LifecycleCommand{Kind: "string", Value: "image-create", Exists: true},
+	}})
+
+	if merged.RemoteUser != "config-remote" {
+		t.Fatalf("unexpected remote user %q", merged.RemoteUser)
+	}
+	if merged.ContainerUser != "config-container" {
+		t.Fatalf("unexpected container user %q", merged.ContainerUser)
+	}
+	if merged.RemoteEnv["BASE"] != "config" || merged.RemoteEnv["IMAGE"] != "yes" || merged.RemoteEnv["CONFIG"] != "yes" {
+		t.Fatalf("unexpected remote env %#v", merged.RemoteEnv)
+	}
+	if merged.ContainerEnv["KEEP"] != "config" || merged.ContainerEnv["IMAGE"] != "yes" || merged.ContainerEnv["CONFIG"] != "yes" {
+		t.Fatalf("unexpected container env %#v", merged.ContainerEnv)
+	}
+	if len(merged.Mounts) != 3 {
+		t.Fatalf("unexpected mounts %#v", merged.Mounts)
+	}
+	if merged.Mounts[2] != "type=bind,source=/config,target=/shared" {
+		t.Fatalf("expected config mount to override shared target, got %#v", merged.Mounts)
+	}
+	if len(merged.CapAdd) != 2 || len(merged.SecurityOpt) != 2 {
+		t.Fatalf("unexpected merged security values %#v %#v", merged.CapAdd, merged.SecurityOpt)
+	}
+	if merged.OverrideCommand == nil || *merged.OverrideCommand {
+		t.Fatalf("unexpected overrideCommand %#v", merged.OverrideCommand)
+	}
+	if len(merged.OnCreateCommands) != 2 {
+		t.Fatalf("unexpected onCreate commands %#v", merged.OnCreateCommands)
+	}
+	if merged.OnCreateCommands[0].Value != "image-create" || merged.OnCreateCommands[1].Value != "config-create" {
+		t.Fatalf("unexpected lifecycle order %#v", merged.OnCreateCommands)
+	}
+}
+
+func TestMetadataFromLabelSupportsSingleAndArray(t *testing.T) {
+	t.Parallel()
+
+	entries, err := MetadataFromLabel(`[ {"remoteUser":"vscode"}, {"remoteUser":"dev"} ]`)
+	if err != nil {
+		t.Fatalf("parse array metadata: %v", err)
+	}
+	if len(entries) != 2 || entries[1].RemoteUser != "dev" {
+		t.Fatalf("unexpected metadata entries %#v", entries)
+	}
+
+	entries, err = MetadataFromLabel(`{"remoteEnv":{"A":"B"}}`)
+	if err != nil {
+		t.Fatalf("parse single metadata: %v", err)
+	}
+	if len(entries) != 1 || entries[0].RemoteEnv["A"] != "B" {
+		t.Fatalf("unexpected single metadata %#v", entries)
+	}
+}

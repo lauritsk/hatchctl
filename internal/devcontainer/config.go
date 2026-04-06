@@ -137,6 +137,7 @@ type ResolvedConfig struct {
 	ConfigPath      string
 	ConfigDir       string
 	Config          Config
+	Merged          MergedConfig
 	StateDir        string
 	WorkspaceMount  string
 	RemoteWorkspace string
@@ -200,6 +201,7 @@ func Resolve(workspaceArg string, configArg string) (ResolvedConfig, error) {
 		ConfigPath:      configPath,
 		ConfigDir:       configDir,
 		Config:          config,
+		Merged:          MergeMetadata(config, nil),
 		StateDir:        stateDir,
 		WorkspaceMount:  workspaceMount,
 		RemoteWorkspace: remoteWorkspace,

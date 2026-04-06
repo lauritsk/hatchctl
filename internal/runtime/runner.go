@@ -64,17 +64,23 @@ type ReadConfigOptions struct {
 }
 
 type ReadConfigResult struct {
-	WorkspaceFolder      string `json:"workspaceFolder"`
-	ConfigPath           string `json:"configPath"`
-	WorkspaceMount       string `json:"workspaceMount"`
-	SourceKind           string `json:"sourceKind"`
-	HasInitializeCommand bool   `json:"hasInitializeCommand"`
-	HasCreateCommand     bool   `json:"hasCreateCommand"`
-	HasStartCommand      bool   `json:"hasStartCommand"`
-	HasAttachCommand     bool   `json:"hasAttachCommand"`
-	Image                string `json:"image"`
-	ContainerName        string `json:"containerName"`
-	StateDir             string `json:"stateDir"`
+	WorkspaceFolder      string            `json:"workspaceFolder"`
+	ConfigPath           string            `json:"configPath"`
+	WorkspaceMount       string            `json:"workspaceMount"`
+	SourceKind           string            `json:"sourceKind"`
+	HasInitializeCommand bool              `json:"hasInitializeCommand"`
+	HasCreateCommand     bool              `json:"hasCreateCommand"`
+	HasStartCommand      bool              `json:"hasStartCommand"`
+	HasAttachCommand     bool              `json:"hasAttachCommand"`
+	Image                string            `json:"image"`
+	ContainerName        string            `json:"containerName"`
+	StateDir             string            `json:"stateDir"`
+	RemoteUser           string            `json:"remoteUser,omitempty"`
+	ContainerUser        string            `json:"containerUser,omitempty"`
+	RemoteEnv            map[string]string `json:"remoteEnv,omitempty"`
+	ContainerEnv         map[string]string `json:"containerEnv,omitempty"`
+	Mounts               []string          `json:"mounts,omitempty"`
+	MetadataCount        int               `json:"metadataCount"`
 }
 
 type RunLifecycleOptions struct {
@@ -127,6 +133,9 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 	if err != nil {
 		return UpResult{}, err
 	}
+	if err := r.enrichMergedConfig(ctx, &resolved, image); err != nil {
+		return UpResult{}, err
+	}
 
 	containerID, created, err := r.ensureContainer(ctx, resolved, image, opts.BridgeEnabled)
 	if err != nil {
@@ -173,6 +182,9 @@ func (r *Runner) Build(ctx context.Context, opts BuildOptions) (BuildResult, err
 	if err != nil {
 		return BuildResult{}, err
 	}
+	if err := r.enrichMergedConfig(ctx, &resolved, image); err != nil {
+		return BuildResult{}, err
+	}
 	return BuildResult{Image: image}, nil
 }
 
@@ -181,17 +193,28 @@ func (r *Runner) Exec(ctx context.Context, opts ExecOptions) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	image := resolved.Config.Image
+	if image == "" {
+		image = resolved.ImageName
+	}
+	if err := r.enrichMergedConfig(ctx, &resolved, image); err != nil {
+		return 0, err
+	}
 	containerID, err := r.findContainer(ctx, resolved)
 	if err != nil {
 		return 0, err
 	}
 
 	args := []string{"exec", "-i"}
-	user := devcontainer.RemoteExecUser(resolved.Config)
+	user := resolved.Merged.RemoteUser
+	if user == "" {
+		user = resolved.Merged.ContainerUser
+	}
 	if user != "" {
 		args = append(args, "-u", user)
 	}
-	for key, value := range resolved.Config.RemoteEnv {
+	for _, key := range devcontainer.SortedMapKeys(resolved.Merged.RemoteEnv) {
+		value := resolved.Merged.RemoteEnv[key]
 		args = append(args, "-e", key+"="+value)
 	}
 	for key, value := range opts.RemoteEnv {
@@ -226,18 +249,27 @@ func (r *Runner) ReadConfig(ctx context.Context, opts ReadConfigOptions) (ReadCo
 	if image == "" {
 		image = resolved.ImageName
 	}
+	if err := r.enrichMergedConfig(ctx, &resolved, image); err != nil {
+		return ReadConfigResult{}, err
+	}
 	return ReadConfigResult{
 		WorkspaceFolder:      resolved.WorkspaceFolder,
 		ConfigPath:           resolved.ConfigPath,
 		WorkspaceMount:       resolved.WorkspaceMount,
 		SourceKind:           resolved.SourceKind,
 		HasInitializeCommand: !resolved.Config.InitializeCommand.Empty(),
-		HasCreateCommand:     !resolved.Config.OnCreateCommand.Empty() || !resolved.Config.UpdateContentCommand.Empty() || !resolved.Config.PostCreateCommand.Empty(),
-		HasStartCommand:      !resolved.Config.PostStartCommand.Empty(),
-		HasAttachCommand:     !resolved.Config.PostAttachCommand.Empty(),
+		HasCreateCommand:     len(resolved.Merged.OnCreateCommands) > 0 || len(resolved.Merged.UpdateContentCommands) > 0 || len(resolved.Merged.PostCreateCommands) > 0,
+		HasStartCommand:      len(resolved.Merged.PostStartCommands) > 0,
+		HasAttachCommand:     len(resolved.Merged.PostAttachCommands) > 0,
 		Image:                image,
 		ContainerName:        resolved.ContainerName,
 		StateDir:             resolved.StateDir,
+		RemoteUser:           resolved.Merged.RemoteUser,
+		ContainerUser:        resolved.Merged.ContainerUser,
+		RemoteEnv:            resolved.Merged.RemoteEnv,
+		ContainerEnv:         resolved.Merged.ContainerEnv,
+		Mounts:               resolved.Merged.Mounts,
+		MetadataCount:        len(resolved.Merged.Metadata),
 	}, nil
 }
 
@@ -248,6 +280,13 @@ func (r *Runner) RunLifecycle(ctx context.Context, opts RunLifecycleOptions) (Ru
 	}
 	containerID, err := r.findContainer(ctx, resolved)
 	if err != nil {
+		return RunLifecycleResult{}, err
+	}
+	image := resolved.Config.Image
+	if image == "" {
+		image = resolved.ImageName
+	}
+	if err := r.enrichMergedConfig(ctx, &resolved, image); err != nil {
 		return RunLifecycleResult{}, err
 	}
 	phase := strings.ToLower(opts.Phase)
@@ -267,6 +306,23 @@ func (r *Runner) BridgeDoctor(ctx context.Context, opts BridgeDoctorOptions) (br
 		return bridge.Report{}, err
 	}
 	return bridge.Doctor(resolved.StateDir)
+}
+
+func (r *Runner) enrichMergedConfig(ctx context.Context, resolved *devcontainer.ResolvedConfig, image string) error {
+	inspect, err := r.docker.InspectImage(ctx, image)
+	if err != nil {
+		if resolved.SourceKind == "dockerfile" && image == resolved.ImageName {
+			resolved.Merged = devcontainer.MergeMetadata(resolved.Config, nil)
+			return nil
+		}
+		return err
+	}
+	metadata, err := devcontainer.MetadataFromLabel(inspect.Config.Labels[devcontainer.ImageMetadataLabel])
+	if err != nil {
+		return err
+	}
+	resolved.Merged = devcontainer.MergeMetadata(resolved.Config, metadata)
+	return nil
 }
 
 func (r *Runner) ensureImage(ctx context.Context, resolved devcontainer.ResolvedConfig) (string, error) {
@@ -317,22 +373,23 @@ func (r *Runner) ensureContainer(ctx context.Context, resolved devcontainer.Reso
 		args = append(args, "--label", devcontainer.BridgeEnabledLabel+"=true")
 	}
 	args = append(args, "--mount", resolved.WorkspaceMount, "--mount", stateMount)
-	if resolved.Config.Init != nil && *resolved.Config.Init {
+	if resolved.Merged.Init {
 		args = append(args, "--init")
 	}
-	if resolved.Config.Privileged != nil && *resolved.Config.Privileged {
+	if resolved.Merged.Privileged {
 		args = append(args, "--privileged")
 	}
-	for _, cap := range resolved.Config.CapAdd {
+	for _, cap := range resolved.Merged.CapAdd {
 		args = append(args, "--cap-add", cap)
 	}
-	for _, sec := range resolved.Config.SecurityOpt {
+	for _, sec := range resolved.Merged.SecurityOpt {
 		args = append(args, "--security-opt", sec)
 	}
-	for key, value := range resolved.Config.ContainerEnv {
+	for _, key := range devcontainer.SortedMapKeys(resolved.Merged.ContainerEnv) {
+		value := resolved.Merged.ContainerEnv[key]
 		args = append(args, "-e", key+"="+value)
 	}
-	for _, mount := range resolved.Config.Mounts {
+	for _, mount := range resolved.Merged.Mounts {
 		args = append(args, "--mount", mount)
 	}
 	args = append(args, resolved.Config.RunArgs...)
@@ -381,20 +438,20 @@ func (r *Runner) runLifecycleForUp(ctx context.Context, resolved devcontainer.Re
 		if err := runHostLifecycle(ctx, resolved.WorkspaceFolder, resolved.Config.InitializeCommand); err != nil {
 			return err
 		}
-		if err := r.runContainerLifecycle(ctx, containerID, resolved, resolved.Config.OnCreateCommand); err != nil {
+		if err := r.runContainerLifecycleList(ctx, containerID, resolved, resolved.Merged.OnCreateCommands); err != nil {
 			return err
 		}
-		if err := r.runContainerLifecycle(ctx, containerID, resolved, resolved.Config.UpdateContentCommand); err != nil {
+		if err := r.runContainerLifecycleList(ctx, containerID, resolved, resolved.Merged.UpdateContentCommands); err != nil {
 			return err
 		}
-		if err := r.runContainerLifecycle(ctx, containerID, resolved, resolved.Config.PostCreateCommand); err != nil {
+		if err := r.runContainerLifecycleList(ctx, containerID, resolved, resolved.Merged.PostCreateCommands); err != nil {
 			return err
 		}
 	}
-	if err := r.runContainerLifecycle(ctx, containerID, resolved, resolved.Config.PostStartCommand); err != nil {
+	if err := r.runContainerLifecycleList(ctx, containerID, resolved, resolved.Merged.PostStartCommands); err != nil {
 		return err
 	}
-	return r.runContainerLifecycle(ctx, containerID, resolved, resolved.Config.PostAttachCommand)
+	return r.runContainerLifecycleList(ctx, containerID, resolved, resolved.Merged.PostAttachCommands)
 }
 
 func (r *Runner) runLifecyclePhase(ctx context.Context, resolved devcontainer.ResolvedConfig, containerID string, phase string) error {
@@ -403,37 +460,46 @@ func (r *Runner) runLifecyclePhase(ctx context.Context, resolved devcontainer.Re
 		if err := runHostLifecycle(ctx, resolved.WorkspaceFolder, resolved.Config.InitializeCommand); err != nil {
 			return err
 		}
-		if err := r.runContainerLifecycle(ctx, containerID, resolved, resolved.Config.OnCreateCommand); err != nil {
+		if err := r.runContainerLifecycleList(ctx, containerID, resolved, resolved.Merged.OnCreateCommands); err != nil {
 			return err
 		}
-		if err := r.runContainerLifecycle(ctx, containerID, resolved, resolved.Config.UpdateContentCommand); err != nil {
+		if err := r.runContainerLifecycleList(ctx, containerID, resolved, resolved.Merged.UpdateContentCommands); err != nil {
 			return err
 		}
-		if err := r.runContainerLifecycle(ctx, containerID, resolved, resolved.Config.PostCreateCommand); err != nil {
+		if err := r.runContainerLifecycleList(ctx, containerID, resolved, resolved.Merged.PostCreateCommands); err != nil {
 			return err
 		}
-		if err := r.runContainerLifecycle(ctx, containerID, resolved, resolved.Config.PostStartCommand); err != nil {
+		if err := r.runContainerLifecycleList(ctx, containerID, resolved, resolved.Merged.PostStartCommands); err != nil {
 			return err
 		}
-		return r.runContainerLifecycle(ctx, containerID, resolved, resolved.Config.PostAttachCommand)
+		return r.runContainerLifecycleList(ctx, containerID, resolved, resolved.Merged.PostAttachCommands)
 	case "create":
 		if err := runHostLifecycle(ctx, resolved.WorkspaceFolder, resolved.Config.InitializeCommand); err != nil {
 			return err
 		}
-		if err := r.runContainerLifecycle(ctx, containerID, resolved, resolved.Config.OnCreateCommand); err != nil {
+		if err := r.runContainerLifecycleList(ctx, containerID, resolved, resolved.Merged.OnCreateCommands); err != nil {
 			return err
 		}
-		if err := r.runContainerLifecycle(ctx, containerID, resolved, resolved.Config.UpdateContentCommand); err != nil {
+		if err := r.runContainerLifecycleList(ctx, containerID, resolved, resolved.Merged.UpdateContentCommands); err != nil {
 			return err
 		}
-		return r.runContainerLifecycle(ctx, containerID, resolved, resolved.Config.PostCreateCommand)
+		return r.runContainerLifecycleList(ctx, containerID, resolved, resolved.Merged.PostCreateCommands)
 	case "start":
-		return r.runContainerLifecycle(ctx, containerID, resolved, resolved.Config.PostStartCommand)
+		return r.runContainerLifecycleList(ctx, containerID, resolved, resolved.Merged.PostStartCommands)
 	case "attach":
-		return r.runContainerLifecycle(ctx, containerID, resolved, resolved.Config.PostAttachCommand)
+		return r.runContainerLifecycleList(ctx, containerID, resolved, resolved.Merged.PostAttachCommands)
 	default:
 		return fmt.Errorf("unknown lifecycle phase %q", phase)
 	}
+}
+
+func (r *Runner) runContainerLifecycleList(ctx context.Context, containerID string, resolved devcontainer.ResolvedConfig, commands []devcontainer.LifecycleCommand) error {
+	for _, command := range commands {
+		if err := r.runContainerLifecycle(ctx, containerID, resolved, command); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (r *Runner) runContainerLifecycle(ctx context.Context, containerID string, resolved devcontainer.ResolvedConfig, command devcontainer.LifecycleCommand) error {
@@ -442,11 +508,15 @@ func (r *Runner) runContainerLifecycle(ctx context.Context, containerID string, 
 	}
 	return runCommand(ctx, func(ctx context.Context, args []string) error {
 		dockerArgs := []string{"exec", "-i"}
-		user := devcontainer.RemoteExecUser(resolved.Config)
+		user := resolved.Merged.RemoteUser
+		if user == "" {
+			user = resolved.Merged.ContainerUser
+		}
 		if user != "" {
 			dockerArgs = append(dockerArgs, "-u", user)
 		}
-		for key, value := range resolved.Config.RemoteEnv {
+		for _, key := range devcontainer.SortedMapKeys(resolved.Merged.RemoteEnv) {
+			value := resolved.Merged.RemoteEnv[key]
 			dockerArgs = append(dockerArgs, "-e", key+"="+value)
 		}
 		dockerArgs = append(dockerArgs, containerID)
