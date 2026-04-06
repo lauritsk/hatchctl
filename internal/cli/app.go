@@ -244,6 +244,9 @@ func (a *App) runBridge(ctx context.Context, args []string) error {
 		return err
 	}
 	if args[0] != "doctor" {
+		if args[0] == "serve" {
+			return a.runBridgeServe(ctx, args[1:])
+		}
 		return fmt.Errorf("unknown bridge command %q", args[0])
 	}
 
@@ -274,6 +277,20 @@ func (a *App) runBridge(ctx context.Context, args []string) error {
 		report.Status,
 	)
 	return err
+}
+
+func (a *App) runBridgeServe(ctx context.Context, args []string) error {
+	fs := flag.NewFlagSet("bridge serve", flag.ContinueOnError)
+	fs.SetOutput(a.err)
+	stateDir := fs.String("state-dir", "", "workspace state directory")
+	containerID := fs.String("container-id", "", "managed container id")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *stateDir == "" || *containerID == "" {
+		return errors.New("bridge serve requires --state-dir and --container-id")
+	}
+	return bridge.Serve(ctx, *stateDir, *containerID)
 }
 
 func (a *App) printHelp() {

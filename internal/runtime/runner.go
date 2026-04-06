@@ -173,6 +173,13 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 	if err != nil {
 		return UpResult{}, err
 	}
+	if bridgeReport != nil {
+		startedBridge, err := bridge.Start(resolved.StateDir, opts.BridgeEnabled, containerID)
+		if err != nil {
+			return UpResult{}, err
+		}
+		bridgeReport = (*bridge.Report)(startedBridge)
+	}
 
 	if err := r.runLifecycleForUp(ctx, resolved, containerID, created, state.LifecycleReady); err != nil {
 		return UpResult{}, err

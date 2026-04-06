@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/lauritsk/hatchctl/internal/bridge"
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	"github.com/lauritsk/hatchctl/internal/docker"
 )
@@ -131,9 +132,13 @@ func TestUpPersistsMergedMetadataAndHonorsMergedRuntimeConfig(t *testing.T) {
 
 	runner := NewRunner(client)
 	var containerID string
+	var bridgeStateDir string
 	t.Cleanup(func() {
 		if containerID != "" {
 			_ = client.Run(ctx, docker.RunOptions{Args: []string{"rm", "-f", containerID}})
+		}
+		if bridgeStateDir != "" {
+			_ = bridge.Stop(bridgeStateDir)
 		}
 	})
 
@@ -142,6 +147,7 @@ func TestUpPersistsMergedMetadataAndHonorsMergedRuntimeConfig(t *testing.T) {
 		t.Fatalf("up container: %v", err)
 	}
 	containerID = upResult.ContainerID
+	bridgeStateDir = upResult.StateDir
 	if upResult.Bridge == nil || !upResult.Bridge.Enabled {
 		t.Fatalf("expected bridge report, got %#v", upResult.Bridge)
 	}
