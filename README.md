@@ -11,17 +11,17 @@ Implemented now:
 - config discovery for `.devcontainer/devcontainer.json` and `.devcontainer.json`
 - JSONC parsing for devcontainer files
 - single-container image and Dockerfile flows
+- local file-path feature consumption for single-container image and Dockerfile flows
 - `up`, `build`, `exec`, `config`, `run`, and `bridge doctor`
 - lifecycle execution for `initializeCommand`, `onCreateCommand`, `updateContentCommand`, `postCreateCommand`, `postStartCommand`, and `postAttachCommand`
 - workspace-scoped state and managed container reuse
-- bridge scaffolding for the future mounted helper approach
+- mounted bridge helpers plus host bridge runtime for browser-open forwarding on macOS
 
 Deferred to the next slices:
 
 - full metadata merge parity
-- feature consumption parity
+- broader feature source parity beyond local file-path features
 - Compose support
-- full bridge proxy/runtime implementation
 - richer UI and verbosity modes
 
 ## Commands
@@ -43,7 +43,7 @@ Current scope:
 
 - single-container runtime workflows first
 - Compose second
-- features and authoring workflows after runtime parity is stable
+- broader features parity and authoring workflows after runtime parity is stable
 
 `../cli` is the reference implementation during the rewrite.
 

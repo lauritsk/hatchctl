@@ -176,7 +176,10 @@ func ConfigMetadata(config Config) MetadataEntry {
 }
 
 func MergeMetadata(config Config, metadata []MetadataEntry) MergedConfig {
-	entries := append(cloneEntries(metadata), ConfigMetadata(config))
+	entries := cloneEntries(metadata)
+	if configEntry := ConfigMetadata(config); !metadataEntryEmpty(configEntry) {
+		entries = append(entries, configEntry)
+	}
 	reversed := reverseEntries(entries)
 	merged := MergedConfig{
 		Config:                config,
@@ -389,4 +392,27 @@ func cloneForwardPorts(values ForwardPorts) ForwardPorts {
 	result := make([]string, len(values))
 	copy(result, values)
 	return ForwardPorts(result)
+}
+
+func metadataEntryEmpty(entry MetadataEntry) bool {
+	return entry.ID == "" &&
+		entry.Init == nil &&
+		entry.Privileged == nil &&
+		len(entry.CapAdd) == 0 &&
+		len(entry.SecurityOpt) == 0 &&
+		len(entry.Mounts) == 0 &&
+		entry.OnCreateCommand.Empty() &&
+		entry.UpdateContentCommand.Empty() &&
+		entry.PostCreateCommand.Empty() &&
+		entry.PostStartCommand.Empty() &&
+		entry.PostAttachCommand.Empty() &&
+		entry.WaitFor == "" &&
+		entry.RemoteUser == "" &&
+		entry.ContainerUser == "" &&
+		len(entry.RemoteEnv) == 0 &&
+		len(entry.ContainerEnv) == 0 &&
+		entry.OverrideCommand == nil &&
+		entry.UpdateRemoteUserUID == nil &&
+		len(entry.ForwardPorts) == 0 &&
+		len(entry.Customizations) == 0
 }

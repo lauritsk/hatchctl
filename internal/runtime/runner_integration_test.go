@@ -3,6 +3,7 @@ package runtime
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -683,6 +684,238 @@ func TestUpRecreateRemovesReconciledManagedContainer(t *testing.T) {
 	}
 }
 
+func TestUpStartsBridgeOnFirstRunAndReusesSession(t *testing.T) {
+	client := dockerClientForTest(t)
+	ctx := context.Background()
+	workspace := t.TempDir()
+	configDir := filepath.Join(workspace, ".devcontainer")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	baseImage := "hatchctl-bridge-test-" + sanitizeName(filepath.Base(workspace))
+	baseDockerfileDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(baseDockerfileDir, "Dockerfile"), []byte("FROM alpine:3.20\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.Run(ctx, docker.RunOptions{Args: []string{"build", "-t", baseImage, baseDockerfileDir}}); err != nil {
+		t.Fatalf("build base image: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rmi", "-f", baseImage}})
+	})
+	configPath := filepath.Join(configDir, "devcontainer.json")
+	if err := os.WriteFile(configPath, []byte(`{"image":"`+baseImage+`","workspaceFolder":"/workspaces/demo"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	runner := NewRunner(client)
+	first, err := runner.Up(ctx, UpOptions{Workspace: workspace, Recreate: true, BridgeEnabled: true})
+	if err != nil {
+		t.Fatalf("first up: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rm", "-f", first.ContainerID}})
+		_ = bridge.Stop(first.StateDir)
+	})
+	if first.Bridge == nil || first.Bridge.Status != "running" {
+		t.Fatalf("unexpected bridge report %#v", first.Bridge)
+	}
+
+	sessionPath := filepath.Join(first.StateDir, "bridge", "session.json")
+	configJSONPath := filepath.Join(first.StateDir, "bridge", "bridge-config.json")
+	statusPath := filepath.Join(first.StateDir, "bridge", "bridge-status.json")
+	var session struct {
+		ID string `json:"id"`
+	}
+	readJSONFile(t, sessionPath, &session)
+	if session.ID == "" {
+		t.Fatalf("unexpected session %#v", session)
+	}
+	var bridgeConfig struct {
+		SessionID   string `json:"sessionId"`
+		ContainerID string `json:"containerId"`
+	}
+	readJSONFile(t, configJSONPath, &bridgeConfig)
+	if bridgeConfig.SessionID != session.ID || bridgeConfig.ContainerID != first.ContainerID {
+		t.Fatalf("unexpected bridge config %#v session=%#v", bridgeConfig, session)
+	}
+	var status struct {
+		SessionID   string `json:"sessionId"`
+		ContainerID string `json:"containerId"`
+		LastEvent   string `json:"lastEvent"`
+	}
+	readJSONFile(t, statusPath, &status)
+	if status.SessionID != session.ID || status.ContainerID != first.ContainerID || status.LastEvent != "running" {
+		t.Fatalf("unexpected bridge status %#v", status)
+	}
+
+	second, err := runner.Up(ctx, UpOptions{Workspace: workspace, BridgeEnabled: true})
+	if err != nil {
+		t.Fatalf("second up: %v", err)
+	}
+	if !strings.HasPrefix(first.ContainerID, second.ContainerID) && !strings.HasPrefix(second.ContainerID, first.ContainerID) {
+		t.Fatalf("expected container reuse, first=%q second=%q", first.ContainerID, second.ContainerID)
+	}
+	if second.Bridge == nil || second.Bridge.ID != session.ID {
+		t.Fatalf("expected bridge session reuse, got %#v", second.Bridge)
+	}
+	state, err := devcontainer.ReadState(first.StateDir)
+	if err != nil {
+		t.Fatalf("read state: %v", err)
+	}
+	if !state.BridgeEnabled || state.BridgeSessionID != session.ID {
+		t.Fatalf("unexpected stored bridge state %#v", state)
+	}
+}
+
+func TestBuildConsumesLocalFeaturesFromImageSource(t *testing.T) {
+	client := dockerClientForTest(t)
+	ctx := context.Background()
+	workspace := t.TempDir()
+	configDir := filepath.Join(workspace, ".devcontainer")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	baseImage := "hatchctl-feature-image-test-" + sanitizeName(filepath.Base(workspace))
+	baseDockerfileDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(baseDockerfileDir, "Dockerfile"), []byte("FROM alpine:3.20\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.Run(ctx, docker.RunOptions{Args: []string{"build", "-t", baseImage, baseDockerfileDir}}); err != nil {
+		t.Fatalf("build base image: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rmi", "-f", baseImage}})
+		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rmi", "-f", devcontainer.ImageName(workspace, filepath.Join(configDir, "devcontainer.json"))}})
+	})
+	writeLocalFeature(t, filepath.Join(configDir, "feature-a"), `{
+		"id": "feature-a",
+		"containerEnv": {"FEATURE_A_ENV": "1"},
+		"customizations": {"vscode": {"extensions": ["feature.a"]}}
+	}`, "#!/bin/sh\nset -eu\nmkdir -p /usr/local/bin\nprintf '#!/bin/sh\necho feature-a\n' > /usr/local/bin/feature-a\nchmod +x /usr/local/bin/feature-a\n")
+	writeLocalFeature(t, filepath.Join(configDir, "feature-b"), `{
+		"id": "feature-b",
+		"dependsOn": {"feature-a": true},
+		"containerEnv": {"FEATURE_B_ENV": "1"}
+	}`, "#!/bin/sh\nset -eu\nprintf '%s|%s' \"$VERSION\" \"$OTHER_OPTION\" > /usr/local/share/feature-b-options\n")
+	config := `{
+		"image": "` + baseImage + `",
+		"workspaceFolder": "/workspaces/demo",
+		"features": {
+			"./feature-b": {"version": "2.0.0", "other-option": true},
+			"./feature-a": true
+		},
+		"postCreateCommand": "echo config-postCreate >> /workspaces/demo/events"
+	}`
+	if err := os.WriteFile(filepath.Join(configDir, "devcontainer.json"), []byte(config), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	runner := NewRunner(client)
+	buildResult, err := runner.Build(ctx, BuildOptions{Workspace: workspace})
+	if err != nil {
+		t.Fatalf("build image with features: %v", err)
+	}
+	inspect, err := client.InspectImage(ctx, buildResult.Image)
+	if err != nil {
+		t.Fatalf("inspect built image: %v", err)
+	}
+	entries, err := devcontainer.MetadataFromLabel(inspect.Config.Labels[devcontainer.ImageMetadataLabel])
+	if err != nil {
+		t.Fatalf("parse feature metadata label: %v", err)
+	}
+	if len(entries) != 3 || entries[0].ID != "feature-a" || entries[1].ID != "feature-b" {
+		t.Fatalf("unexpected feature metadata %#v", entries)
+	}
+	if got := envMap(inspect.Config.Env)["FEATURE_B_ENV"]; got != "1" {
+		t.Fatalf("expected image env from features, got %#v", inspect.Config.Env)
+	}
+}
+
+func TestUpConsumesLocalFeaturesFromDockerfileSource(t *testing.T) {
+	client := dockerClientForTest(t)
+	ctx := context.Background()
+	workspace := t.TempDir()
+	configDir := filepath.Join(workspace, ".devcontainer")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(configDir, "Dockerfile"), []byte("FROM alpine:3.20\nRUN mkdir -p /usr/local/share\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeLocalFeature(t, filepath.Join(configDir, "feature-a"), `{
+		"id": "feature-a",
+		"mounts": ["type=volume,source=feature-a,target=/feature-mount"],
+		"onCreateCommand": "echo feature-a-onCreate >> /workspaces/demo/events",
+		"postCreateCommand": "echo feature-a-postCreate >> /workspaces/demo/events"
+	}`, "#!/bin/sh\nset -eu\nprintf '%s' \"$VERSION\" > /usr/local/share/feature-a-version\n")
+	writeLocalFeature(t, filepath.Join(configDir, "feature-b"), `{
+		"id": "feature-b",
+		"dependsOn": {"feature-a": true},
+		"containerEnv": {"FEATURE_B_ENV": "1"},
+		"mounts": ["type=volume,source=feature-b,target=/feature-mount"],
+		"postStartCommand": "echo feature-b-postStart >> /workspaces/demo/events"
+	}`, "#!/bin/sh\nset -eu\nprintf '%s|%s' \"$VERSION\" \"$OTHER_OPTION\" > /usr/local/share/feature-b-options\n")
+	config := `{
+		"dockerFile": "Dockerfile",
+		"workspaceFolder": "/workspaces/demo",
+		"features": {
+			"./feature-b": {"version": "2.1.0", "other-option": true},
+			"./feature-a": "1.5.0"
+		},
+		"mounts": ["type=volume,source=config,target=/config-only"],
+		"onCreateCommand": "echo config-onCreate >> /workspaces/demo/events",
+		"postCreateCommand": "echo config-postCreate >> /workspaces/demo/events",
+		"postStartCommand": "echo config-postStart >> /workspaces/demo/events"
+	}`
+	if err := os.WriteFile(filepath.Join(configDir, "devcontainer.json"), []byte(config), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	runner := NewRunner(client)
+	upResult, err := runner.Up(ctx, UpOptions{Workspace: workspace, Recreate: true})
+	if err != nil {
+		t.Fatalf("up with dockerfile features: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rm", "-f", upResult.ContainerID}})
+		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rmi", "-f", upResult.Image}})
+		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rmi", "-f", devcontainer.ImageName(workspace, filepath.Join(configDir, "devcontainer.json")) + "-base"}})
+	})
+
+	configResult, err := runner.ReadConfig(ctx, ReadConfigOptions{Workspace: workspace})
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	if got := strings.Join(configResult.Mounts, ","); got != "type=volume,source=feature-b,target=/feature-mount,type=volume,source=config,target=/config-only" {
+		t.Fatalf("unexpected merged mounts %q", got)
+	}
+	if configResult.MetadataCount != 3 {
+		t.Fatalf("unexpected metadata count %d", configResult.MetadataCount)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode, err := runner.Exec(ctx, ExecOptions{Workspace: workspace, Args: []string{"sh", "-lc", "cat /usr/local/share/feature-a-version && printf '|' && cat /usr/local/share/feature-b-options && printf '|%s' \"$FEATURE_B_ENV\""}, Stdout: &stdout, Stderr: &stderr})
+	if err != nil {
+		t.Fatalf("exec feature verification: %v (stderr: %s)", err, stderr.String())
+	}
+	if exitCode != 0 {
+		t.Fatalf("unexpected feature verification exit code %d (stderr: %s)", exitCode, stderr.String())
+	}
+	if got := strings.TrimSpace(stdout.String()); got != "1.5.0|2.1.0|true|1" {
+		t.Fatalf("unexpected feature output %q", got)
+	}
+
+	data, err := os.ReadFile(filepath.Join(workspace, "events"))
+	if err != nil {
+		t.Fatalf("read lifecycle events: %v", err)
+	}
+	if got := strings.Join(strings.Fields(string(data)), ","); got != "feature-a-onCreate,config-onCreate,feature-a-postCreate,config-postCreate,feature-b-postStart,config-postStart" {
+		t.Fatalf("unexpected lifecycle order %q", got)
+	}
+}
+
 func dockerClientForTest(t *testing.T) *docker.Client {
 	t.Helper()
 	if testing.Short() {
@@ -693,6 +926,41 @@ func dockerClientForTest(t *testing.T) *docker.Client {
 		t.Skipf("docker unavailable: %v", err)
 	}
 	return client
+}
+
+func readJSONFile(t *testing.T, path string, dest any) {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(data, dest); err != nil {
+		t.Fatalf("parse %s: %v", path, err)
+	}
+}
+
+func writeLocalFeature(t *testing.T, dir string, manifest string, install string) {
+	t.Helper()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "devcontainer-feature.json"), []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "install.sh"), []byte(install), 0o755); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func envMap(values []string) map[string]string {
+	result := map[string]string{}
+	for _, value := range values {
+		key, raw, ok := strings.Cut(value, "=")
+		if ok {
+			result[key] = raw
+		}
+	}
+	return result
 }
 
 func sanitizeName(value string) string {

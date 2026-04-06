@@ -191,6 +191,7 @@ type ResolvedConfig struct {
 	ConfigPath      string
 	ConfigDir       string
 	Config          Config
+	Features        []ResolvedFeature
 	Merged          MergedConfig
 	StateDir        string
 	WorkspaceMount  string
@@ -250,12 +251,22 @@ func Resolve(workspaceArg string, configArg string) (ResolvedConfig, error) {
 		ManagedByLabel:  ManagedByValue,
 	}
 
+	features, err := ResolveFeatures(configDir, config.Features)
+	if err != nil {
+		return ResolvedConfig{}, err
+	}
+	metadata := make([]MetadataEntry, 0, len(features))
+	for _, feature := range features {
+		metadata = append(metadata, feature.Metadata)
+	}
+
 	return ResolvedConfig{
 		WorkspaceFolder: workspace,
 		ConfigPath:      configPath,
 		ConfigDir:       configDir,
 		Config:          config,
-		Merged:          MergeMetadata(config, nil),
+		Features:        features,
+		Merged:          MergeMetadata(config, metadata),
 		StateDir:        stateDir,
 		WorkspaceMount:  workspaceMount,
 		RemoteWorkspace: remoteWorkspace,

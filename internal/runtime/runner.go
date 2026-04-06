@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 
 	"github.com/lauritsk/hatchctl/internal/bridge"
@@ -386,8 +387,8 @@ func (r *Runner) BridgeDoctor(ctx context.Context, opts BridgeDoctorOptions) (br
 func (r *Runner) enrichMergedConfig(ctx context.Context, resolved *devcontainer.ResolvedConfig, image string) error {
 	inspect, err := r.docker.InspectImage(ctx, image)
 	if err != nil {
-		if resolved.SourceKind == "dockerfile" && image == resolved.ImageName {
-			resolved.Merged = devcontainer.MergeMetadata(resolved.Config, nil)
+		if isManagedImage(resolved, image) {
+			resolved.Merged = devcontainer.MergeMetadata(resolved.Config, featureMetadata(resolved.Features))
 			return nil
 		}
 		return err
@@ -396,15 +397,26 @@ func (r *Runner) enrichMergedConfig(ctx context.Context, resolved *devcontainer.
 	if err != nil {
 		return err
 	}
+	if isManagedImage(resolved, image) {
+		resolved.Merged = devcontainer.MergeMetadata(devcontainer.Config{}, metadata)
+		resolved.Merged.Config = resolved.Config
+		return nil
+	}
 	resolved.Merged = devcontainer.MergeMetadata(resolved.Config, metadata)
 	return nil
 }
 
 func (r *Runner) ensureImage(ctx context.Context, resolved devcontainer.ResolvedConfig) (string, error) {
+	if len(resolved.Features) > 0 {
+		return r.ensureImageWithFeatures(ctx, resolved)
+	}
 	if resolved.Config.Image != "" {
 		return resolved.Config.Image, nil
 	}
+	return resolved.ImageName, r.buildDockerfileImage(ctx, resolved, resolved.ImageName)
+}
 
+func (r *Runner) buildDockerfileImage(ctx context.Context, resolved devcontainer.ResolvedConfig, imageName string) error {
 	dockerfile := resolved.ConfigDir
 	contextDir := resolved.ConfigDir
 	if rel := devcontainer.EffectiveDockerfile(resolved.Config); rel != "" {
@@ -413,10 +425,10 @@ func (r *Runner) ensureImage(ctx context.Context, resolved devcontainer.Resolved
 	if rel := devcontainer.EffectiveContext(resolved.Config); rel != "" {
 		contextDir = filepath.Join(resolved.ConfigDir, rel)
 	}
-	args := []string{"build", "-f", dockerfile, "-t", resolved.ImageName}
+	args := []string{"build", "-f", dockerfile, "-t", imageName}
 	metadataLabel, err := devcontainer.MetadataLabelValue(resolved.Merged.Metadata)
 	if err != nil {
-		return "", err
+		return err
 	}
 	if metadataLabel != "" {
 		args = append(args, "--label", devcontainer.ImageMetadataLabel+"="+metadataLabel)
@@ -431,7 +443,44 @@ func (r *Runner) ensureImage(ctx context.Context, resolved devcontainer.Resolved
 		args = append(args, resolved.Config.Build.Options...)
 	}
 	args = append(args, contextDir)
-	return resolved.ImageName, r.docker.Run(ctx, docker.RunOptions{Args: args, Stdout: os.Stdout, Stderr: os.Stderr})
+	return r.docker.Run(ctx, docker.RunOptions{Args: args, Stdout: os.Stdout, Stderr: os.Stderr})
+}
+
+func (r *Runner) ensureImageWithFeatures(ctx context.Context, resolved devcontainer.ResolvedConfig) (string, error) {
+	baseImage := resolved.Config.Image
+	if baseImage == "" {
+		baseImage = resolved.ImageName + "-base"
+		if err := r.buildDockerfileImage(ctx, resolved, baseImage); err != nil {
+			return "", err
+		}
+	}
+	imageUser, err := r.inspectImageUser(ctx, baseImage)
+	if err != nil {
+		return "", err
+	}
+	containerUser := firstNonEmpty(resolved.Merged.ContainerUser, imageUser, "root")
+	remoteUser := firstNonEmpty(resolved.Merged.RemoteUser, containerUser)
+	buildDir := filepath.Join(resolved.StateDir, "features-build")
+	if err := os.RemoveAll(buildDir); err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(buildDir, 0o755); err != nil {
+		return "", err
+	}
+	if err := writeFeatureBuildContext(buildDir, resolved.Features, containerUser, remoteUser, resolved.Merged.Metadata); err != nil {
+		return "", err
+	}
+	args := []string{
+		"build",
+		"-f", filepath.Join(buildDir, "Dockerfile"),
+		"-t", resolved.ImageName,
+		"--build-arg", "BASE_IMAGE=" + baseImage,
+		buildDir,
+	}
+	if err := r.docker.Run(ctx, docker.RunOptions{Args: args, Stdout: os.Stdout, Stderr: os.Stderr}); err != nil {
+		return "", err
+	}
+	return resolved.ImageName, nil
 }
 
 func (r *Runner) ensureUpdatedUIDImage(ctx context.Context, resolved devcontainer.ResolvedConfig, image string) (string, error) {
@@ -776,6 +825,112 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func featureMetadata(features []devcontainer.ResolvedFeature) []devcontainer.MetadataEntry {
+	if len(features) == 0 {
+		return nil
+	}
+	result := make([]devcontainer.MetadataEntry, 0, len(features))
+	for _, feature := range features {
+		result = append(result, feature.Metadata)
+	}
+	return result
+}
+
+func isManagedImage(resolved *devcontainer.ResolvedConfig, image string) bool {
+	return image == resolved.ImageName || strings.HasPrefix(image, resolved.ImageName+"-")
+}
+
+func writeFeatureBuildContext(buildDir string, features []devcontainer.ResolvedFeature, containerUser string, remoteUser string, metadata []devcontainer.MetadataEntry) error {
+	metadataLabel, err := devcontainer.MetadataLabelValue(metadata)
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(buildDir, "devcontainer-features.builtin.env"), []byte(multilineEnv(containerUser, remoteUser)), 0o644); err != nil {
+		return err
+	}
+	var dockerfile strings.Builder
+	dockerfile.WriteString("ARG BASE_IMAGE\nFROM ${BASE_IMAGE}\nUSER root\n")
+	dockerfile.WriteString("RUN mkdir -p /tmp/dev-container-features\n")
+	dockerfile.WriteString("COPY devcontainer-features.builtin.env /tmp/dev-container-features/devcontainer-features.builtin.env\n")
+	for i, feature := range features {
+		rel := fmt.Sprintf("feature-%02d", i)
+		dst := filepath.Join(buildDir, rel)
+		if err := copyDir(feature.Path, dst); err != nil {
+			return err
+		}
+		if len(feature.Options) > 0 {
+			var lines []string
+			for _, key := range sortedFeatureOptionKeys(feature.Options) {
+				lines = append(lines, key+"="+feature.Options[key])
+			}
+			if err := os.WriteFile(filepath.Join(dst, "devcontainer-features.env"), []byte(strings.Join(lines, "\n")+"\n"), 0o644); err != nil {
+				return err
+			}
+		}
+		dockerfile.WriteString("COPY " + rel + " /tmp/hatchctl-features/" + rel + "\n")
+		if len(feature.Metadata.ContainerEnv) > 0 {
+			for _, key := range devcontainer.SortedMapKeys(feature.Metadata.ContainerEnv) {
+				dockerfile.WriteString("ENV " + key + "=" + dockerfileQuotedValue(feature.Metadata.ContainerEnv[key]) + "\n")
+			}
+		}
+		dockerfile.WriteString("RUN if [ -f /tmp/hatchctl-features/" + rel + "/install.sh ]; then cd /tmp/hatchctl-features/" + rel + " && chmod +x ./install.sh && set -a && . /tmp/dev-container-features/devcontainer-features.builtin.env && if [ -f ./devcontainer-features.env ]; then . ./devcontainer-features.env; fi && set +a && ./install.sh; fi\n")
+	}
+	if metadataLabel != "" {
+		dockerfile.WriteString("LABEL " + devcontainer.ImageMetadataLabel + "=" + dockerfileQuotedValue(metadataLabel) + "\n")
+	}
+	return os.WriteFile(filepath.Join(buildDir, "Dockerfile"), []byte(dockerfile.String()), 0o644)
+}
+
+func multilineEnv(containerUser string, remoteUser string) string {
+	return "_CONTAINER_USER=" + containerUser + "\n_REMOTE_USER=" + remoteUser + "\n"
+}
+
+func sortedFeatureOptionKeys(values map[string]string) []string {
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func dockerfileQuotedValue(value string) string {
+	replacer := strings.NewReplacer("\\", "\\\\", "\"", "\\\"", "\n", "\\n", "\r", "")
+	return "\"" + replacer.Replace(value) + "\""
+}
+
+func copyDir(src string, dst string) error {
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(dst, 0o755); err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		srcPath := filepath.Join(src, entry.Name())
+		dstPath := filepath.Join(dst, entry.Name())
+		if entry.IsDir() {
+			if err := copyDir(srcPath, dstPath); err != nil {
+				return err
+			}
+			continue
+		}
+		data, err := os.ReadFile(srcPath)
+		if err != nil {
+			return err
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(dstPath, data, info.Mode()); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func isNumericUser(value string) bool {
