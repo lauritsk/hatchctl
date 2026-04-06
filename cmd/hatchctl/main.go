@@ -1,21 +1,17 @@
 package main
 
 import (
-	"flag"
+	"context"
 	"fmt"
 	"os"
 
-	"github.com/lauritsk/hatchctl/internal/version"
+	"github.com/lauritsk/hatchctl/internal/cli"
 )
 
 func main() {
-	showVersion := flag.Bool("version", false, "print version information")
-	flag.Parse()
-
-	if *showVersion {
-		fmt.Println(version.Version)
-		return
+	app := cli.New(os.Stdout, os.Stderr)
+	if err := app.Run(context.Background(), os.Args[1:]); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
-
-	fmt.Fprintln(os.Stdout, "hatchctl")
 }

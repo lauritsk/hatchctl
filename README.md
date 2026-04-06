@@ -1,10 +1,51 @@
 # hatchctl
 
-A Go CLI for Development Containers.
+A terminal-first Development Containers CLI in Go.
 
 ## Status
 
-`hatchctl` is in early bootstrap. The repository currently contains the Go CLI skeleton, local developer tooling, CI, and release automation.
+`hatchctl` now contains the first real rewrite slice for a `devcontainer-cli` replacement.
+
+Implemented now:
+
+- config discovery for `.devcontainer/devcontainer.json` and `.devcontainer.json`
+- JSONC parsing for devcontainer files
+- single-container image and Dockerfile flows
+- `up`, `build`, `exec`, `config`, `run`, and `bridge doctor`
+- lifecycle execution for `initializeCommand`, `onCreateCommand`, `updateContentCommand`, `postCreateCommand`, `postStartCommand`, and `postAttachCommand`
+- workspace-scoped state and managed container reuse
+- bridge scaffolding for the future mounted helper approach
+
+Deferred to the next slices:
+
+- full metadata merge parity
+- feature consumption parity
+- Compose support
+- full bridge proxy/runtime implementation
+- richer UI and verbosity modes
+
+## Commands
+
+```sh
+hatchctl up
+hatchctl build
+hatchctl exec -- go test ./...
+hatchctl config --json
+hatchctl run --phase start
+hatchctl bridge doctor
+```
+
+## Compatibility Goals
+
+The rewrite is targeting behavioral compatibility with `devcontainer-cli` for the files it supports, while adopting a cleaner terminal-first command surface.
+
+Current scope:
+
+- single-container runtime workflows first
+- Compose second
+- features and authoring workflows after runtime parity is stable
+
+`../cli` is the reference implementation during the rewrite.
 
 ## Development
 
@@ -13,11 +54,10 @@ This repository uses `mise` for tool installation and task orchestration.
 Common commands:
 
 - `mise run format`
-- `mise run check`
-- `go run ./cmd/hatchctl`
-- `go run ./cmd/hatchctl --version`
-
-The shell entry hook runs `mise run setup`, which currently downloads Go module dependencies.
+- `mise run test`
+- `mise run build`
+- `go run ./cmd/hatchctl help`
+- `go run ./cmd/hatchctl up`
 
 ## Releases
 
@@ -29,8 +69,6 @@ Typical flow:
 2. run `mise run release:version`
 3. push the resulting release commit and `v*` tag
 4. GitHub Actions runs `mise run release` for that tag
-
-Note: with Cocogitto defaults, `mise run release:version` only creates a version when the commit history contains a bump-worthy commit such as `feat:` or `fix:`.
 
 ## Verifying Releases
 
@@ -44,5 +82,3 @@ cosign verify-blob checksums.txt \
   --certificate-identity "https://github.com/lauritsk/hatchctl/.github/workflows/release.yml@refs/tags/vX.Y.Z" \
   --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
 ```
-
-Then verify the downloaded artifact against `checksums.txt`.
