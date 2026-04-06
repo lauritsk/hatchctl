@@ -70,6 +70,22 @@ type LifecycleCommand struct {
 	Exists bool
 }
 
+func (c LifecycleCommand) MarshalJSON() ([]byte, error) {
+	switch c.Kind {
+	case "string":
+		return json.Marshal(c.Value)
+	case "array":
+		return json.Marshal(c.Args)
+	case "object":
+		if c.Steps == nil {
+			return []byte("{}"), nil
+		}
+		return json.Marshal(c.Steps)
+	default:
+		return []byte("null"), nil
+	}
+}
+
 func (c *LifecycleCommand) UnmarshalJSON(data []byte) error {
 	c.Exists = true
 	if string(data) == "null" {

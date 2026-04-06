@@ -31,6 +31,68 @@ type MetadataEntry struct {
 	Customizations       map[string]any    `json:"customizations,omitempty"`
 }
 
+func (m MetadataEntry) MarshalJSON() ([]byte, error) {
+	obj := map[string]any{}
+	if m.ID != "" {
+		obj["id"] = m.ID
+	}
+	if m.Init != nil {
+		obj["init"] = *m.Init
+	}
+	if m.Privileged != nil {
+		obj["privileged"] = *m.Privileged
+	}
+	if len(m.CapAdd) > 0 {
+		obj["capAdd"] = m.CapAdd
+	}
+	if len(m.SecurityOpt) > 0 {
+		obj["securityOpt"] = m.SecurityOpt
+	}
+	if len(m.Mounts) > 0 {
+		obj["mounts"] = m.Mounts
+	}
+	if !m.OnCreateCommand.Empty() {
+		obj["onCreateCommand"] = m.OnCreateCommand
+	}
+	if !m.UpdateContentCommand.Empty() {
+		obj["updateContentCommand"] = m.UpdateContentCommand
+	}
+	if !m.PostCreateCommand.Empty() {
+		obj["postCreateCommand"] = m.PostCreateCommand
+	}
+	if !m.PostStartCommand.Empty() {
+		obj["postStartCommand"] = m.PostStartCommand
+	}
+	if !m.PostAttachCommand.Empty() {
+		obj["postAttachCommand"] = m.PostAttachCommand
+	}
+	if m.WaitFor != "" {
+		obj["waitFor"] = m.WaitFor
+	}
+	if m.RemoteUser != "" {
+		obj["remoteUser"] = m.RemoteUser
+	}
+	if m.ContainerUser != "" {
+		obj["containerUser"] = m.ContainerUser
+	}
+	if len(m.RemoteEnv) > 0 {
+		obj["remoteEnv"] = m.RemoteEnv
+	}
+	if len(m.ContainerEnv) > 0 {
+		obj["containerEnv"] = m.ContainerEnv
+	}
+	if m.OverrideCommand != nil {
+		obj["overrideCommand"] = *m.OverrideCommand
+	}
+	if len(m.ForwardPorts) > 0 {
+		obj["forwardPorts"] = m.ForwardPorts
+	}
+	if len(m.Customizations) > 0 {
+		obj["customizations"] = m.Customizations
+	}
+	return json.Marshal(obj)
+}
+
 type MergedConfig struct {
 	Config                Config
 	Init                  bool
@@ -67,6 +129,21 @@ func MetadataFromLabel(value string) ([]MetadataEntry, error) {
 		return []MetadataEntry{single}, nil
 	}
 	return nil, fmt.Errorf("parse %s label", ImageMetadataLabel)
+}
+
+func MetadataLabelValue(entries []MetadataEntry) (string, error) {
+	if len(entries) == 0 {
+		return "", nil
+	}
+	value := any(entries)
+	if len(entries) == 1 {
+		value = entries[0]
+	}
+	data, err := json.Marshal(value)
+	if err != nil {
+		return "", fmt.Errorf("marshal %s label: %w", ImageMetadataLabel, err)
+	}
+	return string(data), nil
 }
 
 func ConfigMetadata(config Config) MetadataEntry {

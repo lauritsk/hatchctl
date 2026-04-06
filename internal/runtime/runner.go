@@ -339,6 +339,13 @@ func (r *Runner) ensureImage(ctx context.Context, resolved devcontainer.Resolved
 		contextDir = filepath.Join(resolved.ConfigDir, rel)
 	}
 	args := []string{"build", "-f", dockerfile, "-t", resolved.ImageName}
+	metadataLabel, err := devcontainer.MetadataLabelValue(resolved.Merged.Metadata)
+	if err != nil {
+		return "", err
+	}
+	if metadataLabel != "" {
+		args = append(args, "--label", devcontainer.ImageMetadataLabel+"="+metadataLabel)
+	}
 	if resolved.Config.Build != nil && resolved.Config.Build.Target != "" {
 		args = append(args, "--target", resolved.Config.Build.Target)
 	}
@@ -366,8 +373,15 @@ func (r *Runner) ensureContainer(ctx context.Context, resolved devcontainer.Reso
 
 	stateMount := fmt.Sprintf("type=bind,source=%s,target=%s", resolved.StateDir, "/var/run/hatchctl")
 	args := []string{"run", "-d", "--name", resolved.ContainerName}
+	metadataLabel, err := devcontainer.MetadataLabelValue(resolved.Merged.Metadata)
+	if err != nil {
+		return "", false, err
+	}
 	for key, value := range resolved.Labels {
 		args = append(args, "--label", key+"="+value)
+	}
+	if metadataLabel != "" {
+		args = append(args, "--label", devcontainer.ImageMetadataLabel+"="+metadataLabel)
 	}
 	if bridgeEnabled {
 		args = append(args, "--label", devcontainer.BridgeEnabledLabel+"=true")

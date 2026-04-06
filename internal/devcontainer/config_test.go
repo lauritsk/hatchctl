@@ -184,3 +184,23 @@ func TestMetadataFromLabelSupportsSingleAndArray(t *testing.T) {
 		t.Fatalf("unexpected single metadata %#v", entries)
 	}
 }
+
+func TestMetadataLabelValueUsesObjectForSingleEntryAndArrayForMultiple(t *testing.T) {
+	t.Parallel()
+
+	single, err := MetadataLabelValue([]MetadataEntry{{RemoteUser: "root"}})
+	if err != nil {
+		t.Fatalf("marshal single metadata: %v", err)
+	}
+	if single != `{"remoteUser":"root"}` {
+		t.Fatalf("unexpected single metadata label %q", single)
+	}
+
+	multi, err := MetadataLabelValue([]MetadataEntry{{RemoteUser: "root"}, {RemoteUser: "vscode"}})
+	if err != nil {
+		t.Fatalf("marshal multiple metadata entries: %v", err)
+	}
+	if multi != `[{"remoteUser":"root"},{"remoteUser":"vscode"}]` {
+		t.Fatalf("unexpected multi metadata label %q", multi)
+	}
+}
