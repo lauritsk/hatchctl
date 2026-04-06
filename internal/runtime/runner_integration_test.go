@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -364,6 +365,91 @@ func TestReadConfigAndExecFallBackToImageUser(t *testing.T) {
 	}
 	if got := strings.TrimSpace(stdout.String()); got != "app" {
 		t.Fatalf("unexpected exec user %q", got)
+	}
+}
+
+func TestExecStreamsStdinWithoutTTYAndReturnsExitCode(t *testing.T) {
+	client := dockerClientForTest(t)
+	ctx := context.Background()
+	workspace := t.TempDir()
+	configDir := filepath.Join(workspace, ".devcontainer")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	baseImage := "hatchctl-exec-test-" + sanitizeName(filepath.Base(workspace))
+	baseDockerfileDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(baseDockerfileDir, "Dockerfile"), []byte("FROM alpine:3.20\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.Run(ctx, docker.RunOptions{Args: []string{"build", "-t", baseImage, baseDockerfileDir}}); err != nil {
+		t.Fatalf("build base image: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rmi", "-f", baseImage}})
+	})
+
+	configPath := filepath.Join(configDir, "devcontainer.json")
+	if err := os.WriteFile(configPath, []byte(`{"image":"`+baseImage+`","workspaceFolder":"/workspaces/demo"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	runner := NewRunner(client)
+	upResult, err := runner.Up(ctx, UpOptions{Workspace: workspace, Recreate: true})
+	if err != nil {
+		t.Fatalf("up container: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rm", "-f", upResult.ContainerID}})
+	})
+
+	stdin := bytes.NewBuffer([]byte{0x00, 0x01, 0x02, 0x7f, 0x80, 0xff})
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode, err := runner.Exec(ctx, ExecOptions{
+		Workspace: workspace,
+		Args:      []string{"cat"},
+		Stdin:     stdin,
+		Stdout:    &stdout,
+		Stderr:    &stderr,
+	})
+	if err != nil {
+		t.Fatalf("exec cat: %v (stderr: %s)", err, stderr.String())
+	}
+	if exitCode != 0 {
+		t.Fatalf("unexpected exec cat exit code %d (stderr: %s)", exitCode, stderr.String())
+	}
+	if !bytes.Equal(stdout.Bytes(), []byte{0x00, 0x01, 0x02, 0x7f, 0x80, 0xff}) {
+		t.Fatalf("unexpected echoed stdin %v", stdout.Bytes())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	exitCode, err = runner.Exec(ctx, ExecOptions{
+		Workspace: workspace,
+		Args:      []string{"sh", "-lc", "[ ! -t 1 ]"},
+		Stdout:    &stdout,
+		Stderr:    &stderr,
+	})
+	if err != nil {
+		t.Fatalf("exec non-tty check: %v (stderr: %s)", err, stderr.String())
+	}
+	if exitCode != 0 {
+		t.Fatalf("expected non-tty stdout with buffered writers, exit=%d stderr=%s", exitCode, stderr.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	exitCode, err = runner.Exec(ctx, ExecOptions{
+		Workspace: workspace,
+		Args:      []string{"sh", "-lc", "exit 123"},
+		Stdout:    io.Discard,
+		Stderr:    &stderr,
+	})
+	if err != nil {
+		t.Fatalf("exec exit code check returned error: %v", err)
+	}
+	if exitCode != 123 {
+		t.Fatalf("unexpected exit code %d (stderr: %s)", exitCode, stderr.String())
 	}
 }
 

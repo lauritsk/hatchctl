@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -226,7 +227,13 @@ func (r *Runner) Exec(ctx context.Context, opts ExecOptions) (int, error) {
 		return 0, err
 	}
 
-	args := []string{"exec", "-i"}
+	args := []string{"exec"}
+	if opts.Stdin != nil {
+		args = append(args, "-i")
+	}
+	if shouldAllocateTTY(opts.Stdin, opts.Stdout) {
+		args = append(args, "-t")
+	}
 	if user != "" {
 		args = append(args, "-u", user)
 	}
@@ -248,6 +255,10 @@ func (r *Runner) Exec(ctx context.Context, opts ExecOptions) (int, error) {
 	})
 	if err == nil {
 		return 0, nil
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		return exitErr.ExitCode(), nil
 	}
 	msg := err.Error()
 	if strings.Contains(msg, "exit status ") {
@@ -665,4 +676,27 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func shouldAllocateTTY(stdin io.Reader, stdout io.Writer) bool {
+	inFile, ok := stdin.(*os.File)
+	if !ok || !isCharacterDevice(inFile) {
+		return false
+	}
+	outFile, ok := stdout.(*os.File)
+	if !ok || !isCharacterDevice(outFile) {
+		return false
+	}
+	return true
+}
+
+func isCharacterDevice(file *os.File) bool {
+	if file == nil {
+		return false
+	}
+	info, err := file.Stat()
+	if err != nil {
+		return false
+	}
+	return info.Mode()&os.ModeCharDevice != 0
 }
