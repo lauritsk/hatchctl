@@ -187,6 +187,10 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 		if err != nil {
 			return UpResult{}, err
 		}
+	} else {
+		if err := r.writeComposeOverride(ctx, resolved); err != nil {
+			return UpResult{}, err
+		}
 	}
 
 	containerID, created, err := r.ensureContainer(ctx, resolved, image, opts.BridgeEnabled)
@@ -333,6 +337,11 @@ func (r *Runner) ReadConfig(ctx context.Context, opts ReadConfigOptions) (ReadCo
 	state, err = r.reconcileState(ctx, resolved, state)
 	if err != nil {
 		return ReadConfigResult{}, err
+	}
+	if resolved.SourceKind == "compose" {
+		if err := r.writeComposeOverride(ctx, resolved); err != nil {
+			return ReadConfigResult{}, err
+		}
 	}
 	var bridgeReport *bridge.Report
 	if resolved.SourceKind != "compose" {
@@ -1021,6 +1030,9 @@ func (r *Runner) composeArgs(resolved devcontainer.ResolvedConfig) []string {
 	for _, file := range resolved.ComposeFiles {
 		args = append(args, "-f", file)
 	}
+	if override := devcontainer.ComposeOverrideFile(resolved.StateDir); fileExists(override) {
+		args = append(args, "-f", override)
+	}
 	if resolved.ComposeProject != "" {
 		args = append(args, "-p", resolved.ComposeProject)
 	}
@@ -1064,6 +1076,142 @@ func (r *Runner) findComposeContainer(ctx context.Context, resolved devcontainer
 		}
 	}
 	return "", errManagedContainerNotFound
+}
+
+func (r *Runner) writeComposeOverride(ctx context.Context, resolved devcontainer.ResolvedConfig) error {
+	if err := os.MkdirAll(resolved.StateDir, 0o755); err != nil {
+		return err
+	}
+	image, err := r.ensureComposeImage(ctx, resolved)
+	if err != nil {
+		return err
+	}
+	content := renderComposeOverride(resolved, image)
+	return os.WriteFile(devcontainer.ComposeOverrideFile(resolved.StateDir), []byte(content), 0o644)
+}
+
+func renderComposeOverride(resolved devcontainer.ResolvedConfig, image string) string {
+	var b strings.Builder
+	b.WriteString("services:\n")
+	b.WriteString("  ")
+	b.WriteString(resolved.ComposeService)
+	b.WriteString(":\n")
+	b.WriteString("    labels:\n")
+	labels := map[string]string{}
+	for key, value := range resolved.Labels {
+		labels[key] = value
+	}
+	if metadataLabel, err := devcontainer.MetadataLabelValue(resolved.Merged.Metadata); err == nil && metadataLabel != "" {
+		labels[devcontainer.ImageMetadataLabel] = metadataLabel
+	}
+	for _, key := range sortedStringKeys(labels) {
+		b.WriteString("      - ")
+		b.WriteString(yamlQuoted(key + "=" + labels[key]))
+		b.WriteString("\n")
+	}
+	if len(resolved.Merged.ContainerEnv) > 0 {
+		b.WriteString("    environment:\n")
+		for _, key := range devcontainer.SortedMapKeys(resolved.Merged.ContainerEnv) {
+			b.WriteString("      - ")
+			b.WriteString(yamlQuoted(key + "=" + resolved.Merged.ContainerEnv[key]))
+			b.WriteString("\n")
+		}
+	}
+	b.WriteString("    volumes:\n")
+	allMounts := append([]string{resolved.WorkspaceMount}, resolved.Merged.Mounts...)
+	for _, mount := range allMounts {
+		if value, ok := composeMountValue(mount); ok {
+			b.WriteString("      - ")
+			b.WriteString(value)
+			b.WriteString("\n")
+		}
+	}
+	if resolved.Merged.Init {
+		b.WriteString("    init: true\n")
+	}
+	if resolved.Merged.Privileged {
+		b.WriteString("    privileged: true\n")
+	}
+	if user := resolved.Merged.ContainerUser; user != "" {
+		b.WriteString("    user: ")
+		b.WriteString(yamlQuoted(user))
+		b.WriteString("\n")
+	}
+	if overrideCommandEnabled(resolved.Config.OverrideCommand) {
+		b.WriteString("    command: [\"/bin/sh\", \"-lc\", \"trap 'exit 0' TERM INT; while sleep 1000; do :; done\"]\n")
+	}
+	if len(resolved.Merged.CapAdd) > 0 {
+		b.WriteString("    cap_add:\n")
+		for _, value := range resolved.Merged.CapAdd {
+			b.WriteString("      - ")
+			b.WriteString(yamlQuoted(value))
+			b.WriteString("\n")
+		}
+	}
+	if len(resolved.Merged.SecurityOpt) > 0 {
+		b.WriteString("    security_opt:\n")
+		for _, value := range resolved.Merged.SecurityOpt {
+			b.WriteString("      - ")
+			b.WriteString(yamlQuoted(value))
+			b.WriteString("\n")
+		}
+	}
+	if image != "" {
+		b.WriteString("    image: ")
+		b.WriteString(yamlQuoted(image))
+		b.WriteString("\n")
+	}
+	return b.String()
+}
+
+func overrideCommandEnabled(value *bool) bool {
+	if value == nil {
+		return true
+	}
+	return *value
+}
+
+func composeMountValue(raw string) (string, bool) {
+	parts := map[string]string{}
+	for _, segment := range strings.Split(raw, ",") {
+		key, value, ok := strings.Cut(strings.TrimSpace(segment), "=")
+		if !ok {
+			continue
+		}
+		parts[key] = value
+	}
+	target := parts["target"]
+	if target == "" {
+		return "", false
+	}
+	switch parts["type"] {
+	case "bind", "volume":
+		source := parts["source"]
+		if source == "" {
+			return "", false
+		}
+		return yamlQuoted(source + ":" + target), true
+	default:
+		return "", false
+	}
+}
+
+func yamlQuoted(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "''") + "'"
+}
+
+func sortedStringKeys(values map[string]string) []string {
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }
 
 func isNumericUser(value string) bool {

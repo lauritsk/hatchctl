@@ -7,6 +7,10 @@ import (
 	"strings"
 )
 
+func ComposeOverrideFile(stateDir string) string {
+	return filepath.Join(stateDir, "docker-compose.override.yml")
+}
+
 func ResolveComposeFiles(configDir string, raw any) ([]string, error) {
 	if raw == nil {
 		return nil, nil

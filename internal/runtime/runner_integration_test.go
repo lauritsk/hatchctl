@@ -932,7 +932,7 @@ func TestComposeBuildAndUpSingleService(t *testing.T) {
 		t.Fatal(err)
 	}
 	image := "hatchctl-compose-test-" + sanitizeName(filepath.Base(workspace))
-	if err := os.WriteFile(filepath.Join(configDir, "Dockerfile"), []byte("FROM alpine:3.20\nRUN mkdir -p /usr/local/share\nCMD [\"/bin/sh\",\"-lc\",\"trap 'exit 0' TERM INT; while sleep 1000; do :; done\"]\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(configDir, "Dockerfile"), []byte("FROM alpine:3.20\nRUN mkdir -p /usr/local/share\nCMD [\"/bin/sh\",\"-lc\",\"echo base-command && exit 0\"]\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	composeYAML := "services:\n  app:\n    image: " + image + "\n    build:\n      context: .\n      dockerfile: Dockerfile\n    working_dir: /workspaces/demo\n    volumes:\n      - ..:/workspaces/demo\n"
@@ -943,6 +943,8 @@ func TestComposeBuildAndUpSingleService(t *testing.T) {
 		"dockerComposeFile": "compose.yaml",
 		"service": "app",
 		"workspaceFolder": "/workspaces/demo",
+		"containerEnv": {"COMPOSE_OVERRIDE_ENV": "yes"},
+		"mounts": ["type=bind,source=` + workspace + `,target=/extra-workspace"],
 		"postStartCommand": "echo compose-start >> /workspaces/demo/events"
 	}`
 	if err := os.WriteFile(filepath.Join(configDir, "devcontainer.json"), []byte(config), 0o644); err != nil {
@@ -976,14 +978,26 @@ func TestComposeBuildAndUpSingleService(t *testing.T) {
 	if configResult.ManagedContainer == nil || !configResult.ManagedContainer.Running {
 		t.Fatalf("expected running compose container, got %#v", configResult.ManagedContainer)
 	}
+	if got := configResult.ManagedContainer.ContainerEnv["COMPOSE_OVERRIDE_ENV"]; got != "yes" {
+		t.Fatalf("expected compose override env, got %#v", configResult.ManagedContainer.ContainerEnv)
+	}
+	overridePath := devcontainer.ComposeOverrideFile(configResult.StateDir)
+	overrideData, err := os.ReadFile(overridePath)
+	if err != nil {
+		t.Fatalf("read compose override file: %v", err)
+	}
+	overrideText := string(overrideData)
+	if !strings.Contains(overrideText, "COMPOSE_OVERRIDE_ENV=yes") || !strings.Contains(overrideText, "/extra-workspace") {
+		t.Fatalf("unexpected compose override content %q", overrideText)
+	}
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	exitCode, err := runner.Exec(ctx, ExecOptions{Workspace: workspace, Args: []string{"sh", "-lc", "pwd"}, Stdout: &stdout, Stderr: &stderr})
+	exitCode, err := runner.Exec(ctx, ExecOptions{Workspace: workspace, Args: []string{"sh", "-lc", "printf '%s|' \"$COMPOSE_OVERRIDE_ENV\"; pwd; printf '|'; test -d /extra-workspace && printf mounted"}, Stdout: &stdout, Stderr: &stderr})
 	if err != nil {
 		t.Fatalf("compose exec: %v (stderr: %s)", err, stderr.String())
 	}
-	if exitCode != 0 || strings.TrimSpace(stdout.String()) != "/workspaces/demo" {
+	if exitCode != 0 || strings.ReplaceAll(strings.TrimSpace(stdout.String()), "\n", "") != "yes|/workspaces/demo|mounted" {
 		t.Fatalf("unexpected compose exec output %q exit=%d stderr=%s", stdout.String(), exitCode, stderr.String())
 	}
 	data, err := os.ReadFile(filepath.Join(workspace, "events"))
