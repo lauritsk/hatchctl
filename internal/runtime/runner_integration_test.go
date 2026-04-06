@@ -923,6 +923,86 @@ func TestUpConsumesLocalFeaturesFromDockerfileSource(t *testing.T) {
 	}
 }
 
+func TestComposeBuildAndUpSingleService(t *testing.T) {
+	client := dockerClientForTest(t)
+	ctx := context.Background()
+	workspace := t.TempDir()
+	configDir := filepath.Join(workspace, ".devcontainer")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	image := "hatchctl-compose-test-" + sanitizeName(filepath.Base(workspace))
+	if err := os.WriteFile(filepath.Join(configDir, "Dockerfile"), []byte("FROM alpine:3.20\nRUN mkdir -p /usr/local/share\nCMD [\"/bin/sh\",\"-lc\",\"trap 'exit 0' TERM INT; while sleep 1000; do :; done\"]\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	composeYAML := "services:\n  app:\n    image: " + image + "\n    build:\n      context: .\n      dockerfile: Dockerfile\n    working_dir: /workspaces/demo\n    volumes:\n      - ..:/workspaces/demo\n"
+	if err := os.WriteFile(filepath.Join(configDir, "compose.yaml"), []byte(composeYAML), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	config := `{
+		"dockerComposeFile": "compose.yaml",
+		"service": "app",
+		"workspaceFolder": "/workspaces/demo",
+		"postStartCommand": "echo compose-start >> /workspaces/demo/events"
+	}`
+	if err := os.WriteFile(filepath.Join(configDir, "devcontainer.json"), []byte(config), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	runner := NewRunner(client)
+	buildResult, err := runner.Build(ctx, BuildOptions{Workspace: workspace})
+	if err != nil {
+		t.Fatalf("compose build: %v", err)
+	}
+	if buildResult.Image != image {
+		t.Fatalf("unexpected compose build image %q", buildResult.Image)
+	}
+	upResult, err := runner.Up(ctx, UpOptions{Workspace: workspace, Recreate: true})
+	if err != nil {
+		t.Fatalf("compose up: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rm", "-f", upResult.ContainerID}})
+		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rmi", "-f", image}})
+	})
+
+	configResult, err := runner.ReadConfig(ctx, ReadConfigOptions{Workspace: workspace})
+	if err != nil {
+		t.Fatalf("compose read config: %v", err)
+	}
+	if configResult.SourceKind != "compose" {
+		t.Fatalf("unexpected source kind %q", configResult.SourceKind)
+	}
+	if configResult.ManagedContainer == nil || !configResult.ManagedContainer.Running {
+		t.Fatalf("expected running compose container, got %#v", configResult.ManagedContainer)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode, err := runner.Exec(ctx, ExecOptions{Workspace: workspace, Args: []string{"sh", "-lc", "pwd"}, Stdout: &stdout, Stderr: &stderr})
+	if err != nil {
+		t.Fatalf("compose exec: %v (stderr: %s)", err, stderr.String())
+	}
+	if exitCode != 0 || strings.TrimSpace(stdout.String()) != "/workspaces/demo" {
+		t.Fatalf("unexpected compose exec output %q exit=%d stderr=%s", stdout.String(), exitCode, stderr.String())
+	}
+	data, err := os.ReadFile(filepath.Join(workspace, "events"))
+	if err != nil {
+		t.Fatalf("read compose lifecycle events: %v", err)
+	}
+	if got := strings.TrimSpace(string(data)); got != "compose-start" {
+		t.Fatalf("unexpected compose lifecycle output %q", got)
+	}
+
+	second, err := runner.Up(ctx, UpOptions{Workspace: workspace})
+	if err != nil {
+		t.Fatalf("compose second up: %v", err)
+	}
+	if !strings.HasPrefix(upResult.ContainerID, second.ContainerID) && !strings.HasPrefix(second.ContainerID, upResult.ContainerID) {
+		t.Fatalf("expected compose container reuse, first=%q second=%q", upResult.ContainerID, second.ContainerID)
+	}
+}
+
 func dockerClientForTest(t *testing.T) *docker.Client {
 	t.Helper()
 	if testing.Short() {

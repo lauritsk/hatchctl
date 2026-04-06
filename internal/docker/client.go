@@ -37,15 +37,19 @@ func (c *Client) Run(ctx context.Context, opts RunOptions) error {
 }
 
 func (c *Client) Output(ctx context.Context, args ...string) (string, error) {
+	return c.OutputOptions(ctx, RunOptions{Args: args})
+}
+
+func (c *Client) OutputOptions(ctx context.Context, opts RunOptions) (string, error) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	err := c.Run(ctx, RunOptions{Args: args, Stdout: &stdout, Stderr: &stderr})
+	err := c.Run(ctx, RunOptions{Args: opts.Args, Dir: opts.Dir, Env: opts.Env, Stdin: opts.Stdin, Stdout: &stdout, Stderr: &stderr})
 	if err != nil {
 		message := strings.TrimSpace(stderr.String())
 		if message == "" {
 			message = err.Error()
 		}
-		return "", fmt.Errorf("docker %s: %s", strings.Join(args, " "), message)
+		return "", fmt.Errorf("docker %s: %s", strings.Join(opts.Args, " "), message)
 	}
 	return strings.TrimSpace(stdout.String()), nil
 }

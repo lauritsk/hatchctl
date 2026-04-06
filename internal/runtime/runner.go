@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -19,6 +20,16 @@ import (
 
 type Runner struct {
 	docker *docker.Client
+}
+
+type composeConfig struct {
+	Name     string                    `json:"name"`
+	Services map[string]composeService `json:"services"`
+}
+
+type composeService struct {
+	Image string `json:"image"`
+	Build any    `json:"build"`
 }
 
 func NewRunner(client *docker.Client) *Runner {
@@ -136,6 +147,9 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 	if opts.Verbose {
 		fmt.Fprintf(os.Stderr, "source=%s image=%s workspace=%s\n", resolved.SourceKind, resolved.ImageName, resolved.WorkspaceFolder)
 	}
+	if resolved.SourceKind == "compose" && opts.BridgeEnabled {
+		return UpResult{}, fmt.Errorf("compose bridge support is not implemented yet in hatchctl")
+	}
 	if err := os.MkdirAll(resolved.StateDir, 0o755); err != nil {
 		return UpResult{}, err
 	}
@@ -161,13 +175,18 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 	if err := r.enrichMergedConfig(ctx, &resolved, image); err != nil {
 		return UpResult{}, err
 	}
-	image, err = r.ensureUpdatedUIDImage(ctx, resolved, image)
-	if err != nil {
-		return UpResult{}, err
+	if resolved.SourceKind != "compose" {
+		image, err = r.ensureUpdatedUIDImage(ctx, resolved, image)
+		if err != nil {
+			return UpResult{}, err
+		}
 	}
-	bridgeReport, err := r.applyBridgeConfig(&resolved, opts.BridgeEnabled)
-	if err != nil {
-		return UpResult{}, err
+	var bridgeReport *bridge.Report
+	if resolved.SourceKind != "compose" {
+		bridgeReport, err = r.applyBridgeConfig(&resolved, opts.BridgeEnabled)
+		if err != nil {
+			return UpResult{}, err
+		}
 	}
 
 	containerID, created, err := r.ensureContainer(ctx, resolved, image, opts.BridgeEnabled)
@@ -213,6 +232,13 @@ func (r *Runner) Build(ctx context.Context, opts BuildOptions) (BuildResult, err
 	if opts.Verbose {
 		fmt.Fprintf(os.Stderr, "source=%s image=%s workspace=%s\n", resolved.SourceKind, resolved.ImageName, resolved.WorkspaceFolder)
 	}
+	if resolved.SourceKind == "compose" {
+		image, err := r.ensureComposeImage(ctx, resolved)
+		if err != nil {
+			return BuildResult{}, err
+		}
+		return BuildResult{Image: image}, nil
+	}
 	image, err := r.ensureImage(ctx, resolved)
 	if err != nil {
 		return BuildResult{}, err
@@ -233,7 +259,7 @@ func (r *Runner) Exec(ctx context.Context, opts ExecOptions) (int, error) {
 		return 0, err
 	}
 	image := resolved.Config.Image
-	if image == "" {
+	if image == "" && resolved.SourceKind != "compose" {
 		image = resolved.ImageName
 	}
 	if err := r.enrichMergedConfig(ctx, &resolved, image); err != nil {
@@ -294,7 +320,7 @@ func (r *Runner) ReadConfig(ctx context.Context, opts ReadConfigOptions) (ReadCo
 		return ReadConfigResult{}, err
 	}
 	image := resolved.Config.Image
-	if image == "" {
+	if image == "" && resolved.SourceKind != "compose" {
 		image = resolved.ImageName
 	}
 	if err := r.enrichMergedConfig(ctx, &resolved, image); err != nil {
@@ -308,9 +334,12 @@ func (r *Runner) ReadConfig(ctx context.Context, opts ReadConfigOptions) (ReadCo
 	if err != nil {
 		return ReadConfigResult{}, err
 	}
-	bridgeReport, err := r.applyBridgeConfig(&resolved, state.BridgeEnabled)
-	if err != nil {
-		return ReadConfigResult{}, err
+	var bridgeReport *bridge.Report
+	if resolved.SourceKind != "compose" {
+		bridgeReport, err = r.applyBridgeConfig(&resolved, state.BridgeEnabled)
+		if err != nil {
+			return ReadConfigResult{}, err
+		}
 	}
 	resolvedUser, err := r.effectiveRemoteUser(ctx, resolved, image, "")
 	if err != nil {
@@ -359,7 +388,7 @@ func (r *Runner) RunLifecycle(ctx context.Context, opts RunLifecycleOptions) (Ru
 		return RunLifecycleResult{}, err
 	}
 	image := resolved.Config.Image
-	if image == "" {
+	if image == "" && resolved.SourceKind != "compose" {
 		image = resolved.ImageName
 	}
 	if err := r.enrichMergedConfig(ctx, &resolved, image); err != nil {
@@ -387,6 +416,10 @@ func (r *Runner) BridgeDoctor(ctx context.Context, opts BridgeDoctorOptions) (br
 func (r *Runner) enrichMergedConfig(ctx context.Context, resolved *devcontainer.ResolvedConfig, image string) error {
 	inspect, err := r.docker.InspectImage(ctx, image)
 	if err != nil {
+		if resolved.SourceKind == "compose" {
+			resolved.Merged = devcontainer.MergeMetadata(resolved.Config, featureMetadata(resolved.Features))
+			return nil
+		}
 		if isManagedImage(resolved, image) {
 			resolved.Merged = devcontainer.MergeMetadata(resolved.Config, featureMetadata(resolved.Features))
 			return nil
@@ -409,6 +442,9 @@ func (r *Runner) enrichMergedConfig(ctx context.Context, resolved *devcontainer.
 func (r *Runner) ensureImage(ctx context.Context, resolved devcontainer.ResolvedConfig) (string, error) {
 	if len(resolved.Features) > 0 {
 		return r.ensureImageWithFeatures(ctx, resolved)
+	}
+	if resolved.SourceKind == "compose" {
+		return r.ensureComposeImage(ctx, resolved)
 	}
 	if resolved.Config.Image != "" {
 		return resolved.Config.Image, nil
@@ -483,7 +519,48 @@ func (r *Runner) ensureImageWithFeatures(ctx context.Context, resolved devcontai
 	return resolved.ImageName, nil
 }
 
+func (r *Runner) ensureComposeImage(ctx context.Context, resolved devcontainer.ResolvedConfig) (string, error) {
+	config, err := r.readComposeConfig(ctx, resolved)
+	if err != nil {
+		return "", err
+	}
+	service, ok := config.Services[resolved.ComposeService]
+	if !ok {
+		return "", fmt.Errorf("compose service %q not found", resolved.ComposeService)
+	}
+	if service.Build != nil {
+		if err := r.docker.Run(ctx, docker.RunOptions{Args: append(r.composeArgs(resolved), "build", resolved.ComposeService), Dir: resolved.ConfigDir, Stdout: os.Stdout, Stderr: os.Stderr}); err != nil {
+			return "", err
+		}
+	}
+	if service.Image != "" {
+		return service.Image, nil
+	}
+	return resolved.ComposeProject + "-" + resolved.ComposeService, nil
+}
+
+func (r *Runner) ensureComposeContainer(ctx context.Context, resolved devcontainer.ResolvedConfig) (string, bool, error) {
+	containerID, err := r.findComposeContainer(ctx, resolved)
+	if err == nil && containerID != "" {
+		status, statusErr := r.docker.Output(ctx, "inspect", "--format", "{{.State.Status}}", containerID)
+		if statusErr == nil && status == "running" {
+			return containerID, false, nil
+		}
+	}
+	if err := r.docker.Run(ctx, docker.RunOptions{Args: append(r.composeArgs(resolved), "up", "-d", resolved.ComposeService), Dir: resolved.ConfigDir, Stdout: os.Stdout, Stderr: os.Stderr}); err != nil {
+		return "", false, err
+	}
+	containerID, err = r.findComposeContainer(ctx, resolved)
+	if err != nil {
+		return "", false, err
+	}
+	return containerID, true, nil
+}
+
 func (r *Runner) ensureUpdatedUIDImage(ctx context.Context, resolved devcontainer.ResolvedConfig, image string) (string, error) {
+	if resolved.SourceKind == "compose" {
+		return image, nil
+	}
 	if runtime.GOOS != "linux" && runtime.GOOS != "darwin" {
 		return image, nil
 	}
@@ -540,6 +617,9 @@ func (r *Runner) ensureUpdatedUIDImage(ctx context.Context, resolved devcontaine
 }
 
 func (r *Runner) ensureContainer(ctx context.Context, resolved devcontainer.ResolvedConfig, image string, bridgeEnabled bool) (string, bool, error) {
+	if resolved.SourceKind == "compose" {
+		return r.ensureComposeContainer(ctx, resolved)
+	}
 	containerID, err := r.findContainer(ctx, resolved)
 	if err == nil && containerID != "" {
 		status, statusErr := r.docker.Output(ctx, "inspect", "--format", "{{.State.Status}}", containerID)
@@ -598,6 +678,9 @@ func (r *Runner) ensureContainer(ctx context.Context, resolved devcontainer.Reso
 }
 
 func (r *Runner) findContainer(ctx context.Context, resolved devcontainer.ResolvedConfig) (string, error) {
+	if resolved.SourceKind == "compose" {
+		return r.findComposeContainer(ctx, resolved)
+	}
 	args := []string{"ps", "-aq"}
 	for key, value := range resolved.Labels {
 		args = append(args, "--filter", "label="+key+"="+value)
@@ -931,6 +1014,56 @@ func copyDir(src string, dst string) error {
 		}
 	}
 	return nil
+}
+
+func (r *Runner) composeArgs(resolved devcontainer.ResolvedConfig) []string {
+	args := []string{"compose"}
+	for _, file := range resolved.ComposeFiles {
+		args = append(args, "-f", file)
+	}
+	if resolved.ComposeProject != "" {
+		args = append(args, "-p", resolved.ComposeProject)
+	}
+	return args
+}
+
+func (r *Runner) readComposeConfig(ctx context.Context, resolved devcontainer.ResolvedConfig) (composeConfig, error) {
+	args := append(r.composeArgs(resolved), "config", "--format", "json")
+	output, err := r.docker.OutputOptions(ctx, docker.RunOptions{Args: args, Dir: resolved.ConfigDir})
+	if err != nil {
+		return composeConfig{}, err
+	}
+	var config composeConfig
+	if err := json.Unmarshal([]byte(output), &config); err != nil {
+		return composeConfig{}, err
+	}
+	if config.Name != "" {
+		resolved.ComposeProject = config.Name
+	}
+	return config, nil
+}
+
+func (r *Runner) findComposeContainer(ctx context.Context, resolved devcontainer.ResolvedConfig) (string, error) {
+	project := resolved.ComposeProject
+	if project == "" {
+		config, err := r.readComposeConfig(ctx, resolved)
+		if err != nil {
+			return "", err
+		}
+		project = firstNonEmpty(config.Name, resolved.ComposeProject)
+	}
+	args := []string{"ps", "-aq", "--filter", "label=com.docker.compose.project=" + project, "--filter", "label=com.docker.compose.service=" + resolved.ComposeService}
+	result, err := r.docker.Output(ctx, args...)
+	if err != nil {
+		return "", err
+	}
+	for _, line := range strings.Split(result, "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			return line, nil
+		}
+	}
+	return "", errManagedContainerNotFound
 }
 
 func isNumericUser(value string) bool {

@@ -12,6 +12,8 @@ Implemented now:
 - JSONC parsing for devcontainer files
 - single-container image and Dockerfile flows
 - local file-path feature consumption for single-container image and Dockerfile flows
+- OCI feature consumption for single-container image and Dockerfile flows
+- minimal Compose config discovery, build, up, exec, and reuse for a single service
 - `up`, `build`, `exec`, `config`, `run`, and `bridge doctor`
 - lifecycle execution for `initializeCommand`, `onCreateCommand`, `updateContentCommand`, `postCreateCommand`, `postStartCommand`, and `postAttachCommand`
 - workspace-scoped state and managed container reuse
@@ -20,9 +22,23 @@ Implemented now:
 Deferred to the next slices:
 
 - full metadata merge parity
-- broader feature source parity beyond local file-path features
+- broader feature source parity beyond local file-path and OCI features
 - Compose support
 - richer UI and verbosity modes
+
+## Upstream Baseline
+
+Current parity work in this repository is synced against `@devcontainers/cli` `v0.85.0-7-g7707502`.
+
+Reference revision:
+
+- `77075028480ba007d4c515564d82ae33ce417a7e`
+
+Known gaps relative to that baseline:
+
+- non-OCI remote feature sources and lockfile parity
+- Compose override-file behavior, bridge support, feature support, and UID/GID remapping
+- broader compatibility documentation and automation-oriented output parity
 
 ## Commands
 

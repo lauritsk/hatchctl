@@ -231,3 +231,69 @@ func TestLoadNormalizesForwardPorts(t *testing.T) {
 		t.Fatalf("unexpected normalized forward ports %#v", got)
 	}
 }
+
+func TestResolveComposeConfigParsesComposeFiles(t *testing.T) {
+	t.Parallel()
+
+	workspace := t.TempDir()
+	configDir := filepath.Join(workspace, ".devcontainer")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	composePath := filepath.Join(configDir, "compose.yaml")
+	if err := os.WriteFile(composePath, []byte("services:\n  app:\n    image: alpine:3.20\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(configDir, "devcontainer.json")
+	if err := os.WriteFile(configPath, []byte(`{
+		"dockerComposeFile": ["compose.yaml"],
+		"service": "app",
+		"workspaceFolder": "/workspace"
+	}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	resolved, err := Resolve(workspace, "")
+	if err != nil {
+		t.Fatalf("resolve compose config: %v", err)
+	}
+	if resolved.SourceKind != "compose" {
+		t.Fatalf("unexpected source kind %q", resolved.SourceKind)
+	}
+	if len(resolved.ComposeFiles) != 1 || resolved.ComposeFiles[0] != composePath {
+		t.Fatalf("unexpected compose files %#v", resolved.ComposeFiles)
+	}
+	if resolved.ComposeService != "app" {
+		t.Fatalf("unexpected compose service %q", resolved.ComposeService)
+	}
+	if resolved.ComposeProject == "" {
+		t.Fatal("expected compose project name")
+	}
+}
+
+func TestResolveComposeConfigRequiresServiceAndWorkspaceFolder(t *testing.T) {
+	t.Parallel()
+
+	workspace := t.TempDir()
+	configDir := filepath.Join(workspace, ".devcontainer")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	composePath := filepath.Join(configDir, "compose.yaml")
+	if err := os.WriteFile(composePath, []byte("services:\n  app:\n    image: alpine:3.20\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(configDir, "devcontainer.json")
+	if err := os.WriteFile(configPath, []byte(`{"dockerComposeFile":"compose.yaml"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Resolve(workspace, ""); err == nil || !strings.Contains(err.Error(), "require service") {
+		t.Fatalf("expected missing service error, got %v", err)
+	}
+	if err := os.WriteFile(configPath, []byte(`{"dockerComposeFile":"compose.yaml","service":"app"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Resolve(workspace, ""); err == nil || !strings.Contains(err.Error(), "require workspaceFolder") {
+		t.Fatalf("expected missing workspaceFolder error, got %v", err)
+	}
+}

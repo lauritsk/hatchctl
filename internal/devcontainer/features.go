@@ -1,9 +1,19 @@
 package devcontainer
 
 import (
+	"archive/tar"
+	"bufio"
+	"bytes"
+	"compress/gzip"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -43,7 +53,31 @@ type featureOption struct {
 	Default any `json:"default,omitempty"`
 }
 
-func ResolveFeatures(configDir string, values map[string]any) ([]ResolvedFeature, error) {
+type featureSource struct {
+	Kind string
+	Path string
+	OCI  ociReference
+}
+
+type ociReference struct {
+	Registry   string
+	Repository string
+	Reference  string
+	Insecure   bool
+}
+
+type ociManifest struct {
+	SchemaVersion int `json:"schemaVersion"`
+	Config        struct {
+		Digest string `json:"digest"`
+	} `json:"config"`
+	Layers []struct {
+		MediaType string `json:"mediaType"`
+		Digest    string `json:"digest"`
+	} `json:"layers"`
+}
+
+func ResolveFeatures(configDir string, cacheDir string, values map[string]any) ([]ResolvedFeature, error) {
 	if len(values) == 0 {
 		return nil, nil
 	}
@@ -54,11 +88,11 @@ func ResolveFeatures(configDir string, values map[string]any) ([]ResolvedFeature
 		if !enabled {
 			continue
 		}
-		resolvedPath, err := resolveFeaturePath(configDir, source)
+		featurePath, err := resolveFeaturePath(configDir, cacheDir, source)
 		if err != nil {
 			return nil, err
 		}
-		manifest, err := loadFeatureManifest(resolvedPath)
+		manifest, err := loadFeatureManifest(featurePath)
 		if err != nil {
 			return nil, fmt.Errorf("load feature %q: %w", source, err)
 		}
@@ -67,7 +101,7 @@ func ResolveFeatures(configDir string, values map[string]any) ([]ResolvedFeature
 		}
 		feature := ResolvedFeature{
 			Source:        source,
-			Path:          resolvedPath,
+			Path:          featurePath,
 			Options:       materializeFeatureOptions(manifest, options),
 			DependsOn:     sortedKeys(manifest.DependsOn),
 			InstallsAfter: append([]string(nil), manifest.InstallsAfter...),
@@ -95,26 +129,307 @@ func ResolveFeatures(configDir string, values map[string]any) ([]ResolvedFeature
 	return orderFeatures(features, byAlias)
 }
 
-func resolveFeaturePath(configDir string, source string) (string, error) {
-	path := source
-	if !filepath.IsAbs(path) {
-		path = filepath.Join(configDir, path)
+func resolveFeaturePath(configDir string, cacheDir string, source string) (string, error) {
+	resolved, err := resolveLocalFeaturePath(configDir, source)
+	if err == nil {
+		return resolved, nil
 	}
-	resolved, err := filepath.Abs(path)
+	if !isMissingPathError(err) {
+		return "", err
+	}
+	ref, err := parseOCIReference(source)
+	if err != nil {
+		return "", fmt.Errorf("feature %q not found locally and is not a valid OCI reference: %w", source, err)
+	}
+	return fetchOCIFeature(cacheDir, source, ref)
+}
+
+func resolveLocalFeaturePath(configDir string, source string) (string, error) {
+	pathValue := source
+	if !filepath.IsAbs(pathValue) {
+		pathValue = filepath.Join(configDir, pathValue)
+	}
+	resolved, err := filepath.Abs(pathValue)
 	if err != nil {
 		return "", err
 	}
 	info, err := os.Stat(resolved)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return "", fmt.Errorf("feature %q not found; only local file-path features are supported", source)
-		}
 		return "", err
 	}
 	if !info.IsDir() {
 		return "", fmt.Errorf("feature %q must resolve to a directory", source)
 	}
 	return resolved, nil
+}
+
+func isMissingPathError(err error) bool {
+	return err != nil && os.IsNotExist(err)
+}
+
+func parseOCIReference(source string) (ociReference, error) {
+	if strings.Contains(source, "://") {
+		return ociReference{}, fmt.Errorf("unsupported feature source %q", source)
+	}
+	parts := strings.SplitN(source, "/", 2)
+	if len(parts) != 2 || !strings.Contains(parts[0], ".") && !strings.Contains(parts[0], ":") && parts[0] != "localhost" {
+		return ociReference{}, fmt.Errorf("expected registry/repository reference")
+	}
+	registry := strings.ToLower(parts[0])
+	remainder := parts[1]
+	reference := "latest"
+	if idx := strings.LastIndex(remainder, "@"); idx >= 0 {
+		reference = remainder[idx+1:]
+		remainder = remainder[:idx]
+	} else if idx := strings.LastIndex(remainder, ":"); idx > strings.LastIndex(remainder, "/") {
+		reference = remainder[idx+1:]
+		remainder = remainder[:idx]
+	}
+	if remainder == "" || reference == "" {
+		return ociReference{}, fmt.Errorf("invalid OCI feature reference %q", source)
+	}
+	return ociReference{
+		Registry:   registry,
+		Repository: strings.ToLower(remainder),
+		Reference:  reference,
+		Insecure:   registry == "localhost" || strings.HasPrefix(registry, "localhost:") || strings.HasPrefix(registry, "127.0.0.1:"),
+	}, nil
+}
+
+func fetchOCIFeature(cacheDir string, source string, ref ociReference) (string, error) {
+	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
+		return "", err
+	}
+	key := sha256.Sum256([]byte(source))
+	baseDir := filepath.Join(cacheDir, hex.EncodeToString(key[:]))
+	manifest, digest, token, err := fetchOCIManifest(ref)
+	if err != nil {
+		return "", err
+	}
+	if digest == "" {
+		digest = ref.Reference
+	}
+	featureDir := filepath.Join(baseDir, sanitizeFeatureCacheRef(digest))
+	if _, err := os.Stat(filepath.Join(featureDir, "devcontainer-feature.json")); err == nil {
+		return featureDir, nil
+	}
+	if len(manifest.Layers) == 0 {
+		return "", fmt.Errorf("OCI feature %q has no layers", source)
+	}
+	if err := os.RemoveAll(featureDir); err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(featureDir, 0o755); err != nil {
+		return "", err
+	}
+	if err := fetchOCIBlob(ref, manifest.Layers[0].Digest, token, featureDir); err != nil {
+		return "", err
+	}
+	if _, err := os.Stat(filepath.Join(featureDir, "devcontainer-feature.json")); err != nil {
+		return "", fmt.Errorf("OCI feature %q did not contain devcontainer-feature.json", source)
+	}
+	return featureDir, nil
+}
+
+func fetchOCIManifest(ref ociReference) (ociManifest, string, string, error) {
+	url := registryURL(ref, path.Join("v2", ref.Repository, "manifests", ref.Reference))
+	accept := strings.Join([]string{
+		"application/vnd.oci.image.manifest.v1+json",
+		"application/vnd.docker.distribution.manifest.v2+json",
+	}, ", ")
+	body, headers, token, err := registryGET(url, accept, "")
+	if err != nil {
+		return ociManifest{}, "", "", err
+	}
+	var manifest ociManifest
+	if err := json.Unmarshal(body, &manifest); err != nil {
+		return ociManifest{}, "", "", err
+	}
+	return manifest, headers.Get("Docker-Content-Digest"), token, nil
+}
+
+func fetchOCIBlob(ref ociReference, digest string, token string, dstDir string) error {
+	url := registryURL(ref, path.Join("v2", ref.Repository, "blobs", digest))
+	body, _, _, err := registryGET(url, "application/octet-stream", token)
+	if err != nil {
+		return err
+	}
+	return extractFeatureLayer(bytes.NewReader(body), dstDir)
+}
+
+func registryURL(ref ociReference, resource string) string {
+	scheme := "https"
+	if ref.Insecure {
+		scheme = "http"
+	}
+	return scheme + "://" + ref.Registry + "/" + strings.TrimPrefix(resource, "/")
+}
+
+func registryGET(rawURL string, accept string, existingToken string) ([]byte, http.Header, string, error) {
+	client := &http.Client{}
+	request := func(token string) ([]byte, http.Header, int, http.Header, error) {
+		req, err := http.NewRequest(http.MethodGet, rawURL, nil)
+		if err != nil {
+			return nil, nil, 0, nil, err
+		}
+		if accept != "" {
+			req.Header.Set("Accept", accept)
+		}
+		if token != "" {
+			req.Header.Set("Authorization", "Bearer "+token)
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			return nil, nil, 0, nil, err
+		}
+		defer resp.Body.Close()
+		body, err := io.ReadAll(resp.Body)
+		return body, resp.Header.Clone(), resp.StatusCode, resp.Header.Clone(), err
+	}
+	body, headers, status, authHeaders, err := request(existingToken)
+	if err != nil {
+		return nil, nil, existingToken, err
+	}
+	if status == http.StatusUnauthorized {
+		token, err := fetchRegistryBearerToken(authHeaders.Get("Www-Authenticate"))
+		if err != nil {
+			return nil, nil, existingToken, err
+		}
+		body, headers, status, _, err = request(token)
+		if err != nil {
+			return nil, nil, token, err
+		}
+		if status >= 300 {
+			return nil, nil, token, fmt.Errorf("registry request failed: %s", strings.TrimSpace(string(body)))
+		}
+		return body, headers, token, nil
+	}
+	if status >= 300 {
+		return nil, nil, existingToken, fmt.Errorf("registry request failed: %s", strings.TrimSpace(string(body)))
+	}
+	return body, headers, existingToken, nil
+}
+
+func fetchRegistryBearerToken(challenge string) (string, error) {
+	challenge = strings.TrimSpace(challenge)
+	if !strings.HasPrefix(strings.ToLower(challenge), "bearer ") {
+		return "", fmt.Errorf("unsupported registry auth challenge %q", challenge)
+	}
+	params := map[string]string{}
+	for _, part := range strings.Split(challenge[len("Bearer "):], ",") {
+		part = strings.TrimSpace(part)
+		key, value, ok := strings.Cut(part, "=")
+		if !ok {
+			continue
+		}
+		params[strings.ToLower(strings.TrimSpace(key))] = strings.Trim(strings.TrimSpace(value), `"`)
+	}
+	realm := params["realm"]
+	if realm == "" {
+		return "", fmt.Errorf("registry auth challenge missing realm")
+	}
+	u, err := url.Parse(realm)
+	if err != nil {
+		return "", err
+	}
+	query := u.Query()
+	for _, key := range []string{"service", "scope"} {
+		if value := params[key]; value != "" {
+			query.Set(key, value)
+		}
+	}
+	u.RawQuery = query.Encode()
+	resp, err := http.Get(u.String())
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("registry token request failed: %s", strings.TrimSpace(string(body)))
+	}
+	var payload struct {
+		Token       string `json:"token"`
+		AccessToken string `json:"access_token"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return "", err
+	}
+	if payload.Token != "" {
+		return payload.Token, nil
+	}
+	if payload.AccessToken != "" {
+		return payload.AccessToken, nil
+	}
+	return "", fmt.Errorf("registry token response missing token")
+}
+
+func extractFeatureLayer(reader io.Reader, dstDir string) error {
+	tarReader, err := newTarStream(reader)
+	if err != nil {
+		return err
+	}
+	for {
+		header, err := tarReader.Next()
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		name := filepath.Clean(header.Name)
+		if name == "." || name == string(filepath.Separator) || strings.HasPrefix(name, "..") {
+			continue
+		}
+		target := filepath.Join(dstDir, name)
+		if !strings.HasPrefix(target, dstDir+string(filepath.Separator)) && target != dstDir {
+			return fmt.Errorf("feature archive tried to write outside destination")
+		}
+		switch header.Typeflag {
+		case tar.TypeDir:
+			if err := os.MkdirAll(target, 0o755); err != nil {
+				return err
+			}
+		case tar.TypeReg, tar.TypeRegA:
+			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+				return err
+			}
+			file, err := os.OpenFile(target, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, os.FileMode(header.Mode))
+			if err != nil {
+				return err
+			}
+			if _, err := io.Copy(file, tarReader); err != nil {
+				file.Close()
+				return err
+			}
+			if err := file.Close(); err != nil {
+				return err
+			}
+		}
+	}
+}
+
+func newTarStream(reader io.Reader) (*tar.Reader, error) {
+	buffered := bufio.NewReader(reader)
+	peek, err := buffered.Peek(2)
+	if err != nil && err != io.EOF {
+		return nil, err
+	}
+	if len(peek) == 2 && peek[0] == 0x1f && peek[1] == 0x8b {
+		gzipReader, err := gzip.NewReader(buffered)
+		if err != nil {
+			return nil, err
+		}
+		return tar.NewReader(gzipReader), nil
+	}
+	return tar.NewReader(buffered), nil
+}
+
+func sanitizeFeatureCacheRef(value string) string {
+	value = strings.ReplaceAll(value, ":", "_")
+	value = strings.ReplaceAll(value, "/", "_")
+	value = strings.ReplaceAll(value, "@", "_")
+	return value
 }
 
 func loadFeatureManifest(featureDir string) (featureManifest, error) {
@@ -154,13 +469,6 @@ func materializeFeatureOptions(manifest featureManifest, overrides map[string]an
 	for key, option := range manifest.Options {
 		if option.Default != nil {
 			result[featureOptionEnvName(key)] = fmt.Sprint(option.Default)
-		}
-	}
-	if len(manifest.Options) > 0 {
-		if _, ok := manifest.Options["version"]; ok {
-			if raw, ok := overrides["version"]; ok {
-				result[featureOptionEnvName("version")] = fmt.Sprint(raw)
-			}
 		}
 	}
 	for key, value := range overrides {
@@ -226,7 +534,7 @@ func orderFeatures(features []ResolvedFeature, byAlias map[string]int) ([]Resolv
 			idx, ok := byAlias[dep]
 			if !ok || idx == i {
 				if contains(feature.DependsOn, dep) {
-					return nil, fmt.Errorf("feature %q dependsOn %q, but only configured local features are supported", feature.Metadata.ID, dep)
+					return nil, fmt.Errorf("feature %q dependsOn %q, but only configured features are supported", feature.Metadata.ID, dep)
 				}
 				continue
 			}

@@ -199,6 +199,9 @@ type ResolvedConfig struct {
 	ImageName       string
 	SourceKind      string
 	ContainerName   string
+	ComposeFiles    []string
+	ComposeService  string
+	ComposeProject  string
 	Labels          map[string]string
 }
 
@@ -218,12 +221,28 @@ func Resolve(workspaceArg string, configArg string) (ResolvedConfig, error) {
 		return ResolvedConfig{}, err
 	}
 
-	if config.Service != "" || config.DockerComposeFile != nil {
-		return ResolvedConfig{}, errors.New("compose-based devcontainers are not implemented yet in hatchctl")
-	}
-
 	configDir := filepath.Dir(configPath)
 	remoteWorkspace := config.WorkspaceFolder
+	sourceKind := "image"
+	composeFiles, err := ResolveComposeFiles(configDir, config.DockerComposeFile)
+	if err != nil {
+		return ResolvedConfig{}, err
+	}
+	if config.Service != "" || len(composeFiles) > 0 {
+		sourceKind = "compose"
+		if config.Service == "" {
+			return ResolvedConfig{}, errors.New("compose-based devcontainers require service")
+		}
+		if len(composeFiles) == 0 {
+			return ResolvedConfig{}, errors.New("compose-based devcontainers require dockerComposeFile")
+		}
+		if remoteWorkspace == "" {
+			return ResolvedConfig{}, errors.New("compose-based devcontainers require workspaceFolder")
+		}
+		if len(config.Features) > 0 {
+			return ResolvedConfig{}, errors.New("compose-based features are not implemented yet in hatchctl")
+		}
+	}
 	if remoteWorkspace == "" {
 		remoteWorkspace = filepath.ToSlash(filepath.Join("/workspaces", filepath.Base(workspace)))
 	}
@@ -239,8 +258,7 @@ func Resolve(workspaceArg string, configArg string) (ResolvedConfig, error) {
 	}
 
 	imageName := ImageName(workspace, configPath)
-	sourceKind := "image"
-	if config.Image == "" {
+	if sourceKind != "compose" && config.Image == "" {
 		sourceKind = "dockerfile"
 	}
 
@@ -251,7 +269,7 @@ func Resolve(workspaceArg string, configArg string) (ResolvedConfig, error) {
 		ManagedByLabel:  ManagedByValue,
 	}
 
-	features, err := ResolveFeatures(configDir, config.Features)
+	features, err := ResolveFeatures(configDir, filepath.Join(stateDir, "features-cache"), config.Features)
 	if err != nil {
 		return ResolvedConfig{}, err
 	}
@@ -273,6 +291,9 @@ func Resolve(workspaceArg string, configArg string) (ResolvedConfig, error) {
 		ImageName:       imageName,
 		SourceKind:      sourceKind,
 		ContainerName:   containerName,
+		ComposeFiles:    composeFiles,
+		ComposeService:  config.Service,
+		ComposeProject:  ComposeProjectName(workspace, configPath),
 		Labels:          labels,
 	}, nil
 }
