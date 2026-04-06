@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/lauritsk/hatchctl/internal/bridge"
@@ -155,6 +156,10 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 	if err := r.enrichMergedConfig(ctx, &resolved, image); err != nil {
 		return UpResult{}, err
 	}
+	image, err = r.ensureUpdatedUIDImage(ctx, resolved, image)
+	if err != nil {
+		return UpResult{}, err
+	}
 	bridgeReport, err := r.applyBridgeConfig(&resolved, opts.BridgeEnabled)
 	if err != nil {
 		return UpResult{}, err
@@ -201,6 +206,10 @@ func (r *Runner) Build(ctx context.Context, opts BuildOptions) (BuildResult, err
 		return BuildResult{}, err
 	}
 	if err := r.enrichMergedConfig(ctx, &resolved, image); err != nil {
+		return BuildResult{}, err
+	}
+	image, err = r.ensureUpdatedUIDImage(ctx, resolved, image)
+	if err != nil {
 		return BuildResult{}, err
 	}
 	return BuildResult{Image: image}, nil
@@ -408,6 +417,62 @@ func (r *Runner) ensureImage(ctx context.Context, resolved devcontainer.Resolved
 	}
 	args = append(args, contextDir)
 	return resolved.ImageName, r.docker.Run(ctx, docker.RunOptions{Args: args, Stdout: os.Stdout, Stderr: os.Stderr})
+}
+
+func (r *Runner) ensureUpdatedUIDImage(ctx context.Context, resolved devcontainer.ResolvedConfig, image string) (string, error) {
+	if runtime.GOOS != "linux" && runtime.GOOS != "darwin" {
+		return image, nil
+	}
+	if resolved.Merged.UpdateRemoteUserUID != nil && !*resolved.Merged.UpdateRemoteUserUID {
+		return image, nil
+	}
+	uid := os.Getuid()
+	gid := os.Getgid()
+	if uid <= 0 || gid <= 0 {
+		return image, nil
+	}
+	inspect, err := r.docker.InspectImage(ctx, image)
+	if err != nil {
+		return image, err
+	}
+	imageUser := inspect.Config.User
+	if imageUser == "" {
+		imageUser = "root"
+	}
+	remoteUser := firstNonEmpty(resolved.Merged.RemoteUser, resolved.Merged.ContainerUser, imageUser)
+	if remoteUser == "" || remoteUser == "root" || isNumericUser(remoteUser) {
+		return image, nil
+	}
+	derivedImage := resolved.ImageName + "-uid"
+	dockerfilePath := filepath.Join(resolved.StateDir, "updateUID.Dockerfile")
+	if err := os.MkdirAll(resolved.StateDir, 0o755); err != nil {
+		return image, err
+	}
+	if err := os.WriteFile(dockerfilePath, []byte(updateUIDDockerfile), 0o644); err != nil {
+		return image, err
+	}
+	metadataLabel, err := devcontainer.MetadataLabelValue(resolved.Merged.Metadata)
+	if err != nil {
+		return image, err
+	}
+	args := []string{
+		"build",
+		"-f", dockerfilePath,
+		"-t", derivedImage,
+		"--build-arg", "BASE_IMAGE=" + image,
+		"--build-arg", "REMOTE_USER=" + remoteUser,
+		"--build-arg", fmt.Sprintf("NEW_UID=%d", uid),
+		"--build-arg", fmt.Sprintf("NEW_GID=%d", gid),
+		"--build-arg", "IMAGE_USER=" + imageUser,
+	}
+	if metadataLabel != "" {
+		args = append(args, "--label", devcontainer.ImageMetadataLabel+"="+metadataLabel)
+	}
+	args = append(args, resolved.StateDir)
+	if err := r.docker.Run(ctx, docker.RunOptions{Args: args, Stdout: os.Stdout, Stderr: os.Stderr}); err != nil {
+		return image, err
+	}
+	return derivedImage, nil
 }
 
 func (r *Runner) ensureContainer(ctx context.Context, resolved devcontainer.ResolvedConfig, image string, bridgeEnabled bool) (string, bool, error) {
@@ -677,6 +742,53 @@ func firstNonEmpty(values ...string) string {
 	}
 	return ""
 }
+
+func isNumericUser(value string) bool {
+	if value == "" {
+		return false
+	}
+	for _, r := range value {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+const updateUIDDockerfile = `ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+
+USER root
+
+ARG REMOTE_USER
+ARG NEW_UID
+ARG NEW_GID
+
+RUN eval $(sed -n "s/${REMOTE_USER}:[^:]*:\([^:]*\):\([^:]*\):[^:]*:\([^:]*\).*/OLD_UID=\1;OLD_GID=\2;HOME_FOLDER=\3/p" /etc/passwd); \
+	eval $(sed -n "s/\([^:]*\):[^:]*:${NEW_UID}:.*/EXISTING_USER=\1/p" /etc/passwd); \
+	eval $(sed -n "s/\([^:]*\):[^:]*:${NEW_GID}:.*/EXISTING_GROUP=\1/p" /etc/group); \
+	if [ -z "$OLD_UID" ]; then \
+		echo "Remote user not found in /etc/passwd ($REMOTE_USER)."; \
+	elif [ "$OLD_UID" = "$NEW_UID" -a "$OLD_GID" = "$NEW_GID" ]; then \
+		echo "UIDs and GIDs are the same ($NEW_UID:$NEW_GID)."; \
+	elif [ "$OLD_UID" != "$NEW_UID" -a -n "$EXISTING_USER" ]; then \
+		echo "User with UID exists ($EXISTING_USER=$NEW_UID)."; \
+	else \
+		if [ "$OLD_GID" != "$NEW_GID" -a -n "$EXISTING_GROUP" ]; then \
+			echo "Group with GID exists ($EXISTING_GROUP=$NEW_GID)."; \
+			NEW_GID="$OLD_GID"; \
+		fi; \
+		echo "Updating UID:GID from $OLD_UID:$OLD_GID to $NEW_UID:$NEW_GID."; \
+		sed -i -e "s/\(${REMOTE_USER}:[^:]*:\)[^:]*:[^:]*/\1${NEW_UID}:${NEW_GID}/" /etc/passwd; \
+		if [ "$OLD_GID" != "$NEW_GID" ]; then \
+			sed -i -e "s/\([^:]*:[^:]*:\)${OLD_GID}:/\1${NEW_GID}:/" /etc/group; \
+		fi; \
+		chown -R $NEW_UID:$NEW_GID $HOME_FOLDER; \
+	fi
+
+ARG IMAGE_USER
+USER $IMAGE_USER
+`
 
 func shouldAllocateTTY(stdin io.Reader, stdout io.Writer) bool {
 	inFile, ok := stdin.(*os.File)

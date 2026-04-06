@@ -41,6 +41,7 @@ type Config struct {
 	PostAttachCommand    LifecycleCommand  `json:"postAttachCommand,omitempty"`
 	WaitFor              string            `json:"waitFor,omitempty"`
 	OverrideCommand      *bool             `json:"overrideCommand,omitempty"`
+	UpdateRemoteUserUID  *bool             `json:"updateRemoteUserUID,omitempty"`
 	Init                 *bool             `json:"init,omitempty"`
 	Privileged           *bool             `json:"privileged,omitempty"`
 	CapAdd               []string          `json:"capAdd,omitempty"`

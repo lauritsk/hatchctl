@@ -27,6 +27,7 @@ type MetadataEntry struct {
 	RemoteEnv            map[string]string `json:"remoteEnv,omitempty"`
 	ContainerEnv         map[string]string `json:"containerEnv,omitempty"`
 	OverrideCommand      *bool             `json:"overrideCommand,omitempty"`
+	UpdateRemoteUserUID  *bool             `json:"updateRemoteUserUID,omitempty"`
 	ForwardPorts         ForwardPorts      `json:"forwardPorts,omitempty"`
 	Customizations       map[string]any    `json:"customizations,omitempty"`
 }
@@ -84,6 +85,9 @@ func (m MetadataEntry) MarshalJSON() ([]byte, error) {
 	if m.OverrideCommand != nil {
 		obj["overrideCommand"] = *m.OverrideCommand
 	}
+	if m.UpdateRemoteUserUID != nil {
+		obj["updateRemoteUserUID"] = *m.UpdateRemoteUserUID
+	}
 	if len(m.ForwardPorts) > 0 {
 		obj["forwardPorts"] = m.ForwardPorts
 	}
@@ -105,6 +109,7 @@ type MergedConfig struct {
 	RemoteEnv             map[string]string
 	ContainerEnv          map[string]string
 	OverrideCommand       *bool
+	UpdateRemoteUserUID   *bool
 	WaitFor               string
 	ForwardPorts          ForwardPorts
 	OnCreateCommands      []LifecycleCommand
@@ -164,6 +169,7 @@ func ConfigMetadata(config Config) MetadataEntry {
 		RemoteEnv:            cloneMap(config.RemoteEnv),
 		ContainerEnv:         cloneMap(config.ContainerEnv),
 		OverrideCommand:      config.OverrideCommand,
+		UpdateRemoteUserUID:  config.UpdateRemoteUserUID,
 		ForwardPorts:         cloneForwardPorts(config.ForwardPorts),
 		Customizations:       config.Customizations,
 	}
@@ -200,6 +206,7 @@ func MergeMetadata(config Config, metadata []MetadataEntry) MergedConfig {
 	merged.RemoteUser = pickLastString(reversed, func(entry MetadataEntry) string { return entry.RemoteUser })
 	merged.ContainerUser = pickLastString(reversed, func(entry MetadataEntry) string { return entry.ContainerUser })
 	merged.OverrideCommand = pickLastBool(reversed, func(entry MetadataEntry) *bool { return entry.OverrideCommand })
+	merged.UpdateRemoteUserUID = pickLastBool(reversed, func(entry MetadataEntry) *bool { return entry.UpdateRemoteUserUID })
 	return merged
 }
 

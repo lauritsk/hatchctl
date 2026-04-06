@@ -453,6 +453,88 @@ func TestExecStreamsStdinWithoutTTYAndReturnsExitCode(t *testing.T) {
 	}
 }
 
+func TestUpUpdatesNamedNonRootUserUID(t *testing.T) {
+	client := dockerClientForTest(t)
+	ctx := context.Background()
+	workspace := t.TempDir()
+	configDir := filepath.Join(workspace, ".devcontainer")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	baseImage := "hatchctl-update-uid-test-" + sanitizeName(filepath.Base(workspace))
+	baseDockerfileDir := t.TempDir()
+	dockerfile := "FROM alpine:3.20\nRUN addgroup -g 1234 app && adduser -D -u 1234 -G app app\nUSER app\n"
+	if err := os.WriteFile(filepath.Join(baseDockerfileDir, "Dockerfile"), []byte(dockerfile), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.Run(ctx, docker.RunOptions{Args: []string{"build", "-t", baseImage, baseDockerfileDir}}); err != nil {
+		t.Fatalf("build base image: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rmi", "-f", baseImage}})
+		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rmi", "-f", devcontainer.ImageName(workspace, filepath.Join(configDir, "devcontainer.json")) + "-uid"}})
+	})
+
+	configPath := filepath.Join(configDir, "devcontainer.json")
+	if err := os.WriteFile(configPath, []byte(`{"image":"`+baseImage+`","workspaceFolder":"/workspaces/demo"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	runner := NewRunner(client)
+	buildResult, err := runner.Build(ctx, BuildOptions{Workspace: workspace})
+	if err != nil {
+		t.Fatalf("build derived image: %v", err)
+	}
+	if !strings.HasSuffix(buildResult.Image, "-uid") {
+		t.Fatalf("expected derived uid image, got %q", buildResult.Image)
+	}
+
+	upResult, err := runner.Up(ctx, UpOptions{Workspace: workspace, Recreate: true})
+	if err != nil {
+		t.Fatalf("up container: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rm", "-f", upResult.ContainerID}})
+	})
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode, err := runner.Exec(ctx, ExecOptions{
+		Workspace: workspace,
+		Args:      []string{"id", "-u"},
+		Stdout:    &stdout,
+		Stderr:    &stderr,
+	})
+	if err != nil {
+		t.Fatalf("exec uid check: %v (stderr: %s)", err, stderr.String())
+	}
+	if exitCode != 0 {
+		t.Fatalf("unexpected uid exit code %d (stderr: %s)", exitCode, stderr.String())
+	}
+	if got := strings.TrimSpace(stdout.String()); got != fmt.Sprintf("%d", os.Getuid()) {
+		t.Fatalf("unexpected updated uid %q want %d", got, os.Getuid())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	exitCode, err = runner.Exec(ctx, ExecOptions{
+		Workspace: workspace,
+		Args:      []string{"id", "-un"},
+		Stdout:    &stdout,
+		Stderr:    &stderr,
+	})
+	if err != nil {
+		t.Fatalf("exec user check: %v (stderr: %s)", err, stderr.String())
+	}
+	if exitCode != 0 {
+		t.Fatalf("unexpected user exit code %d (stderr: %s)", exitCode, stderr.String())
+	}
+	if got := strings.TrimSpace(stdout.String()); got != "app" {
+		t.Fatalf("unexpected user name %q", got)
+	}
+}
+
 func dockerClientForTest(t *testing.T) *docker.Client {
 	t.Helper()
 	if testing.Short() {
