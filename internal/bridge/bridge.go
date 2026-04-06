@@ -15,6 +15,7 @@ type Session struct {
 	StatePath  string `json:"statePath"`
 	HelperPath string `json:"helperPath"`
 	MountPath  string `json:"mountPath"`
+	BinPath    string `json:"binPath"`
 	Status     string `json:"status"`
 }
 
@@ -26,8 +27,15 @@ func Prepare(stateDir string, enabled bool) (*Session, error) {
 	if err := os.MkdirAll(filepath.Join(stateDir, "bridge"), 0o755); err != nil {
 		return nil, err
 	}
-	helperPath := filepath.Join(stateDir, "bridge", "devcontainer-open")
+	binPath := filepath.Join(stateDir, "bridge", "bin")
+	if err := os.MkdirAll(binPath, 0o755); err != nil {
+		return nil, err
+	}
+	helperPath := filepath.Join(binPath, "devcontainer-open")
 	if err := os.WriteFile(helperPath, []byte(openShim()), 0o755); err != nil {
+		return nil, err
+	}
+	if err := os.WriteFile(filepath.Join(binPath, "xdg-open"), []byte(xdgOpenShim()), 0o755); err != nil {
 		return nil, err
 	}
 	status := "disabled"
@@ -40,6 +48,7 @@ func Prepare(stateDir string, enabled bool) (*Session, error) {
 		StatePath:  filepath.Join(stateDir, "bridge"),
 		HelperPath: helperPath,
 		MountPath:  containerBridgeMountPath,
+		BinPath:    filepath.ToSlash(filepath.Join(containerBridgeMountPath, "bin")),
 		Status:     status,
 	}, nil
 }
@@ -56,9 +65,9 @@ func Apply(stateDir string, enabled bool, merged devcontainer.MergedConfig) (*Se
 		return session, merged, nil
 	}
 	containerEnv := cloneEnv(merged.ContainerEnv)
-	containerEnv["BROWSER"] = filepath.ToSlash(filepath.Join(session.MountPath, "devcontainer-open"))
+	containerEnv["BROWSER"] = filepath.ToSlash(filepath.Join(session.BinPath, "devcontainer-open"))
 	containerEnv["DEVCONTAINER_BRIDGE_ENABLED"] = "true"
-	containerEnv["PATH"] = prependPath(session.MountPath, containerEnv["PATH"])
+	containerEnv["PATH"] = prependPath(session.BinPath, containerEnv["PATH"])
 
 	mount := fmt.Sprintf("type=bind,source=%s,target=%s", session.StatePath, session.MountPath)
 	merged.ContainerEnv = containerEnv
@@ -67,7 +76,7 @@ func Apply(stateDir string, enabled bool, merged devcontainer.MergedConfig) (*Se
 }
 
 func Doctor(stateDir string) (Report, error) {
-	helperPath := filepath.Join(stateDir, "bridge", "devcontainer-open")
+	helperPath := filepath.Join(stateDir, "bridge", "bin", "devcontainer-open")
 	_, err := os.Stat(helperPath)
 	status := "not configured"
 	enabled := false
@@ -84,6 +93,7 @@ func Doctor(stateDir string) (Report, error) {
 		StatePath:  filepath.Join(stateDir, "bridge"),
 		HelperPath: helperPath,
 		MountPath:  containerBridgeMountPath,
+		BinPath:    filepath.ToSlash(filepath.Join(containerBridgeMountPath, "bin")),
 		Status:     status,
 	}, nil
 }
@@ -107,6 +117,10 @@ fi
 
 exec %s "$url"
 `, launcher)
+}
+
+func xdgOpenShim() string {
+	return "#!/bin/sh\nexec /var/run/hatchctl/bridge/bin/devcontainer-open \"$@\"\n"
 }
 
 func cloneEnv(values map[string]string) map[string]string {

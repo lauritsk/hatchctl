@@ -196,7 +196,7 @@ func (a *App) runConfig(ctx context.Context, args []string) error {
 	if result.Bridge != nil {
 		_, err = fmt.Fprintf(a.out, "Bridge: enabled=%t mount=%s helper=%s status=%s\n",
 			result.Bridge.Enabled,
-			result.Bridge.MountPath,
+			result.Bridge.BinPath,
 			result.Bridge.HelperPath,
 			result.Bridge.Status,
 		)

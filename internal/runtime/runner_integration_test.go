@@ -189,7 +189,7 @@ func TestUpPersistsMergedMetadataAndHonorsMergedRuntimeConfig(t *testing.T) {
 	if configResult.ManagedContainer.RemoteUser != "root" {
 		t.Fatalf("unexpected managed container user %#v", configResult.ManagedContainer)
 	}
-	if got := configResult.ManagedContainer.ContainerEnv["BROWSER"]; got != "/var/run/hatchctl/bridge/devcontainer-open" {
+	if got := configResult.ManagedContainer.ContainerEnv["BROWSER"]; got != "/var/run/hatchctl/bridge/bin/devcontainer-open" {
 		t.Fatalf("unexpected managed container env %#v", configResult.ManagedContainer.ContainerEnv)
 	}
 	if !configResult.ManagedContainer.BridgeEnabled {
@@ -266,7 +266,7 @@ func TestUpPersistsMergedMetadataAndHonorsMergedRuntimeConfig(t *testing.T) {
 	if exitCode != 0 {
 		t.Fatalf("unexpected bridge env exit code %d (stderr: %s)", exitCode, stderr.String())
 	}
-	if got := strings.TrimSpace(stdout.String()); got != "/var/run/hatchctl/bridge/devcontainer-open|true" {
+	if got := strings.TrimSpace(stdout.String()); got != "/var/run/hatchctl/bridge/bin/devcontainer-open|true" {
 		t.Fatalf("unexpected bridge env output %q", got)
 	}
 
