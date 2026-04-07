@@ -120,6 +120,23 @@ type ReadConfigResult struct {
 	ManagedContainer     *ManagedContainer `json:"managedContainer,omitempty"`
 }
 
+type preparedWorkspace struct {
+	resolved         devcontainer.ResolvedConfig
+	image            string
+	state            devcontainer.State
+	containerID      string
+	containerInspect *docker.ContainerInspect
+}
+
+type prepareWorkspaceOptions struct {
+	resolve               prepareResolveOptions
+	enrich                bool
+	loadState             bool
+	findContainer         bool
+	allowMissingContainer bool
+	inspectContainer      bool
+}
+
 type ManagedContainer struct {
 	ID            string            `json:"id"`
 	Name          string            `json:"name,omitempty"`
@@ -180,7 +197,7 @@ func (e ExitError) Error() string {
 }
 
 func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
-	resolved, err := r.prepareResolved(ctx, prepareResolveOptions{
+	prepared, err := r.prepareWorkspace(ctx, prepareWorkspaceOptions{resolve: prepareResolveOptions{
 		Workspace:      opts.Workspace,
 		ConfigPath:     opts.ConfigPath,
 		FeatureTimeout: opts.FeatureTimeout,
@@ -188,22 +205,15 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 		ProgressLabel:  "Resolving development container",
 		Debug:          opts.Debug,
 		Events:         opts.Events,
-	})
+	}, loadState: true})
 	if err != nil {
 		return UpResult{}, err
 	}
+	resolved := prepared.resolved
 	if err := os.MkdirAll(resolved.StateDir, 0o755); err != nil {
 		return UpResult{}, err
 	}
-
-	state, err := devcontainer.ReadState(resolved.StateDir)
-	if err != nil {
-		return UpResult{}, err
-	}
-	state, err = r.reconcileState(ctx, resolved, state)
-	if err != nil {
-		return UpResult{}, err
-	}
+	state := prepared.state
 
 	if opts.Recreate && state.ContainerID != "" {
 		r.emitProgress(opts.Events, "Recreating managed container")
@@ -281,7 +291,7 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 }
 
 func (r *Runner) Build(ctx context.Context, opts BuildOptions) (BuildResult, error) {
-	resolved, err := r.prepareResolved(ctx, prepareResolveOptions{
+	prepared, err := r.prepareWorkspace(ctx, prepareWorkspaceOptions{resolve: prepareResolveOptions{
 		Workspace:      opts.Workspace,
 		ConfigPath:     opts.ConfigPath,
 		FeatureTimeout: opts.FeatureTimeout,
@@ -289,10 +299,11 @@ func (r *Runner) Build(ctx context.Context, opts BuildOptions) (BuildResult, err
 		ProgressLabel:  "Resolving development container",
 		Debug:          opts.Debug,
 		Events:         opts.Events,
-	})
+	}})
 	if err != nil {
 		return BuildResult{}, err
 	}
+	resolved := prepared.resolved
 	r.emitProgress(opts.Events, "Ensuring container image")
 	image, err := r.ensureImage(ctx, resolved)
 	if err != nil {
@@ -311,7 +322,7 @@ func (r *Runner) Build(ctx context.Context, opts BuildOptions) (BuildResult, err
 }
 
 func (r *Runner) Exec(ctx context.Context, opts ExecOptions) (int, error) {
-	resolved, image, err := r.prepareEnrichedResolved(ctx, prepareResolveOptions{
+	prepared, err := r.prepareWorkspace(ctx, prepareWorkspaceOptions{resolve: prepareResolveOptions{
 		Workspace:      opts.Workspace,
 		ConfigPath:     opts.ConfigPath,
 		FeatureTimeout: opts.FeatureTimeout,
@@ -319,16 +330,12 @@ func (r *Runner) Exec(ctx context.Context, opts ExecOptions) (int, error) {
 		ProgressLabel:  "Resolving development container",
 		Debug:          opts.Debug,
 		Events:         opts.Events,
-	})
+	}, enrich: true, findContainer: true, inspectContainer: true})
 	if err != nil {
 		return 0, err
 	}
-	r.emitProgress(opts.Events, "Finding managed container")
-	containerID, err := r.findContainer(ctx, resolved)
-	if err != nil {
-		return 0, err
-	}
-	user, err := r.effectiveRemoteUser(ctx, resolved, image, containerID)
+	resolved := prepared.resolved
+	user, err := r.effectiveRemoteUser(ctx, prepared)
 	if err != nil {
 		return 0, err
 	}
@@ -350,9 +357,9 @@ func (r *Runner) Exec(ctx context.Context, opts ExecOptions) (int, error) {
 	for key, value := range opts.RemoteEnv {
 		args = append(args, "-e", key+"="+value)
 	}
-	args = append(args, containerID)
+	args = append(args, prepared.containerID)
 	args = append(args, opts.Args...)
-	r.emitProgress(opts.Events, fmt.Sprintf("Executing command in %s", containerID))
+	r.emitProgress(opts.Events, fmt.Sprintf("Executing command in %s", prepared.containerID))
 
 	err = r.docker.Run(ctx, docker.RunOptions{
 		Args:   args,
@@ -373,7 +380,7 @@ func (r *Runner) Exec(ctx context.Context, opts ExecOptions) (int, error) {
 }
 
 func (r *Runner) ReadConfig(ctx context.Context, opts ReadConfigOptions) (ReadConfigResult, error) {
-	resolved, image, err := r.prepareEnrichedResolved(ctx, prepareResolveOptions{
+	prepared, err := r.prepareWorkspace(ctx, prepareWorkspaceOptions{resolve: prepareResolveOptions{
 		Workspace:      opts.Workspace,
 		ConfigPath:     opts.ConfigPath,
 		FeatureTimeout: opts.FeatureTimeout,
@@ -382,18 +389,13 @@ func (r *Runner) ReadConfig(ctx context.Context, opts ReadConfigOptions) (ReadCo
 		ProgressLabel:  "Inspecting resolved configuration",
 		Debug:          opts.Debug,
 		Events:         opts.Events,
-	})
+	}, enrich: true, loadState: true, findContainer: true, allowMissingContainer: true, inspectContainer: true})
 	if err != nil {
 		return ReadConfigResult{}, err
 	}
-	state, err := devcontainer.ReadState(resolved.StateDir)
-	if err != nil {
-		return ReadConfigResult{}, err
-	}
-	state, err = r.reconcileState(ctx, resolved, state)
-	if err != nil {
-		return ReadConfigResult{}, err
-	}
+	resolved := prepared.resolved
+	image := prepared.image
+	state := prepared.state
 	var bridgeReport *bridge.Report
 	bridgeReport, err = r.previewBridgeConfig(&resolved, state.BridgeEnabled)
 	if err != nil {
@@ -406,7 +408,8 @@ func (r *Runner) ReadConfig(ctx context.Context, opts ReadConfigOptions) (ReadCo
 		}
 		bridgeReport = (*bridge.Report)(&report)
 	}
-	resolvedUser, err := r.effectiveRemoteUser(ctx, resolved, image, "")
+	prepared.resolved = resolved
+	resolvedUser, err := r.effectiveRemoteUser(ctx, prepared)
 	if err != nil {
 		return ReadConfigResult{}, err
 	}
@@ -414,7 +417,7 @@ func (r *Runner) ReadConfig(ctx context.Context, opts ReadConfigOptions) (ReadCo
 	if err != nil {
 		return ReadConfigResult{}, err
 	}
-	managedContainer, err := r.readManagedContainerState(ctx, resolved)
+	managedContainer, err := r.readManagedContainerState(prepared)
 	if err != nil {
 		return ReadConfigResult{}, err
 	}
@@ -444,7 +447,7 @@ func (r *Runner) ReadConfig(ctx context.Context, opts ReadConfigOptions) (ReadCo
 }
 
 func (r *Runner) RunLifecycle(ctx context.Context, opts RunLifecycleOptions) (RunLifecycleResult, error) {
-	resolved, _, err := r.prepareEnrichedResolved(ctx, prepareResolveOptions{
+	prepared, err := r.prepareWorkspace(ctx, prepareWorkspaceOptions{resolve: prepareResolveOptions{
 		Workspace:      opts.Workspace,
 		ConfigPath:     opts.ConfigPath,
 		FeatureTimeout: opts.FeatureTimeout,
@@ -452,28 +455,24 @@ func (r *Runner) RunLifecycle(ctx context.Context, opts RunLifecycleOptions) (Ru
 		ProgressLabel:  "Resolving development container",
 		Debug:          opts.Debug,
 		Events:         opts.Events,
-	})
+	}, enrich: true, findContainer: true})
 	if err != nil {
 		return RunLifecycleResult{}, err
 	}
-	r.emitProgress(opts.Events, "Finding managed container")
-	containerID, err := r.findContainer(ctx, resolved)
-	if err != nil {
-		return RunLifecycleResult{}, err
-	}
+	resolved := prepared.resolved
 	phase := strings.ToLower(opts.Phase)
 	if phase == "" {
 		phase = "all"
 	}
 	r.emitProgress(opts.Events, "Running lifecycle commands")
-	if err := r.runLifecyclePhase(ctx, resolved, containerID, phase); err != nil {
+	if err := r.runLifecyclePhase(ctx, resolved, prepared.containerID, phase); err != nil {
 		return RunLifecycleResult{}, err
 	}
-	return RunLifecycleResult{ContainerID: containerID, Phase: phase}, nil
+	return RunLifecycleResult{ContainerID: prepared.containerID, Phase: phase}, nil
 }
 
 func (r *Runner) BridgeDoctor(ctx context.Context, opts BridgeDoctorOptions) (bridge.Report, error) {
-	resolved, err := r.prepareResolved(ctx, prepareResolveOptions{
+	prepared, err := r.prepareWorkspace(ctx, prepareWorkspaceOptions{resolve: prepareResolveOptions{
 		Workspace:      opts.Workspace,
 		ConfigPath:     opts.ConfigPath,
 		FeatureTimeout: opts.FeatureTimeout,
@@ -482,11 +481,11 @@ func (r *Runner) BridgeDoctor(ctx context.Context, opts BridgeDoctorOptions) (br
 		ProgressLabel:  "Inspecting bridge state",
 		Debug:          opts.Debug,
 		Events:         opts.Events,
-	})
+	}})
 	if err != nil {
 		return bridge.Report{}, err
 	}
-	return bridge.Doctor(resolved.StateDir)
+	return bridge.Doctor(prepared.resolved.StateDir)
 }
 
 func (r *Runner) prepareResolved(ctx context.Context, opts prepareResolveOptions) (devcontainer.ResolvedConfig, error) {
@@ -526,6 +525,51 @@ func (r *Runner) prepareEnrichedResolved(ctx context.Context, opts prepareResolv
 		return devcontainer.ResolvedConfig{}, "", err
 	}
 	return resolved, image, nil
+}
+
+func (r *Runner) prepareWorkspace(ctx context.Context, opts prepareWorkspaceOptions) (preparedWorkspace, error) {
+	resolved, err := r.prepareResolved(ctx, opts.resolve)
+	if err != nil {
+		return preparedWorkspace{}, err
+	}
+	prepared := preparedWorkspace{resolved: resolved, image: preparedImage(resolved)}
+	if opts.enrich {
+		r.emitProgress(opts.resolve.Events, "Applying runtime metadata")
+		if err := r.enrichMergedConfig(ctx, &prepared.resolved, prepared.image); err != nil {
+			return preparedWorkspace{}, err
+		}
+	}
+	if opts.loadState {
+		state, err := devcontainer.ReadState(prepared.resolved.StateDir)
+		if err != nil {
+			return preparedWorkspace{}, err
+		}
+		state, err = r.reconcileState(ctx, prepared.resolved, state)
+		if err != nil {
+			return preparedWorkspace{}, err
+		}
+		prepared.state = state
+		prepared.containerID = state.ContainerID
+	}
+	if opts.findContainer && prepared.containerID == "" {
+		r.emitProgress(opts.resolve.Events, "Finding managed container")
+		containerID, err := r.findContainer(ctx, prepared.resolved)
+		if err != nil {
+			if opts.allowMissingContainer && errors.Is(err, errManagedContainerNotFound) {
+				return prepared, nil
+			}
+			return preparedWorkspace{}, err
+		}
+		prepared.containerID = containerID
+	}
+	if opts.inspectContainer && prepared.containerID != "" {
+		inspect, err := r.docker.InspectContainer(ctx, prepared.containerID)
+		if err != nil {
+			return preparedWorkspace{}, err
+		}
+		prepared.containerInspect = &inspect
+	}
+	return prepared, nil
 }
 
 func preparedImage(resolved devcontainer.ResolvedConfig) string {

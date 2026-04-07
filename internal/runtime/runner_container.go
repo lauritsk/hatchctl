@@ -155,37 +155,36 @@ func (r *Runner) previewBridgeConfig(resolved *devcontainer.ResolvedConfig, enab
 	return (*bridge.Report)(report), nil
 }
 
-func (r *Runner) effectiveRemoteUser(ctx context.Context, resolved devcontainer.ResolvedConfig, image string, containerID string) (string, error) {
-	if user := firstNonEmpty(resolved.Merged.RemoteUser, resolved.Merged.ContainerUser); user != "" {
+func (r *Runner) effectiveRemoteUser(ctx context.Context, prepared preparedWorkspace) (string, error) {
+	if user := firstNonEmpty(prepared.resolved.Merged.RemoteUser, prepared.resolved.Merged.ContainerUser); user != "" {
 		return user, nil
 	}
-	if containerID != "" {
-		inspect, err := r.docker.InspectContainer(ctx, containerID)
+	if prepared.containerInspect != nil {
+		return prepared.containerInspect.Config.User, nil
+	}
+	if prepared.containerID != "" {
+		inspect, err := r.docker.InspectContainer(ctx, prepared.containerID)
 		if err != nil {
 			return "", err
 		}
 		return inspect.Config.User, nil
 	}
-	return r.inspectImageUser(ctx, image)
+	return r.inspectImageUser(ctx, prepared.image)
 }
 
-func (r *Runner) readManagedContainerState(ctx context.Context, resolved devcontainer.ResolvedConfig) (*ManagedContainer, error) {
-	containerID, err := r.findContainer(ctx, resolved)
-	if err != nil {
-		if errors.Is(err, errManagedContainerNotFound) {
-			return nil, nil
-		}
-		return nil, err
+func (r *Runner) readManagedContainerState(prepared preparedWorkspace) (*ManagedContainer, error) {
+	if prepared.containerID == "" {
+		return nil, nil
 	}
-	inspect, err := r.docker.InspectContainer(ctx, containerID)
-	if err != nil {
-		return nil, err
+	inspect := prepared.containerInspect
+	if inspect == nil {
+		return nil, errors.New("managed container inspect not loaded")
 	}
 	metadata, err := devcontainer.MetadataFromLabel(inspect.Config.Labels[devcontainer.ImageMetadataLabel])
 	if err != nil {
 		return nil, err
 	}
-	merged := devcontainer.MergeMetadata(resolved.Config, metadata)
+	merged := devcontainer.MergeMetadata(prepared.resolved.Config, metadata)
 	effectiveUser := firstNonEmpty(merged.RemoteUser, merged.ContainerUser, inspect.Config.User)
 	return &ManagedContainer{
 		ID:            inspect.ID,
