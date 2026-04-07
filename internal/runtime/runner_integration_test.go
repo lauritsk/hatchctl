@@ -1017,6 +1017,167 @@ func TestComposeBuildAndUpSingleService(t *testing.T) {
 	}
 }
 
+func TestComposeImageServiceConsumesLocalFeatures(t *testing.T) {
+	client := dockerClientForTest(t)
+	ctx := context.Background()
+	workspace := t.TempDir()
+	configDir := filepath.Join(workspace, ".devcontainer")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	baseImage := "hatchctl-compose-feature-image-" + sanitizeName(filepath.Base(workspace))
+	baseDockerfileDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(baseDockerfileDir, "Dockerfile"), []byte("FROM alpine:3.20\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.Run(ctx, docker.RunOptions{Args: []string{"build", "-t", baseImage, baseDockerfileDir}}); err != nil {
+		t.Fatalf("build base image: %v", err)
+	}
+	composeYAML := "services:\n  app:\n    image: " + baseImage + "\n    working_dir: /workspaces/demo\n    volumes:\n      - ..:/workspaces/demo\n    command: [\"/bin/sh\",\"-lc\",\"echo base-compose && exit 0\"]\n"
+	if err := os.WriteFile(filepath.Join(configDir, "compose.yaml"), []byte(composeYAML), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeLocalFeature(t, filepath.Join(configDir, "feature-a"), `{
+		"id": "feature-a",
+		"containerEnv": {"COMPOSE_FEATURE_A": "1"},
+		"mounts": ["type=volume,source=compose-feature-a,target=/compose-feature-mount"],
+		"postCreateCommand": "echo feature-a-postCreate >> /workspaces/demo/events"
+	}`, "#!/bin/sh\nset -eu\nprintf '#!/bin/sh\necho compose-feature-a\n' > /usr/local/bin/compose-feature-a\nchmod +x /usr/local/bin/compose-feature-a\n")
+	writeLocalFeature(t, filepath.Join(configDir, "feature-b"), `{
+		"id": "feature-b",
+		"dependsOn": {"feature-a": true},
+		"containerEnv": {"COMPOSE_FEATURE_B": "1"},
+		"postStartCommand": "echo feature-b-postStart >> /workspaces/demo/events"
+	}`, "#!/bin/sh\nset -eu\nprintf '%s|%s' \"$VERSION\" \"$EXTRA_FLAG\" > /usr/local/share/compose-feature-options\n")
+	config := `{
+		"dockerComposeFile": "compose.yaml",
+		"service": "app",
+		"workspaceFolder": "/workspaces/demo",
+		"features": {
+			"./feature-b": {"version": "2.2.0", "extra-flag": true},
+			"./feature-a": true
+		},
+		"postStartCommand": "echo config-postStart >> /workspaces/demo/events"
+	}`
+	if err := os.WriteFile(filepath.Join(configDir, "devcontainer.json"), []byte(config), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	runner := NewRunner(client)
+	upResult, err := runner.Up(ctx, UpOptions{Workspace: workspace, Recreate: true})
+	if err != nil {
+		t.Fatalf("compose image service up with features: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rm", "-f", upResult.ContainerID}})
+		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rmi", "-f", upResult.Image}})
+		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rmi", "-f", baseImage}})
+	})
+	if upResult.Image != devcontainer.ImageName(workspace, filepath.Join(configDir, "devcontainer.json")) {
+		t.Fatalf("unexpected derived image %q", upResult.Image)
+	}
+
+	configResult, err := runner.ReadConfig(ctx, ReadConfigOptions{Workspace: workspace})
+	if err != nil {
+		t.Fatalf("compose read config: %v", err)
+	}
+	if configResult.MetadataCount != 3 {
+		t.Fatalf("unexpected metadata count %d", configResult.MetadataCount)
+	}
+	if got := strings.Join(configResult.Mounts, ","); got != "type=volume,source=compose-feature-a,target=/compose-feature-mount" {
+		t.Fatalf("unexpected compose feature mounts %q", got)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode, err := runner.Exec(ctx, ExecOptions{Workspace: workspace, Args: []string{"sh", "-lc", "compose-feature-a && printf '|'; cat /usr/local/share/compose-feature-options; printf '|%s|%s|' \"$COMPOSE_FEATURE_A\" \"$COMPOSE_FEATURE_B\"; test -d /compose-feature-mount && printf mounted"}, Stdout: &stdout, Stderr: &stderr})
+	if err != nil {
+		t.Fatalf("compose feature exec: %v (stderr: %s)", err, stderr.String())
+	}
+	if exitCode != 0 {
+		t.Fatalf("unexpected compose feature exit code %d stderr=%s", exitCode, stderr.String())
+	}
+	if strings.ReplaceAll(strings.TrimSpace(stdout.String()), "\n", "") != "compose-feature-a|2.2.0|true|1|1|mounted" {
+		t.Fatalf("unexpected compose feature output %q", stdout.String())
+	}
+	data, err := os.ReadFile(filepath.Join(workspace, "events"))
+	if err != nil {
+		t.Fatalf("read compose feature lifecycle events: %v", err)
+	}
+	if got := strings.Join(strings.Fields(string(data)), ","); got != "feature-a-postCreate,feature-b-postStart,config-postStart" {
+		t.Fatalf("unexpected compose feature lifecycle order %q", got)
+	}
+}
+
+func TestComposeDockerfileServiceConsumesLocalFeatures(t *testing.T) {
+	client := dockerClientForTest(t)
+	ctx := context.Background()
+	workspace := t.TempDir()
+	configDir := filepath.Join(workspace, ".devcontainer")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	serviceImage := "hatchctl-compose-feature-dockerfile-" + sanitizeName(filepath.Base(workspace))
+	if err := os.WriteFile(filepath.Join(configDir, "Dockerfile"), []byte("FROM alpine:3.20\nRUN mkdir -p /usr/local/share\nCMD [\"/bin/sh\",\"-lc\",\"echo base-compose-build && exit 0\"]\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	composeYAML := "services:\n  app:\n    image: " + serviceImage + "\n    build:\n      context: .\n      dockerfile: Dockerfile\n    working_dir: /workspaces/demo\n    volumes:\n      - ..:/workspaces/demo\n"
+	if err := os.WriteFile(filepath.Join(configDir, "compose.yaml"), []byte(composeYAML), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeLocalFeature(t, filepath.Join(configDir, "feature-a"), `{
+		"id": "feature-a",
+		"postCreateCommand": "echo compose-dockerfile-feature-postCreate >> /workspaces/demo/events"
+	}`, "#!/bin/sh\nset -eu\nprintf '%s' \"$VERSION\" > /usr/local/share/compose-dockerfile-feature-version\n")
+	config := `{
+		"dockerComposeFile": "compose.yaml",
+		"service": "app",
+		"workspaceFolder": "/workspaces/demo",
+		"features": {
+			"./feature-a": "4.0.0"
+		},
+		"postStartCommand": "echo compose-dockerfile-config-postStart >> /workspaces/demo/events"
+	}`
+	if err := os.WriteFile(filepath.Join(configDir, "devcontainer.json"), []byte(config), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	runner := NewRunner(client)
+	buildResult, err := runner.Build(ctx, BuildOptions{Workspace: workspace})
+	if err != nil {
+		t.Fatalf("compose dockerfile feature build: %v", err)
+	}
+	upResult, err := runner.Up(ctx, UpOptions{Workspace: workspace, Recreate: true})
+	if err != nil {
+		t.Fatalf("compose dockerfile feature up: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rm", "-f", upResult.ContainerID}})
+		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rmi", "-f", upResult.Image}})
+		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rmi", "-f", serviceImage}})
+	})
+	if buildResult.Image != devcontainer.ImageName(workspace, filepath.Join(configDir, "devcontainer.json")) {
+		t.Fatalf("unexpected compose dockerfile feature image %q", buildResult.Image)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode, err := runner.Exec(ctx, ExecOptions{Workspace: workspace, Args: []string{"sh", "-lc", "cat /usr/local/share/compose-dockerfile-feature-version"}, Stdout: &stdout, Stderr: &stderr})
+	if err != nil {
+		t.Fatalf("compose dockerfile feature exec: %v (stderr: %s)", err, stderr.String())
+	}
+	if exitCode != 0 || strings.TrimSpace(stdout.String()) != "4.0.0" {
+		t.Fatalf("unexpected compose dockerfile feature output %q exit=%d stderr=%s", stdout.String(), exitCode, stderr.String())
+	}
+	data, err := os.ReadFile(filepath.Join(workspace, "events"))
+	if err != nil {
+		t.Fatalf("read compose dockerfile feature lifecycle events: %v", err)
+	}
+	if got := strings.Join(strings.Fields(string(data)), ","); got != "compose-dockerfile-feature-postCreate,compose-dockerfile-config-postStart" {
+		t.Fatalf("unexpected compose dockerfile lifecycle order %q", got)
+	}
+}
+
 func dockerClientForTest(t *testing.T) *docker.Client {
 	t.Helper()
 	if testing.Short() {

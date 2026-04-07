@@ -297,3 +297,71 @@ func TestResolveComposeConfigRequiresServiceAndWorkspaceFolder(t *testing.T) {
 		t.Fatalf("expected missing workspaceFolder error, got %v", err)
 	}
 }
+
+func TestResolveSupportsContainerfile(t *testing.T) {
+	t.Parallel()
+
+	workspace := t.TempDir()
+	configDir := filepath.Join(workspace, ".devcontainer")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(configDir, "Containerfile"), []byte("FROM alpine:3.20\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(configDir, "devcontainer.json")
+	if err := os.WriteFile(configPath, []byte(`{
+		"dockerFile": "Containerfile",
+		"workspaceFolder": "/workspace"
+	}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	resolved, err := Resolve(workspace, "")
+	if err != nil {
+		t.Fatalf("resolve containerfile config: %v", err)
+	}
+	if resolved.SourceKind != "dockerfile" {
+		t.Fatalf("unexpected source kind %q", resolved.SourceKind)
+	}
+	if got := EffectiveDockerfile(resolved.Config); got != "Containerfile" {
+		t.Fatalf("unexpected effective dockerfile %q", got)
+	}
+}
+
+func TestResolveComposeConfigSupportsCommonComposeFilenames(t *testing.T) {
+	t.Parallel()
+
+	for _, name := range []string{"compose.yaml", "compose.yml", "docker-compose.yaml", "docker-compose.yml"} {
+		name := name
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			workspace := t.TempDir()
+			configDir := filepath.Join(workspace, ".devcontainer")
+			if err := os.MkdirAll(configDir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			composePath := filepath.Join(configDir, name)
+			if err := os.WriteFile(composePath, []byte("services:\n  app:\n    image: alpine:3.20\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			configPath := filepath.Join(configDir, "devcontainer.json")
+			if err := os.WriteFile(configPath, []byte(`{
+				"dockerComposeFile": "`+name+`",
+				"service": "app",
+				"workspaceFolder": "/workspace"
+			}`), 0o644); err != nil {
+				t.Fatal(err)
+			}
+
+			resolved, err := Resolve(workspace, "")
+			if err != nil {
+				t.Fatalf("resolve compose config: %v", err)
+			}
+			if len(resolved.ComposeFiles) != 1 || resolved.ComposeFiles[0] != composePath {
+				t.Fatalf("unexpected compose files %#v", resolved.ComposeFiles)
+			}
+		})
+	}
+}

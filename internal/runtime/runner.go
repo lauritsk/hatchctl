@@ -28,8 +28,19 @@ type composeConfig struct {
 }
 
 type composeService struct {
-	Image string `json:"image"`
-	Build any    `json:"build"`
+	Image string        `json:"image"`
+	Build *composeBuild `json:"build"`
+}
+
+type composeBuild struct {
+	Context    string            `json:"context"`
+	Dockerfile string            `json:"dockerfile"`
+	Target     string            `json:"target"`
+	Args       map[string]string `json:"args"`
+}
+
+func (b *composeBuild) Enabled() bool {
+	return b != nil && b.Context != ""
 }
 
 func NewRunner(client *docker.Client) *Runner {
@@ -449,11 +460,11 @@ func (r *Runner) enrichMergedConfig(ctx context.Context, resolved *devcontainer.
 }
 
 func (r *Runner) ensureImage(ctx context.Context, resolved devcontainer.ResolvedConfig) (string, error) {
-	if len(resolved.Features) > 0 {
-		return r.ensureImageWithFeatures(ctx, resolved)
-	}
 	if resolved.SourceKind == "compose" {
 		return r.ensureComposeImage(ctx, resolved)
+	}
+	if len(resolved.Features) > 0 {
+		return r.ensureImageWithFeatures(ctx, resolved)
 	}
 	if resolved.Config.Image != "" {
 		return resolved.Config.Image, nil
@@ -499,6 +510,10 @@ func (r *Runner) ensureImageWithFeatures(ctx context.Context, resolved devcontai
 			return "", err
 		}
 	}
+	return r.ensureFeaturesImageFromBase(ctx, resolved, baseImage)
+}
+
+func (r *Runner) ensureFeaturesImageFromBase(ctx context.Context, resolved devcontainer.ResolvedConfig, baseImage string) (string, error) {
 	imageUser, err := r.inspectImageUser(ctx, baseImage)
 	if err != nil {
 		return "", err
@@ -515,6 +530,9 @@ func (r *Runner) ensureImageWithFeatures(ctx context.Context, resolved devcontai
 	if err := writeFeatureBuildContext(buildDir, resolved.Features, containerUser, remoteUser, resolved.Merged.Metadata); err != nil {
 		return "", err
 	}
+	if _, err := os.Stat(filepath.Join(buildDir, "Dockerfile")); err != nil {
+		return "", fmt.Errorf("generated feature Dockerfile missing in %s: %w", buildDir, err)
+	}
 	args := []string{
 		"build",
 		"-f", filepath.Join(buildDir, "Dockerfile"),
@@ -523,7 +541,12 @@ func (r *Runner) ensureImageWithFeatures(ctx context.Context, resolved devcontai
 		buildDir,
 	}
 	if err := r.docker.Run(ctx, docker.RunOptions{Args: args, Stdout: os.Stdout, Stderr: os.Stderr}); err != nil {
-		return "", err
+		entries, _ := os.ReadDir(buildDir)
+		names := make([]string, 0, len(entries))
+		for _, entry := range entries {
+			names = append(names, entry.Name())
+		}
+		return "", fmt.Errorf("build features image from %s with files %v: %w", buildDir, names, err)
 	}
 	return resolved.ImageName, nil
 }
@@ -537,13 +560,23 @@ func (r *Runner) ensureComposeImage(ctx context.Context, resolved devcontainer.R
 	if !ok {
 		return "", fmt.Errorf("compose service %q not found", resolved.ComposeService)
 	}
-	if service.Build != nil {
-		if err := r.docker.Run(ctx, docker.RunOptions{Args: append(r.composeArgs(resolved), "build", resolved.ComposeService), Dir: resolved.ConfigDir, Stdout: os.Stdout, Stderr: os.Stderr}); err != nil {
+	baseImage := service.Image
+	if service.Build.Enabled() {
+		if err := r.docker.Run(ctx, docker.RunOptions{Args: append(r.composeBaseArgs(resolved), "build", resolved.ComposeService), Dir: resolved.ConfigDir, Stdout: os.Stdout, Stderr: os.Stderr}); err != nil {
 			return "", err
 		}
+		if baseImage == "" {
+			baseImage = resolved.ComposeProject + "-" + resolved.ComposeService
+		}
 	}
-	if service.Image != "" {
-		return service.Image, nil
+	if len(resolved.Features) > 0 {
+		if baseImage == "" {
+			return "", fmt.Errorf("compose service %q needs an image or build result for features", resolved.ComposeService)
+		}
+		return r.ensureFeaturesImageFromBase(ctx, resolved, baseImage)
+	}
+	if baseImage != "" {
+		return baseImage, nil
 	}
 	return resolved.ComposeProject + "-" + resolved.ComposeService, nil
 }
@@ -556,7 +589,7 @@ func (r *Runner) ensureComposeContainer(ctx context.Context, resolved devcontain
 			return containerID, false, nil
 		}
 	}
-	if err := r.docker.Run(ctx, docker.RunOptions{Args: append(r.composeArgs(resolved), "up", "-d", resolved.ComposeService), Dir: resolved.ConfigDir, Stdout: os.Stdout, Stderr: os.Stderr}); err != nil {
+	if err := r.docker.Run(ctx, docker.RunOptions{Args: append(r.composeArgs(resolved), "up", "--no-build", "-d", resolved.ComposeService), Dir: resolved.ConfigDir, Stdout: os.Stdout, Stderr: os.Stderr}); err != nil {
 		return "", false, err
 	}
 	containerID, err = r.findComposeContainer(ctx, resolved)
@@ -1025,13 +1058,10 @@ func copyDir(src string, dst string) error {
 	return nil
 }
 
-func (r *Runner) composeArgs(resolved devcontainer.ResolvedConfig) []string {
+func (r *Runner) composeBaseArgs(resolved devcontainer.ResolvedConfig) []string {
 	args := []string{"compose"}
 	for _, file := range resolved.ComposeFiles {
 		args = append(args, "-f", file)
-	}
-	if override := devcontainer.ComposeOverrideFile(resolved.StateDir); fileExists(override) {
-		args = append(args, "-f", override)
 	}
 	if resolved.ComposeProject != "" {
 		args = append(args, "-p", resolved.ComposeProject)
@@ -1039,8 +1069,16 @@ func (r *Runner) composeArgs(resolved devcontainer.ResolvedConfig) []string {
 	return args
 }
 
+func (r *Runner) composeArgs(resolved devcontainer.ResolvedConfig) []string {
+	args := r.composeBaseArgs(resolved)
+	if override := devcontainer.ComposeOverrideFile(resolved.StateDir); fileExists(override) {
+		args = append(args, "-f", override)
+	}
+	return args
+}
+
 func (r *Runner) readComposeConfig(ctx context.Context, resolved devcontainer.ResolvedConfig) (composeConfig, error) {
-	args := append(r.composeArgs(resolved), "config", "--format", "json")
+	args := append(r.composeBaseArgs(resolved), "config", "--format", "json")
 	output, err := r.docker.OutputOptions(ctx, docker.RunOptions{Args: args, Dir: resolved.ConfigDir})
 	if err != nil {
 		return composeConfig{}, err
@@ -1096,6 +1134,9 @@ func renderComposeOverride(resolved devcontainer.ResolvedConfig, image string) s
 	b.WriteString("  ")
 	b.WriteString(resolved.ComposeService)
 	b.WriteString(":\n")
+	if len(resolved.Features) > 0 {
+		b.WriteString("    pull_policy: never\n")
+	}
 	b.WriteString("    labels:\n")
 	labels := map[string]string{}
 	for key, value := range resolved.Labels {
@@ -1119,11 +1160,15 @@ func renderComposeOverride(resolved devcontainer.ResolvedConfig, image string) s
 	}
 	b.WriteString("    volumes:\n")
 	allMounts := append([]string{resolved.WorkspaceMount}, resolved.Merged.Mounts...)
+	namedVolumes := map[string]struct{}{}
 	for _, mount := range allMounts {
 		if value, ok := composeMountValue(mount); ok {
 			b.WriteString("      - ")
 			b.WriteString(value)
 			b.WriteString("\n")
+		}
+		if source, ok := composeNamedVolume(mount); ok {
+			namedVolumes[source] = struct{}{}
 		}
 	}
 	if resolved.Merged.Init {
@@ -1161,6 +1206,14 @@ func renderComposeOverride(resolved devcontainer.ResolvedConfig, image string) s
 		b.WriteString(yamlQuoted(image))
 		b.WriteString("\n")
 	}
+	if len(namedVolumes) > 0 {
+		b.WriteString("volumes:\n")
+		for _, name := range sortedVolumeNames(namedVolumes) {
+			b.WriteString("  ")
+			b.WriteString(name)
+			b.WriteString(":\n")
+		}
+	}
 	return b.String()
 }
 
@@ -1196,11 +1249,35 @@ func composeMountValue(raw string) (string, bool) {
 	}
 }
 
+func composeNamedVolume(raw string) (string, bool) {
+	parts := map[string]string{}
+	for _, segment := range strings.Split(raw, ",") {
+		key, value, ok := strings.Cut(strings.TrimSpace(segment), "=")
+		if !ok {
+			continue
+		}
+		parts[key] = value
+	}
+	if parts["type"] != "volume" || parts["source"] == "" {
+		return "", false
+	}
+	return parts["source"], true
+}
+
 func yamlQuoted(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", "''") + "'"
 }
 
 func sortedStringKeys(values map[string]string) []string {
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func sortedVolumeNames(values map[string]struct{}) []string {
 	keys := make([]string, 0, len(values))
 	for key := range values {
 		keys = append(keys, key)

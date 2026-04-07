@@ -15,6 +15,7 @@ Implemented now:
 - OCI feature consumption for single-container image and Dockerfile flows
 - minimal Compose config discovery, build, up, exec, and reuse for a single service
 - persisted Compose override-file generation for mounts, env, labels, and command behavior
+- Compose feature consumption for image-based and Dockerfile-based single-service flows
 - `up`, `build`, `exec`, `config`, `run`, and `bridge doctor`
 - lifecycle execution for `initializeCommand`, `onCreateCommand`, `updateContentCommand`, `postCreateCommand`, `postStartCommand`, and `postAttachCommand`
 - workspace-scoped state and managed container reuse
@@ -38,7 +39,7 @@ Reference revision:
 Known gaps relative to that baseline:
 
 - non-OCI remote feature sources and lockfile parity
-- Compose bridge support, feature support, and UID/GID remapping
+- Compose bridge support and UID/GID remapping
 - broader compatibility documentation and automation-oriented output parity
 
 ## Commands

@@ -239,9 +239,6 @@ func Resolve(workspaceArg string, configArg string) (ResolvedConfig, error) {
 		if remoteWorkspace == "" {
 			return ResolvedConfig{}, errors.New("compose-based devcontainers require workspaceFolder")
 		}
-		if len(config.Features) > 0 {
-			return ResolvedConfig{}, errors.New("compose-based features are not implemented yet in hatchctl")
-		}
 	}
 	if remoteWorkspace == "" {
 		remoteWorkspace = filepath.ToSlash(filepath.Join("/workspaces", filepath.Base(workspace)))

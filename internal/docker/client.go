@@ -33,7 +33,10 @@ func (c *Client) Run(ctx context.Context, opts RunOptions) error {
 	cmd.Stdin = opts.Stdin
 	cmd.Stdout = opts.Stdout
 	cmd.Stderr = opts.Stderr
-	return cmd.Run()
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("docker %s: %w", strings.Join(opts.Args, " "), err)
+	}
+	return nil
 }
 
 func (c *Client) Output(ctx context.Context, args ...string) (string, error) {
