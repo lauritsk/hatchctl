@@ -1,7 +1,7 @@
 version: 2
 
 builds:
-  - id: hatchctl-main
+  - id: hatchctl
     main: ./cmd/hatchctl
     binary: hatchctl
     goos:
@@ -25,6 +25,15 @@ builds:
 
 checksum:
   name_template: checksums.txt
+
+archives:
+  - id: hatchctl
+    ids:
+      - hatchctl
+  - id: hatchctl-bridge-helper
+    ids:
+      - hatchctl-bridge-helper
+    name_template: "{{ .ProjectName }}-bridge-helper_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 
 signs:
   - cmd: cosign
