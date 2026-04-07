@@ -1017,6 +1017,156 @@ func TestComposeBuildAndUpSingleService(t *testing.T) {
 	}
 }
 
+func TestComposeUpStartsBridgeAndReusesSession(t *testing.T) {
+	client := dockerClientForTest(t)
+	ctx := context.Background()
+	workspace := t.TempDir()
+	configDir := filepath.Join(workspace, ".devcontainer")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	baseImage := "hatchctl-compose-bridge-test-" + sanitizeName(filepath.Base(workspace))
+	baseDockerfileDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(baseDockerfileDir, "Dockerfile"), []byte("FROM alpine:3.20\nCMD [\"/bin/sh\",\"-lc\",\"trap 'exit 0' TERM INT; while sleep 1000; do :; done\"]\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.Run(ctx, docker.RunOptions{Args: []string{"build", "-t", baseImage, baseDockerfileDir}}); err != nil {
+		t.Fatalf("build base image: %v", err)
+	}
+	composePath := filepath.Join(configDir, "docker-compose.yml")
+	composeYAML := "services:\n  app:\n    image: " + baseImage + "\n    working_dir: /workspaces/demo\n    volumes:\n      - ..:/workspaces/demo\n"
+	if err := os.WriteFile(composePath, []byte(composeYAML), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(configDir, "devcontainer.json")
+	if err := os.WriteFile(configPath, []byte(`{"dockerComposeFile":"docker-compose.yml","service":"app","workspaceFolder":"/workspaces/demo"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	runner := NewRunner(client)
+	first, err := runner.Up(ctx, UpOptions{Workspace: workspace, Recreate: true, BridgeEnabled: true})
+	if err != nil {
+		t.Fatalf("compose up with bridge: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rm", "-f", first.ContainerID}})
+		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rmi", "-f", baseImage}})
+		_ = bridge.Stop(first.StateDir)
+	})
+	expectedBridgeStatus := "scaffolded"
+	if runtime.GOOS == "darwin" {
+		expectedBridgeStatus = "running"
+	}
+	if first.Bridge == nil || first.Bridge.Status != expectedBridgeStatus {
+		t.Fatalf("unexpected compose bridge report %#v", first.Bridge)
+	}
+
+	configResult, err := runner.ReadConfig(ctx, ReadConfigOptions{Workspace: workspace})
+	if err != nil {
+		t.Fatalf("compose read config: %v", err)
+	}
+	if configResult.Bridge == nil || configResult.Bridge.Status != expectedBridgeStatus {
+		t.Fatalf("unexpected compose bridge config report %#v", configResult.Bridge)
+	}
+	if configResult.ManagedContainer == nil || !configResult.ManagedContainer.BridgeEnabled {
+		t.Fatalf("expected compose bridge-enabled container %#v", configResult.ManagedContainer)
+	}
+	if got := configResult.ManagedContainer.ContainerEnv["BROWSER"]; got != "/var/run/hatchctl/bridge/bin/devcontainer-open" {
+		t.Fatalf("unexpected compose bridge env %#v", configResult.ManagedContainer.ContainerEnv)
+	}
+	state, err := devcontainer.ReadState(first.StateDir)
+	if err != nil {
+		t.Fatalf("read compose state: %v", err)
+	}
+	if !state.BridgeEnabled || state.BridgeSessionID == "" {
+		t.Fatalf("unexpected compose bridge state %#v", state)
+	}
+
+	second, err := runner.Up(ctx, UpOptions{Workspace: workspace, BridgeEnabled: true})
+	if err != nil {
+		t.Fatalf("compose second up with bridge: %v", err)
+	}
+	if !strings.HasPrefix(first.ContainerID, second.ContainerID) && !strings.HasPrefix(second.ContainerID, first.ContainerID) {
+		t.Fatalf("expected compose bridge container reuse first=%q second=%q", first.ContainerID, second.ContainerID)
+	}
+	if second.Bridge == nil || second.Bridge.ID != state.BridgeSessionID {
+		t.Fatalf("expected compose bridge session reuse %#v state=%#v", second.Bridge, state)
+	}
+}
+
+func TestComposeUpUpdatesNamedNonRootUserUID(t *testing.T) {
+	client := dockerClientForTest(t)
+	ctx := context.Background()
+	workspace := t.TempDir()
+	configDir := filepath.Join(workspace, ".devcontainer")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	baseImage := "hatchctl-compose-update-uid-test-" + sanitizeName(filepath.Base(workspace))
+	baseDockerfileDir := t.TempDir()
+	dockerfile := "FROM alpine:3.20\nRUN addgroup -g 1234 app && adduser -D -u 1234 -G app app\nUSER app\n"
+	if err := os.WriteFile(filepath.Join(baseDockerfileDir, "Containerfile"), []byte(dockerfile), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.Run(ctx, docker.RunOptions{Args: []string{"build", "-f", filepath.Join(baseDockerfileDir, "Containerfile"), "-t", baseImage, baseDockerfileDir}}); err != nil {
+		t.Fatalf("build compose base image: %v", err)
+	}
+	composePath := filepath.Join(configDir, "docker-compose.yaml")
+	composeYAML := "services:\n  app:\n    image: " + baseImage + "\n    working_dir: /workspaces/demo\n    volumes:\n      - ..:/workspaces/demo\n    command: [\"/bin/sh\",\"-lc\",\"trap 'exit 0' TERM INT; while sleep 1000; do :; done\"]\n"
+	if err := os.WriteFile(composePath, []byte(composeYAML), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(configDir, "devcontainer.json")
+	if err := os.WriteFile(configPath, []byte(`{"dockerComposeFile":"docker-compose.yaml","service":"app","workspaceFolder":"/workspaces/demo"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	runner := NewRunner(client)
+	buildResult, err := runner.Build(ctx, BuildOptions{Workspace: workspace})
+	if err != nil {
+		t.Fatalf("build compose uid image: %v", err)
+	}
+	if !strings.HasSuffix(buildResult.Image, "-uid") {
+		t.Fatalf("expected compose uid image, got %q", buildResult.Image)
+	}
+	upResult, err := runner.Up(ctx, UpOptions{Workspace: workspace, Recreate: true})
+	if err != nil {
+		t.Fatalf("compose up uid image: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rm", "-f", upResult.ContainerID}})
+		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rmi", "-f", buildResult.Image}})
+		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rmi", "-f", baseImage}})
+	})
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode, err := runner.Exec(ctx, ExecOptions{Workspace: workspace, Args: []string{"id", "-u"}, Stdout: &stdout, Stderr: &stderr})
+	if err != nil {
+		t.Fatalf("compose exec uid check: %v (stderr: %s)", err, stderr.String())
+	}
+	if exitCode != 0 {
+		t.Fatalf("unexpected compose uid exit code %d (stderr: %s)", exitCode, stderr.String())
+	}
+	if got := strings.TrimSpace(stdout.String()); got != fmt.Sprintf("%d", os.Getuid()) {
+		t.Fatalf("unexpected compose updated uid %q want %d", got, os.Getuid())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	exitCode, err = runner.Exec(ctx, ExecOptions{Workspace: workspace, Args: []string{"id", "-un"}, Stdout: &stdout, Stderr: &stderr})
+	if err != nil {
+		t.Fatalf("compose exec user check: %v (stderr: %s)", err, stderr.String())
+	}
+	if exitCode != 0 {
+		t.Fatalf("unexpected compose user exit code %d (stderr: %s)", exitCode, stderr.String())
+	}
+	if got := strings.TrimSpace(stdout.String()); got != "app" {
+		t.Fatalf("unexpected compose user name %q", got)
+	}
+}
+
 func TestComposeImageServiceConsumesLocalFeatures(t *testing.T) {
 	client := dockerClientForTest(t)
 	ctx := context.Background()

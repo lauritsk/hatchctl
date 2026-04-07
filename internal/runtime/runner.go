@@ -158,9 +158,6 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 	if opts.Verbose {
 		fmt.Fprintf(os.Stderr, "source=%s image=%s workspace=%s\n", resolved.SourceKind, resolved.ImageName, resolved.WorkspaceFolder)
 	}
-	if resolved.SourceKind == "compose" && opts.BridgeEnabled {
-		return UpResult{}, fmt.Errorf("compose bridge support is not implemented yet in hatchctl")
-	}
 	if err := os.MkdirAll(resolved.StateDir, 0o755); err != nil {
 		return UpResult{}, err
 	}
@@ -186,20 +183,17 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 	if err := r.enrichMergedConfig(ctx, &resolved, image); err != nil {
 		return UpResult{}, err
 	}
-	if resolved.SourceKind != "compose" {
-		image, err = r.ensureUpdatedUIDImage(ctx, resolved, image)
-		if err != nil {
-			return UpResult{}, err
-		}
+	image, err = r.ensureUpdatedUIDImage(ctx, resolved, image)
+	if err != nil {
+		return UpResult{}, err
 	}
 	var bridgeReport *bridge.Report
-	if resolved.SourceKind != "compose" {
-		bridgeReport, err = r.applyBridgeConfig(&resolved, opts.BridgeEnabled)
-		if err != nil {
-			return UpResult{}, err
-		}
-	} else {
-		if err := r.writeComposeOverride(ctx, resolved); err != nil {
+	bridgeReport, err = r.applyBridgeConfig(&resolved, opts.BridgeEnabled)
+	if err != nil {
+		return UpResult{}, err
+	}
+	if resolved.SourceKind == "compose" {
+		if err := r.writeComposeOverride(resolved, image); err != nil {
 			return UpResult{}, err
 		}
 	}
@@ -246,13 +240,6 @@ func (r *Runner) Build(ctx context.Context, opts BuildOptions) (BuildResult, err
 	}
 	if opts.Verbose {
 		fmt.Fprintf(os.Stderr, "source=%s image=%s workspace=%s\n", resolved.SourceKind, resolved.ImageName, resolved.WorkspaceFolder)
-	}
-	if resolved.SourceKind == "compose" {
-		image, err := r.ensureComposeImage(ctx, resolved)
-		if err != nil {
-			return BuildResult{}, err
-		}
-		return BuildResult{Image: image}, nil
 	}
 	image, err := r.ensureImage(ctx, resolved)
 	if err != nil {
@@ -349,17 +336,22 @@ func (r *Runner) ReadConfig(ctx context.Context, opts ReadConfigOptions) (ReadCo
 	if err != nil {
 		return ReadConfigResult{}, err
 	}
+	var bridgeReport *bridge.Report
+	bridgeReport, err = r.applyBridgeConfig(&resolved, state.BridgeEnabled)
+	if err != nil {
+		return ReadConfigResult{}, err
+	}
 	if resolved.SourceKind == "compose" {
-		if err := r.writeComposeOverride(ctx, resolved); err != nil {
+		if err := r.writeComposeOverride(resolved, image); err != nil {
 			return ReadConfigResult{}, err
 		}
 	}
-	var bridgeReport *bridge.Report
-	if resolved.SourceKind != "compose" {
-		bridgeReport, err = r.applyBridgeConfig(&resolved, state.BridgeEnabled)
+	if state.BridgeEnabled {
+		report, err := bridge.Doctor(resolved.StateDir)
 		if err != nil {
 			return ReadConfigResult{}, err
 		}
+		bridgeReport = (*bridge.Report)(&report)
 	}
 	resolvedUser, err := r.effectiveRemoteUser(ctx, resolved, image, "")
 	if err != nil {
@@ -600,9 +592,6 @@ func (r *Runner) ensureComposeContainer(ctx context.Context, resolved devcontain
 }
 
 func (r *Runner) ensureUpdatedUIDImage(ctx context.Context, resolved devcontainer.ResolvedConfig, image string) (string, error) {
-	if resolved.SourceKind == "compose" {
-		return image, nil
-	}
 	if runtime.GOOS != "linux" && runtime.GOOS != "darwin" {
 		return image, nil
 	}
@@ -1116,12 +1105,8 @@ func (r *Runner) findComposeContainer(ctx context.Context, resolved devcontainer
 	return "", errManagedContainerNotFound
 }
 
-func (r *Runner) writeComposeOverride(ctx context.Context, resolved devcontainer.ResolvedConfig) error {
+func (r *Runner) writeComposeOverride(resolved devcontainer.ResolvedConfig, image string) error {
 	if err := os.MkdirAll(resolved.StateDir, 0o755); err != nil {
-		return err
-	}
-	image, err := r.ensureComposeImage(ctx, resolved)
-	if err != nil {
 		return err
 	}
 	content := renderComposeOverride(resolved, image)
@@ -1141,6 +1126,9 @@ func renderComposeOverride(resolved devcontainer.ResolvedConfig, image string) s
 	labels := map[string]string{}
 	for key, value := range resolved.Labels {
 		labels[key] = value
+	}
+	if resolved.Merged.ContainerEnv["DEVCONTAINER_BRIDGE_ENABLED"] == "true" {
+		labels[devcontainer.BridgeEnabledLabel] = "true"
 	}
 	if metadataLabel, err := devcontainer.MetadataLabelValue(resolved.Merged.Metadata); err == nil && metadataLabel != "" {
 		labels[devcontainer.ImageMetadataLabel] = metadataLabel

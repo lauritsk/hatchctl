@@ -365,3 +365,83 @@ func TestResolveComposeConfigSupportsCommonComposeFilenames(t *testing.T) {
 		})
 	}
 }
+
+func TestResolveWritesFeatureLockFile(t *testing.T) {
+	t.Parallel()
+
+	workspace := t.TempDir()
+	configDir := filepath.Join(workspace, ".devcontainer")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	featureDir := filepath.Join(configDir, "feature-a")
+	if err := os.MkdirAll(featureDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(featureDir, "devcontainer-feature.json"), []byte(`{
+		"id": "feature-a",
+		"options": {"version": {"default": "stable"}}
+	}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(configDir, "devcontainer.json"), []byte(`{
+		"image": "alpine:3.20",
+		"workspaceFolder": "/workspace",
+		"features": {"./feature-a": {"version": "1.2.3"}}
+	}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	resolved, err := Resolve(workspace, "")
+	if err != nil {
+		t.Fatalf("resolve config with features: %v", err)
+	}
+	lockPath := filepath.Join(resolved.StateDir, "features-lock.json")
+	data, err := os.ReadFile(lockPath)
+	if err != nil {
+		t.Fatalf("read features lock file: %v", err)
+	}
+	if !strings.Contains(string(data), `"id": "feature-a"`) || !strings.Contains(string(data), `"VERSION": "1.2.3"`) {
+		t.Fatalf("unexpected feature lock contents %s", string(data))
+	}
+}
+
+func TestResolveSupportsBuildDockerfileAndContextFiles(t *testing.T) {
+	t.Parallel()
+
+	workspace := t.TempDir()
+	configDir := filepath.Join(workspace, ".devcontainer")
+	contextDir := filepath.Join(workspace, "container-context")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(contextDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(configDir, "Containerfile"), []byte("FROM alpine:3.20\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(contextDir, "marker.txt"), []byte("ok\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(configDir, "devcontainer.json"), []byte(`{
+		"build": {
+			"dockerfile": "Containerfile",
+			"context": "../container-context"
+		},
+		"workspaceFolder": "/workspace"
+	}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	resolved, err := Resolve(workspace, "")
+	if err != nil {
+		t.Fatalf("resolve build config: %v", err)
+	}
+	if got := EffectiveDockerfile(resolved.Config); got != "Containerfile" {
+		t.Fatalf("unexpected build dockerfile %q", got)
+	}
+	if got := EffectiveContext(resolved.Config); got != "../container-context" {
+		t.Fatalf("unexpected build context %q", got)
+	}
+}

@@ -270,6 +270,9 @@ func Resolve(workspaceArg string, configArg string) (ResolvedConfig, error) {
 	if err != nil {
 		return ResolvedConfig{}, err
 	}
+	if err := WriteFeatureLockFile(stateDir, features); err != nil {
+		return ResolvedConfig{}, err
+	}
 	metadata := make([]MetadataEntry, 0, len(features))
 	for _, feature := range features {
 		metadata = append(metadata, feature.Metadata)

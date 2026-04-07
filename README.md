@@ -16,6 +16,8 @@ Implemented now:
 - minimal Compose config discovery, build, up, exec, and reuse for a single service
 - persisted Compose override-file generation for mounts, env, labels, and command behavior
 - Compose feature consumption for image-based and Dockerfile-based single-service flows
+- Compose bridge support and Compose UID/GID remap parity for single-service flows
+- persisted feature lockfile groundwork under the workspace state dir
 - `up`, `build`, `exec`, `config`, `run`, and `bridge doctor`
 - lifecycle execution for `initializeCommand`, `onCreateCommand`, `updateContentCommand`, `postCreateCommand`, `postStartCommand`, and `postAttachCommand`
 - workspace-scoped state and managed container reuse
@@ -39,7 +41,7 @@ Reference revision:
 Known gaps relative to that baseline:
 
 - non-OCI remote feature sources and lockfile parity
-- Compose bridge support and UID/GID remapping
+- fuller lockfile parity including digest pinning and reuse behavior
 - broader compatibility documentation and automation-oriented output parity
 
 ## Commands
