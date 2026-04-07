@@ -156,23 +156,31 @@ type ExitError struct {
 	Code int
 }
 
+type prepareResolveOptions struct {
+	Workspace      string
+	ConfigPath     string
+	LockfilePolicy devcontainer.FeatureLockfilePolicy
+	ReadOnly       bool
+	ProgressLabel  string
+	Debug          bool
+	Progress       io.Writer
+}
+
 func (e ExitError) Error() string {
 	return fmt.Sprintf("command exited with status %d", e.Code)
 }
 
 func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
-	r.emitProgress(opts.Progress, "Resolving development container")
-	resolved, err := devcontainer.ResolveWithOptions(ctx, opts.Workspace, opts.ConfigPath, devcontainer.ResolveOptions{
-		AllowNetwork:      true,
-		WriteFeatureLock:  true,
-		WriteFeatureState: true,
-		LockfilePolicy:    opts.LockfilePolicy,
+	resolved, err := r.prepareResolved(ctx, prepareResolveOptions{
+		Workspace:      opts.Workspace,
+		ConfigPath:     opts.ConfigPath,
+		LockfilePolicy: opts.LockfilePolicy,
+		ProgressLabel:  "Resolving development container",
+		Debug:          opts.Debug,
+		Progress:       opts.Progress,
 	})
 	if err != nil {
 		return UpResult{}, err
-	}
-	if opts.Debug {
-		r.emitPlan(opts.Progress, resolved)
 	}
 	if err := os.MkdirAll(resolved.StateDir, 0o755); err != nil {
 		return UpResult{}, err
@@ -263,18 +271,16 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 }
 
 func (r *Runner) Build(ctx context.Context, opts BuildOptions) (BuildResult, error) {
-	r.emitProgress(opts.Progress, "Resolving development container")
-	resolved, err := devcontainer.ResolveWithOptions(ctx, opts.Workspace, opts.ConfigPath, devcontainer.ResolveOptions{
-		AllowNetwork:      true,
-		WriteFeatureLock:  true,
-		WriteFeatureState: true,
-		LockfilePolicy:    opts.LockfilePolicy,
+	resolved, err := r.prepareResolved(ctx, prepareResolveOptions{
+		Workspace:      opts.Workspace,
+		ConfigPath:     opts.ConfigPath,
+		LockfilePolicy: opts.LockfilePolicy,
+		ProgressLabel:  "Resolving development container",
+		Debug:          opts.Debug,
+		Progress:       opts.Progress,
 	})
 	if err != nil {
 		return BuildResult{}, err
-	}
-	if opts.Debug {
-		r.emitPlan(opts.Progress, resolved)
 	}
 	r.emitProgress(opts.Progress, "Ensuring container image")
 	image, err := r.ensureImage(ctx, resolved)
@@ -294,25 +300,15 @@ func (r *Runner) Build(ctx context.Context, opts BuildOptions) (BuildResult, err
 }
 
 func (r *Runner) Exec(ctx context.Context, opts ExecOptions) (int, error) {
-	r.emitProgress(opts.Progress, "Resolving development container")
-	resolved, err := devcontainer.ResolveWithOptions(ctx, opts.Workspace, opts.ConfigPath, devcontainer.ResolveOptions{
-		AllowNetwork:      true,
-		WriteFeatureLock:  true,
-		WriteFeatureState: true,
-		LockfilePolicy:    opts.LockfilePolicy,
+	resolved, image, err := r.prepareEnrichedResolved(ctx, prepareResolveOptions{
+		Workspace:      opts.Workspace,
+		ConfigPath:     opts.ConfigPath,
+		LockfilePolicy: opts.LockfilePolicy,
+		ProgressLabel:  "Resolving development container",
+		Debug:          opts.Debug,
+		Progress:       opts.Progress,
 	})
 	if err != nil {
-		return 0, err
-	}
-	if opts.Debug {
-		r.emitPlan(opts.Progress, resolved)
-	}
-	image := resolved.Config.Image
-	if image == "" && resolved.SourceKind != "compose" {
-		image = resolved.ImageName
-	}
-	r.emitProgress(opts.Progress, "Applying runtime metadata")
-	if err := r.enrichMergedConfig(ctx, &resolved, image); err != nil {
 		return 0, err
 	}
 	r.emitProgress(opts.Progress, "Finding managed container")
@@ -365,22 +361,16 @@ func (r *Runner) Exec(ctx context.Context, opts ExecOptions) (int, error) {
 }
 
 func (r *Runner) ReadConfig(ctx context.Context, opts ReadConfigOptions) (ReadConfigResult, error) {
-	r.emitProgress(opts.Progress, "Inspecting resolved configuration")
-	resolved, err := devcontainer.ResolveReadOnlyWithOptions(ctx, opts.Workspace, opts.ConfigPath, devcontainer.ResolveOptions{
+	resolved, image, err := r.prepareEnrichedResolved(ctx, prepareResolveOptions{
+		Workspace:      opts.Workspace,
+		ConfigPath:     opts.ConfigPath,
 		LockfilePolicy: opts.LockfilePolicy,
+		ReadOnly:       true,
+		ProgressLabel:  "Inspecting resolved configuration",
+		Debug:          opts.Debug,
+		Progress:       opts.Progress,
 	})
 	if err != nil {
-		return ReadConfigResult{}, err
-	}
-	if opts.Debug {
-		r.emitPlan(opts.Progress, resolved)
-	}
-	image := resolved.Config.Image
-	if image == "" && resolved.SourceKind != "compose" {
-		image = resolved.ImageName
-	}
-	r.emitProgress(opts.Progress, "Applying runtime metadata")
-	if err := r.enrichMergedConfig(ctx, &resolved, image); err != nil {
 		return ReadConfigResult{}, err
 	}
 	state, err := devcontainer.ReadState(resolved.StateDir)
@@ -441,30 +431,20 @@ func (r *Runner) ReadConfig(ctx context.Context, opts ReadConfigOptions) (ReadCo
 }
 
 func (r *Runner) RunLifecycle(ctx context.Context, opts RunLifecycleOptions) (RunLifecycleResult, error) {
-	r.emitProgress(opts.Progress, "Resolving development container")
-	resolved, err := devcontainer.ResolveWithOptions(ctx, opts.Workspace, opts.ConfigPath, devcontainer.ResolveOptions{
-		AllowNetwork:      true,
-		WriteFeatureLock:  true,
-		WriteFeatureState: true,
-		LockfilePolicy:    opts.LockfilePolicy,
+	resolved, _, err := r.prepareEnrichedResolved(ctx, prepareResolveOptions{
+		Workspace:      opts.Workspace,
+		ConfigPath:     opts.ConfigPath,
+		LockfilePolicy: opts.LockfilePolicy,
+		ProgressLabel:  "Resolving development container",
+		Debug:          opts.Debug,
+		Progress:       opts.Progress,
 	})
 	if err != nil {
 		return RunLifecycleResult{}, err
 	}
-	if opts.Debug {
-		r.emitPlan(opts.Progress, resolved)
-	}
 	r.emitProgress(opts.Progress, "Finding managed container")
 	containerID, err := r.findContainer(ctx, resolved)
 	if err != nil {
-		return RunLifecycleResult{}, err
-	}
-	image := resolved.Config.Image
-	if image == "" && resolved.SourceKind != "compose" {
-		image = resolved.ImageName
-	}
-	r.emitProgress(opts.Progress, "Applying runtime metadata")
-	if err := r.enrichMergedConfig(ctx, &resolved, image); err != nil {
 		return RunLifecycleResult{}, err
 	}
 	phase := strings.ToLower(opts.Phase)
@@ -479,17 +459,66 @@ func (r *Runner) RunLifecycle(ctx context.Context, opts RunLifecycleOptions) (Ru
 }
 
 func (r *Runner) BridgeDoctor(ctx context.Context, opts BridgeDoctorOptions) (bridge.Report, error) {
-	r.emitProgress(opts.Progress, "Inspecting bridge state")
-	resolved, err := devcontainer.ResolveReadOnlyWithOptions(ctx, opts.Workspace, opts.ConfigPath, devcontainer.ResolveOptions{
+	resolved, err := r.prepareResolved(ctx, prepareResolveOptions{
+		Workspace:      opts.Workspace,
+		ConfigPath:     opts.ConfigPath,
 		LockfilePolicy: opts.LockfilePolicy,
+		ReadOnly:       true,
+		ProgressLabel:  "Inspecting bridge state",
+		Debug:          opts.Debug,
+		Progress:       opts.Progress,
 	})
 	if err != nil {
 		return bridge.Report{}, err
 	}
+	return bridge.Doctor(resolved.StateDir)
+}
+
+func (r *Runner) prepareResolved(ctx context.Context, opts prepareResolveOptions) (devcontainer.ResolvedConfig, error) {
+	r.emitProgress(opts.Progress, opts.ProgressLabel)
+	resolveOpts := devcontainer.ResolveOptions{LockfilePolicy: opts.LockfilePolicy}
+	if !opts.ReadOnly {
+		resolveOpts.AllowNetwork = true
+		resolveOpts.WriteFeatureLock = true
+		resolveOpts.WriteFeatureState = true
+	}
+	var (
+		resolved devcontainer.ResolvedConfig
+		err      error
+	)
+	if opts.ReadOnly {
+		resolved, err = devcontainer.ResolveReadOnlyWithOptions(ctx, opts.Workspace, opts.ConfigPath, resolveOpts)
+	} else {
+		resolved, err = devcontainer.ResolveWithOptions(ctx, opts.Workspace, opts.ConfigPath, resolveOpts)
+	}
+	if err != nil {
+		return devcontainer.ResolvedConfig{}, err
+	}
 	if opts.Debug {
 		r.emitPlan(opts.Progress, resolved)
 	}
-	return bridge.Doctor(resolved.StateDir)
+	return resolved, nil
+}
+
+func (r *Runner) prepareEnrichedResolved(ctx context.Context, opts prepareResolveOptions) (devcontainer.ResolvedConfig, string, error) {
+	resolved, err := r.prepareResolved(ctx, opts)
+	if err != nil {
+		return devcontainer.ResolvedConfig{}, "", err
+	}
+	image := preparedImage(resolved)
+	r.emitProgress(opts.Progress, "Applying runtime metadata")
+	if err := r.enrichMergedConfig(ctx, &resolved, image); err != nil {
+		return devcontainer.ResolvedConfig{}, "", err
+	}
+	return resolved, image, nil
+}
+
+func preparedImage(resolved devcontainer.ResolvedConfig) string {
+	image := resolved.Config.Image
+	if image == "" && resolved.SourceKind != "compose" {
+		image = resolved.ImageName
+	}
+	return image
 }
 
 func (r *Runner) emitProgress(w io.Writer, message string) {
