@@ -143,3 +143,54 @@ func TestHelperBinaryCandidatesDoNotUseRepoLayoutFallbacks(t *testing.T) {
 		}
 	}
 }
+
+func TestPrepareAndRuntimeFilesUseOwnerOnlyPermissions(t *testing.T) {
+	helperPath := filepath.Join(t.TempDir(), helperArtifactName())
+	if err := os.WriteFile(helperPath, []byte("helper"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(helperBinaryEnvVar, helperPath)
+
+	stateDir := t.TempDir()
+	session, err := Prepare(stateDir, true)
+	if err != nil {
+		t.Fatalf("prepare bridge session: %v", err)
+	}
+	if err := writeBridgeConfig(session, "container"); err != nil {
+		t.Fatalf("write bridge config: %v", err)
+	}
+	if err := writeStatus(session, "container", "running", "", nil, 0, false); err != nil {
+		t.Fatalf("write bridge status: %v", err)
+	}
+
+	assertMode := func(path string, want os.FileMode) {
+		t.Helper()
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatalf("stat %s: %v", path, err)
+		}
+		if got := info.Mode().Perm(); got != want {
+			t.Fatalf("unexpected mode for %s: got %o want %o", path, got, want)
+		}
+	}
+
+	assertMode(session.StatePath, 0o700)
+	assertMode(filepath.Join(session.StatePath, "session.json"), 0o600)
+	assertMode(session.ConfigPath, 0o600)
+	assertMode(session.StatusPath, 0o600)
+
+	if err := os.WriteFile(session.PIDPath, []byte("123"), 0o600); err != nil {
+		t.Fatalf("write pid file: %v", err)
+	}
+	assertMode(session.PIDPath, 0o600)
+}
+
+func TestBridgeListenAddressNarrowsLocalhostSessions(t *testing.T) {
+	t.Parallel()
+	if got := bridgeListenAddress(&Session{Host: "localhost", Port: 8123}); got != "127.0.0.1:8123" {
+		t.Fatalf("unexpected localhost listen address %q", got)
+	}
+	if got := bridgeListenAddress(&Session{Host: "host.docker.internal", Port: 8123}); got != "0.0.0.0:8123" {
+		t.Fatalf("unexpected default listen address %q", got)
+	}
+}

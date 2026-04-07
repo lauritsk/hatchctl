@@ -40,7 +40,7 @@ const (
 
 func Prepare(stateDir string, enabled bool) (*Session, error) {
 	bridgeDir := filepath.Join(stateDir, "bridge")
-	if err := os.MkdirAll(bridgeDir, 0o755); err != nil {
+	if err := os.MkdirAll(bridgeDir, 0o700); err != nil {
 		return nil, err
 	}
 	session, err := loadOrCreateSession(bridgeDir, enabled)
@@ -320,7 +320,7 @@ func saveSession(bridgeDir string, session *Session) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0o644)
+	return os.WriteFile(path, data, 0o600)
 }
 
 func findFreePort() (int, error) {

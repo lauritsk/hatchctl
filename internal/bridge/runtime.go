@@ -113,7 +113,7 @@ func Serve(ctx context.Context, stateDir string, containerID string) error {
 	if session.Port == 0 {
 		return fmt.Errorf("bridge port not configured")
 	}
-	if err := os.WriteFile(session.PIDPath, []byte(strconv.Itoa(os.Getpid())), 0o644); err != nil {
+	if err := os.WriteFile(session.PIDPath, []byte(strconv.Itoa(os.Getpid())), 0o600); err != nil {
 		return err
 	}
 	if err := writeStatus(session, containerID, "running", "", nil, 0, false); err != nil {
@@ -121,7 +121,7 @@ func Serve(ctx context.Context, stateDir string, containerID string) error {
 	}
 	service := newBridgeHostService(session, containerID, defaultOpen)
 	handler := service.handler()
-	server := &http.Server{Addr: fmt.Sprintf("0.0.0.0:%d", session.Port), Handler: handler}
+	server := &http.Server{Addr: bridgeListenAddress(session), Handler: handler}
 	go func() {
 		<-ctx.Done()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -411,7 +411,7 @@ func writeBridgeConfig(session *Session, containerID string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(session.ConfigPath, data, 0o644)
+	return os.WriteFile(session.ConfigPath, data, 0o600)
 }
 
 func writeStatus(session *Session, containerID string, event string, lastError string, forwarded []forwardStatus, lastPort int, lastExact bool) error {
@@ -431,8 +431,20 @@ func writeStatus(session *Session, containerID string, event string, lastError s
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(session.StatusPath), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(session.StatusPath), 0o700); err != nil {
 		return err
 	}
-	return os.WriteFile(session.StatusPath, data, 0o644)
+	return os.WriteFile(session.StatusPath, data, 0o600)
+}
+
+func bridgeListenAddress(session *Session) string {
+	port := 0
+	host := "0.0.0.0"
+	if session != nil {
+		port = session.Port
+		if session.Host == "127.0.0.1" || session.Host == "localhost" {
+			host = "127.0.0.1"
+		}
+	}
+	return net.JoinHostPort(host, strconv.Itoa(port))
 }

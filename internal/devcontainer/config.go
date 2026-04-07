@@ -1,6 +1,7 @@
 package devcontainer
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -211,19 +212,19 @@ type ResolveOptions struct {
 	WriteFeatureState bool
 }
 
-func Resolve(workspaceArg string, configArg string) (ResolvedConfig, error) {
-	return resolve(workspaceArg, configArg, ResolveOptions{
+func Resolve(ctx context.Context, workspaceArg string, configArg string) (ResolvedConfig, error) {
+	return resolve(ctx, workspaceArg, configArg, ResolveOptions{
 		AllowNetwork:      true,
 		WriteFeatureLock:  true,
 		WriteFeatureState: true,
 	})
 }
 
-func ResolveReadOnly(workspaceArg string, configArg string) (ResolvedConfig, error) {
-	return resolve(workspaceArg, configArg, ResolveOptions{})
+func ResolveReadOnly(ctx context.Context, workspaceArg string, configArg string) (ResolvedConfig, error) {
+	return resolve(ctx, workspaceArg, configArg, ResolveOptions{})
 }
 
-func resolve(workspaceArg string, configArg string, opts ResolveOptions) (ResolvedConfig, error) {
+func resolve(ctx context.Context, workspaceArg string, configArg string, opts ResolveOptions) (ResolvedConfig, error) {
 	workspace, err := resolveWorkspace(workspaceArg)
 	if err != nil {
 		return ResolvedConfig{}, err
@@ -284,7 +285,7 @@ func resolve(workspaceArg string, configArg string, opts ResolveOptions) (Resolv
 		ManagedByLabel:  ManagedByValue,
 	}
 
-	features, err := ResolveFeatures(configPath, configDir, filepath.Join(stateDir, "features-cache"), config.Features, FeatureResolveOptions{
+	features, err := ResolveFeatures(ctx, configPath, configDir, filepath.Join(stateDir, "features-cache"), config.Features, FeatureResolveOptions{
 		AllowNetwork:   opts.AllowNetwork,
 		WriteLockFile:  opts.WriteFeatureLock,
 		WriteStateFile: opts.WriteFeatureState,

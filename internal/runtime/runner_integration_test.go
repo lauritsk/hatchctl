@@ -578,7 +578,7 @@ func TestUpReconcilesMissingStateContainerToExistingManagedContainer(t *testing.
 		t.Fatal(err)
 	}
 
-	resolved, err := devcontainer.Resolve(workspace, "")
+	resolved, err := devcontainer.Resolve(ctx, workspace, "")
 	if err != nil {
 		t.Fatalf("resolve config: %v", err)
 	}
@@ -651,7 +651,7 @@ func TestUpRecreateRemovesReconciledManagedContainer(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	resolved, err := devcontainer.Resolve(workspace, "")
+	resolved, err := devcontainer.Resolve(ctx, workspace, "")
 	if err != nil {
 		t.Fatalf("resolve config: %v", err)
 	}
@@ -1206,7 +1206,7 @@ func TestBridgeDoctorDoesNotScaffoldBridgeState(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	resolved, err := devcontainer.ResolveReadOnly(workspace, "")
+	resolved, err := devcontainer.ResolveReadOnly(ctx, workspace, "")
 	if err != nil {
 		t.Fatalf("resolve read only: %v", err)
 	}

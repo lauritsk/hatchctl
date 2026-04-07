@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 var featureResolveOpts = FeatureResolveOptions{AllowNetwork: true, WriteLockFile: true}
@@ -33,7 +35,7 @@ func TestResolveFeaturesOrdersDependenciesAndInstallsAfter(t *testing.T) {
 	}`)
 
 	configPath := filepath.Join(configDir, "devcontainer.json")
-	features, err := ResolveFeatures(configPath, configDir, t.TempDir(), map[string]any{
+	features, err := ResolveFeatures(context.Background(), configPath, configDir, t.TempDir(), map[string]any{
 		"./gamma": true,
 		"./beta":  true,
 		"./alpha": true,
@@ -61,7 +63,7 @@ func TestResolveFeaturesMaterializesOptionEnvironment(t *testing.T) {
 	}`)
 
 	configPath := filepath.Join(configDir, "devcontainer.json")
-	features, err := ResolveFeatures(configPath, configDir, t.TempDir(), map[string]any{
+	features, err := ResolveFeatures(context.Background(), configPath, configDir, t.TempDir(), map[string]any{
 		"./tool": map[string]any{"other-option": true},
 	}, featureResolveOpts)
 	if err != nil {
@@ -94,7 +96,7 @@ func TestResolveFeaturesFetchesOCIRegistryFeature(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	features, err := ResolveFeatures(configPath, filepath.Dir(configPath), t.TempDir(), map[string]any{
+	features, err := ResolveFeatures(context.Background(), configPath, filepath.Dir(configPath), t.TempDir(), map[string]any{
 		registryHost + "/features/remote-tool:1": true,
 	}, featureResolveOpts)
 	if err != nil {
@@ -123,7 +125,7 @@ func TestResolveFeaturesFetchesOCIRegistryFeature(t *testing.T) {
 	if manifestRequests["/v2/features/remote-tool/manifests/sha256:test-manifest"] != 0 {
 		t.Fatalf("unexpected digest request on first resolve %#v", manifestRequests)
 	}
-	_, err = ResolveFeatures(configPath, filepath.Dir(configPath), t.TempDir(), map[string]any{
+	_, err = ResolveFeatures(context.Background(), configPath, filepath.Dir(configPath), t.TempDir(), map[string]any{
 		registryHost + "/features/remote-tool:1": true,
 	}, featureResolveOpts)
 	if err != nil {
@@ -150,7 +152,7 @@ func TestResolveFeaturesFetchesTarballFeatureAndPinsIntegrity(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), ".devcontainer.json")
 	featureURL := server.URL + "/devcontainer-feature-tarball-tool.tgz"
 
-	features, err := ResolveFeatures(configPath, filepath.Dir(configPath), t.TempDir(), map[string]any{featureURL: true}, featureResolveOpts)
+	features, err := ResolveFeatures(context.Background(), configPath, filepath.Dir(configPath), t.TempDir(), map[string]any{featureURL: true}, featureResolveOpts)
 	if err != nil {
 		t.Fatalf("resolve tarball feature: %v", err)
 	}
@@ -168,8 +170,61 @@ func TestResolveFeaturesFetchesTarballFeatureAndPinsIntegrity(t *testing.T) {
 	if err := os.WriteFile(FeatureLockFilePath(configPath), []byte(badIntegrity), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ResolveFeatures(configPath, filepath.Dir(configPath), t.TempDir(), map[string]any{featureURL: true}, featureResolveOpts); err == nil || !strings.Contains(err.Error(), "integrity mismatch") {
+	if _, err := ResolveFeatures(context.Background(), configPath, filepath.Dir(configPath), t.TempDir(), map[string]any{featureURL: true}, featureResolveOpts); err == nil || !strings.Contains(err.Error(), "integrity mismatch") {
 		t.Fatalf("expected tarball integrity mismatch, got %v", err)
+	}
+}
+
+func TestResolveFeaturesHonorsContextTimeoutForTarballs(t *testing.T) {
+	previousTimeout := featureHTTPTimeout
+	featureHTTPTimeout = 50 * time.Millisecond
+	t.Cleanup(func() {
+		featureHTTPTimeout = previousTimeout
+	})
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(200 * time.Millisecond)
+		_, _ = w.Write([]byte("late"))
+	}))
+	defer server.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+	configPath := filepath.Join(t.TempDir(), ".devcontainer.json")
+	_, err := ResolveFeatures(ctx, configPath, filepath.Dir(configPath), t.TempDir(), map[string]any{server.URL + "/feature.tgz": true}, featureResolveOpts)
+	if err == nil {
+		t.Fatal("expected timeout error")
+	}
+	if !strings.Contains(err.Error(), "Client.Timeout") && !strings.Contains(err.Error(), "context deadline exceeded") {
+		t.Fatalf("unexpected timeout error %v", err)
+	}
+}
+
+func TestResolveFeaturesRejectsOversizedTarballs(t *testing.T) {
+	previousLimit := featureArtifactMaxBytes
+	featureArtifactMaxBytes = 32
+	t.Cleanup(func() {
+		featureArtifactMaxBytes = previousLimit
+	})
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", "64")
+		_, _ = w.Write(bytes.Repeat([]byte("x"), 64))
+	}))
+	defer server.Close()
+
+	cacheDir := t.TempDir()
+	configPath := filepath.Join(t.TempDir(), ".devcontainer.json")
+	_, err := ResolveFeatures(context.Background(), configPath, filepath.Dir(configPath), cacheDir, map[string]any{server.URL + "/feature.tgz": true}, featureResolveOpts)
+	if err == nil || !strings.Contains(err.Error(), "feature tarball exceeds 32 bytes") {
+		t.Fatalf("expected oversized tarball error, got %v", err)
+	}
+	entries, readErr := os.ReadDir(cacheDir)
+	if readErr != nil {
+		t.Fatalf("read cache dir: %v", readErr)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("expected no cached artifacts after oversized tarball, got %d entries", len(entries))
 	}
 }
 

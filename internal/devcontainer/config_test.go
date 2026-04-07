@@ -1,6 +1,7 @@
 package devcontainer
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -68,7 +69,7 @@ func TestResolveFindsDefaultConfigAndBuildsRuntimeShape(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	resolved, err := Resolve(workspace, "")
+	resolved, err := Resolve(context.Background(), workspace, "")
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
@@ -255,7 +256,7 @@ func TestResolveComposeConfigParsesComposeFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	resolved, err := Resolve(workspace, "")
+	resolved, err := Resolve(context.Background(), workspace, "")
 	if err != nil {
 		t.Fatalf("resolve compose config: %v", err)
 	}
@@ -289,13 +290,13 @@ func TestResolveComposeConfigRequiresServiceAndWorkspaceFolder(t *testing.T) {
 	if err := os.WriteFile(configPath, []byte(`{"dockerComposeFile":"compose.yaml"}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Resolve(workspace, ""); err == nil || !strings.Contains(err.Error(), "require service") {
+	if _, err := Resolve(context.Background(), workspace, ""); err == nil || !strings.Contains(err.Error(), "require service") {
 		t.Fatalf("expected missing service error, got %v", err)
 	}
 	if err := os.WriteFile(configPath, []byte(`{"dockerComposeFile":"compose.yaml","service":"app"}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Resolve(workspace, ""); err == nil || !strings.Contains(err.Error(), "require workspaceFolder") {
+	if _, err := Resolve(context.Background(), workspace, ""); err == nil || !strings.Contains(err.Error(), "require workspaceFolder") {
 		t.Fatalf("expected missing workspaceFolder error, got %v", err)
 	}
 }
@@ -319,7 +320,7 @@ func TestResolveSupportsContainerfile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	resolved, err := Resolve(workspace, "")
+	resolved, err := Resolve(context.Background(), workspace, "")
 	if err != nil {
 		t.Fatalf("resolve containerfile config: %v", err)
 	}
@@ -357,7 +358,7 @@ func TestResolveComposeConfigSupportsCommonComposeFilenames(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			resolved, err := Resolve(workspace, "")
+			resolved, err := Resolve(context.Background(), workspace, "")
 			if err != nil {
 				t.Fatalf("resolve compose config: %v", err)
 			}
@@ -394,7 +395,7 @@ func TestResolveWritesFeatureLockFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	resolved, err := Resolve(workspace, "")
+	resolved, err := Resolve(context.Background(), workspace, "")
 	if err != nil {
 		t.Fatalf("resolve config with features: %v", err)
 	}
@@ -432,7 +433,7 @@ func TestResolveReadOnlyDoesNotPersistFeatureFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	resolved, err := ResolveReadOnly(workspace, "")
+	resolved, err := ResolveReadOnly(context.Background(), workspace, "")
 	if err != nil {
 		t.Fatalf("resolve read only: %v", err)
 	}
@@ -469,7 +470,7 @@ func TestResolveReadOnlyFailsForUncachedRemoteFeatures(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := ResolveReadOnly(workspace, ""); err == nil || !strings.Contains(err.Error(), "requires network access or a lockfile integrity") {
+	if _, err := ResolveReadOnly(context.Background(), workspace, ""); err == nil || !strings.Contains(err.Error(), "requires network access or a lockfile integrity") {
 		t.Fatalf("expected uncached remote feature error, got %v", err)
 	}
 }
@@ -502,7 +503,7 @@ func TestResolveSupportsBuildDockerfileAndContextFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	resolved, err := Resolve(workspace, "")
+	resolved, err := Resolve(context.Background(), workspace, "")
 	if err != nil {
 		t.Fatalf("resolve build config: %v", err)
 	}
@@ -530,7 +531,7 @@ func TestResolvePrefersDotDevcontainerConfigOverRootConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	resolved, err := Resolve(workspace, "")
+	resolved, err := Resolve(context.Background(), workspace, "")
 	if err != nil {
 		t.Fatalf("resolve preferred config: %v", err)
 	}
@@ -563,7 +564,7 @@ func TestResolveSupportsComposeFileArraysWithRealFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	resolved, err := Resolve(workspace, "")
+	resolved, err := Resolve(context.Background(), workspace, "")
 	if err != nil {
 		t.Fatalf("resolve compose array config: %v", err)
 	}

@@ -5,6 +5,7 @@ import (
 	"bufio"
 	"bytes"
 	"compress/gzip"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -18,8 +19,16 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/tailscale/hujson"
+)
+
+var (
+	featureHTTPTimeout             = 30 * time.Second
+	featureArtifactMaxBytes  int64 = 64 << 20
+	featureMetadataMaxBytes  int64 = 2 << 20
+	featureErrorBodyMaxBytes int64 = 64 << 10
 )
 
 type ResolvedFeature struct {
@@ -89,7 +98,7 @@ type ociManifest struct {
 	} `json:"layers"`
 }
 
-func ResolveFeatures(configPath string, configDir string, cacheDir string, values map[string]any, opts FeatureResolveOptions) ([]ResolvedFeature, error) {
+func ResolveFeatures(ctx context.Context, configPath string, configDir string, cacheDir string, values map[string]any, opts FeatureResolveOptions) ([]ResolvedFeature, error) {
 	if len(values) == 0 {
 		return nil, nil
 	}
@@ -104,7 +113,7 @@ func ResolveFeatures(configPath string, configDir string, cacheDir string, value
 		if !enabled {
 			continue
 		}
-		featurePath, kind, resolvedRef, integrity, version, err := resolveFeaturePath(configDir, cacheDir, source, lockFile[source], opts.AllowNetwork)
+		featurePath, kind, resolvedRef, integrity, version, err := resolveFeaturePath(ctx, configDir, cacheDir, source, lockFile[source], opts.AllowNetwork)
 		if err != nil {
 			return nil, err
 		}
@@ -159,7 +168,7 @@ func ResolveFeatures(configPath string, configDir string, cacheDir string, value
 	return orderFeatures(features, byAlias)
 }
 
-func resolveFeaturePath(configDir string, cacheDir string, source string, lock FeatureLockEntry, allowNetwork bool) (string, string, string, string, string, error) {
+func resolveFeaturePath(ctx context.Context, configDir string, cacheDir string, source string, lock FeatureLockEntry, allowNetwork bool) (string, string, string, string, string, error) {
 	resolved, err := resolveLocalFeaturePath(configDir, source)
 	if err == nil {
 		return resolved, "file-path", source, "", "", nil
@@ -172,7 +181,7 @@ func resolveFeaturePath(configDir string, cacheDir string, source string, lock F
 			resolved, integrity, err := cachedTarballFeature(cacheDir, source, lock)
 			return resolved, "direct-tarball", source, integrity, source, err
 		}
-		resolved, integrity, err := fetchTarballFeature(cacheDir, source, lock)
+		resolved, integrity, err := fetchTarballFeature(ctx, cacheDir, source, lock)
 		return resolved, "direct-tarball", source, integrity, source, err
 	}
 	ref, err := parseOCIReference(source)
@@ -183,7 +192,7 @@ func resolveFeaturePath(configDir string, cacheDir string, source string, lock F
 		resolvedPath, resolvedRef, integrity, version, err := cachedOCIFeature(cacheDir, source, ref, lock)
 		return resolvedPath, "oci", resolvedRef, integrity, version, err
 	}
-	resolvedPath, resolvedRef, integrity, version, err := fetchOCIFeature(cacheDir, source, ref, lock)
+	resolvedPath, resolvedRef, integrity, version, err := fetchOCIFeature(ctx, cacheDir, source, ref, lock)
 	return resolvedPath, "oci", resolvedRef, integrity, version, err
 }
 
@@ -258,7 +267,7 @@ func parseOCIReference(source string) (ociReference, error) {
 	}, nil
 }
 
-func fetchOCIFeature(cacheDir string, source string, ref ociReference, lock FeatureLockEntry) (string, string, string, string, error) {
+func fetchOCIFeature(ctx context.Context, cacheDir string, source string, ref ociReference, lock FeatureLockEntry) (string, string, string, string, error) {
 	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
 		return "", "", "", "", err
 	}
@@ -268,7 +277,7 @@ func fetchOCIFeature(cacheDir string, source string, ref ociReference, lock Feat
 	if lock.Integrity != "" {
 		manifestRef.Reference = lock.Integrity
 	}
-	manifest, digest, token, err := fetchOCIManifest(manifestRef)
+	manifest, digest, token, err := fetchOCIManifest(ctx, manifestRef)
 	if err != nil {
 		return "", "", "", "", err
 	}
@@ -288,7 +297,12 @@ func fetchOCIFeature(cacheDir string, source string, ref ociReference, lock Feat
 	if err := os.MkdirAll(featureDir, 0o755); err != nil {
 		return "", "", "", "", err
 	}
-	if err := fetchOCIBlob(ref, manifest.Layers[0].Digest, token, featureDir); err != nil {
+	defer func() {
+		if _, err := os.Stat(filepath.Join(featureDir, "devcontainer-feature.json")); err != nil {
+			_ = os.RemoveAll(featureDir)
+		}
+	}()
+	if err := fetchOCIBlob(ctx, ref, manifest.Layers[0].Digest, token, featureDir); err != nil {
 		return "", "", "", "", err
 	}
 	if _, err := os.Stat(filepath.Join(featureDir, "devcontainer-feature.json")); err != nil {
@@ -297,13 +311,13 @@ func fetchOCIFeature(cacheDir string, source string, ref ociReference, lock Feat
 	return featureDir, ref.Registry + "/" + ref.Repository + "@" + digest, digest, ref.Reference, nil
 }
 
-func fetchTarballFeature(cacheDir string, source string, lock FeatureLockEntry) (string, string, error) {
+func fetchTarballFeature(ctx context.Context, cacheDir string, source string, lock FeatureLockEntry) (string, string, error) {
 	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
 		return "", "", err
 	}
 	key := sha256.Sum256([]byte(source))
 	baseDir := filepath.Join(cacheDir, hex.EncodeToString(key[:]))
-	body, err := fetchTarballBytes(source)
+	body, err := fetchTarballBytes(ctx, source)
 	if err != nil {
 		return "", "", err
 	}
@@ -322,6 +336,11 @@ func fetchTarballFeature(cacheDir string, source string, lock FeatureLockEntry) 
 	if err := os.MkdirAll(featureDir, 0o755); err != nil {
 		return "", "", err
 	}
+	defer func() {
+		if _, err := os.Stat(filepath.Join(featureDir, "devcontainer-feature.json")); err != nil {
+			_ = os.RemoveAll(featureDir)
+		}
+	}()
 	if err := extractFeatureLayer(bytes.NewReader(body), featureDir); err != nil {
 		return "", "", err
 	}
@@ -346,26 +365,30 @@ func cachedTarballFeature(cacheDir string, source string, lock FeatureLockEntry)
 	return featureDir, lock.Integrity, nil
 }
 
-func fetchTarballBytes(rawURL string) ([]byte, error) {
-	resp, err := http.Get(rawURL)
+func fetchTarballBytes(ctx context.Context, rawURL string) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := featureHTTPClient().Do(req)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(resp.Body)
+		body, _ := readAllLimited(resp.Body, featureErrorBodyMaxBytes, "feature error response")
 		return nil, fmt.Errorf("feature download failed: %s", strings.TrimSpace(string(body)))
 	}
-	return io.ReadAll(resp.Body)
+	return readHTTPResponseBody(resp, featureArtifactMaxBytes, "feature tarball")
 }
 
-func fetchOCIManifest(ref ociReference) (ociManifest, string, string, error) {
+func fetchOCIManifest(ctx context.Context, ref ociReference) (ociManifest, string, string, error) {
 	url := registryURL(ref, path.Join("v2", ref.Repository, "manifests", ref.Reference))
 	accept := strings.Join([]string{
 		"application/vnd.oci.image.manifest.v1+json",
 		"application/vnd.docker.distribution.manifest.v2+json",
 	}, ", ")
-	body, headers, token, err := registryGET(url, accept, "")
+	body, headers, token, err := registryGET(ctx, url, accept, "")
 	if err != nil {
 		return ociManifest{}, "", "", err
 	}
@@ -376,9 +399,9 @@ func fetchOCIManifest(ref ociReference) (ociManifest, string, string, error) {
 	return manifest, headers.Get("Docker-Content-Digest"), token, nil
 }
 
-func fetchOCIBlob(ref ociReference, digest string, token string, dstDir string) error {
+func fetchOCIBlob(ctx context.Context, ref ociReference, digest string, token string, dstDir string) error {
 	url := registryURL(ref, path.Join("v2", ref.Repository, "blobs", digest))
-	body, _, _, err := registryGET(url, "application/octet-stream", token)
+	body, _, _, err := registryGET(ctx, url, "application/octet-stream", token)
 	if err != nil {
 		return err
 	}
@@ -393,10 +416,10 @@ func registryURL(ref ociReference, resource string) string {
 	return scheme + "://" + ref.Registry + "/" + strings.TrimPrefix(resource, "/")
 }
 
-func registryGET(rawURL string, accept string, existingToken string) ([]byte, http.Header, string, error) {
-	client := &http.Client{}
+func registryGET(ctx context.Context, rawURL string, accept string, existingToken string) ([]byte, http.Header, string, error) {
+	client := featureHTTPClient()
 	request := func(token string) ([]byte, http.Header, int, http.Header, error) {
-		req, err := http.NewRequest(http.MethodGet, rawURL, nil)
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 		if err != nil {
 			return nil, nil, 0, nil, err
 		}
@@ -411,7 +434,13 @@ func registryGET(rawURL string, accept string, existingToken string) ([]byte, ht
 			return nil, nil, 0, nil, err
 		}
 		defer resp.Body.Close()
-		body, err := io.ReadAll(resp.Body)
+		limit := featureMetadataMaxBytes
+		label := "registry response"
+		if accept == "application/octet-stream" {
+			limit = featureArtifactMaxBytes
+			label = "registry blob"
+		}
+		body, err := readHTTPResponseBody(resp, limit, label)
 		return body, resp.Header.Clone(), resp.StatusCode, resp.Header.Clone(), err
 	}
 	body, headers, status, authHeaders, err := request(existingToken)
@@ -419,7 +448,7 @@ func registryGET(rawURL string, accept string, existingToken string) ([]byte, ht
 		return nil, nil, existingToken, err
 	}
 	if status == http.StatusUnauthorized {
-		token, err := fetchRegistryBearerToken(authHeaders.Get("Www-Authenticate"))
+		token, err := fetchRegistryBearerToken(ctx, authHeaders.Get("Www-Authenticate"))
 		if err != nil {
 			return nil, nil, existingToken, err
 		}
@@ -438,7 +467,7 @@ func registryGET(rawURL string, accept string, existingToken string) ([]byte, ht
 	return body, headers, existingToken, nil
 }
 
-func fetchRegistryBearerToken(challenge string) (string, error) {
+func fetchRegistryBearerToken(ctx context.Context, challenge string) (string, error) {
 	challenge = strings.TrimSpace(challenge)
 	if !strings.HasPrefix(strings.ToLower(challenge), "bearer ") {
 		return "", fmt.Errorf("unsupported registry auth challenge %q", challenge)
@@ -467,13 +496,17 @@ func fetchRegistryBearerToken(challenge string) (string, error) {
 		}
 	}
 	u.RawQuery = query.Encode()
-	resp, err := http.Get(u.String())
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		return "", err
+	}
+	resp, err := featureHTTPClient().Do(req)
 	if err != nil {
 		return "", err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(resp.Body)
+		body, _ := readAllLimited(resp.Body, featureErrorBodyMaxBytes, "registry token response")
 		return "", fmt.Errorf("registry token request failed: %s", strings.TrimSpace(string(body)))
 	}
 	var payload struct {
@@ -490,6 +523,29 @@ func fetchRegistryBearerToken(challenge string) (string, error) {
 		return payload.AccessToken, nil
 	}
 	return "", fmt.Errorf("registry token response missing token")
+}
+
+func featureHTTPClient() *http.Client {
+	return &http.Client{Timeout: featureHTTPTimeout}
+}
+
+func readHTTPResponseBody(resp *http.Response, limit int64, label string) ([]byte, error) {
+	if resp.ContentLength > limit {
+		return nil, fmt.Errorf("%s exceeds %d bytes", label, limit)
+	}
+	return readAllLimited(resp.Body, limit, label)
+}
+
+func readAllLimited(reader io.Reader, limit int64, label string) ([]byte, error) {
+	limited := &io.LimitedReader{R: reader, N: limit + 1}
+	body, err := io.ReadAll(limited)
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(body)) > limit {
+		return nil, fmt.Errorf("%s exceeds %d bytes", label, limit)
+	}
+	return body, nil
 }
 
 func extractFeatureLayer(reader io.Reader, dstDir string) error {
