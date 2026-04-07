@@ -683,7 +683,7 @@ func extractFeatureLayer(reader io.Reader, dstDir string) error {
 			return err
 		}
 		name := filepath.Clean(header.Name)
-		if name == "." || name == string(filepath.Separator) || strings.HasPrefix(name, "..") {
+		if !filepath.IsLocal(name) || archivePathHasDotDot(header.Name) {
 			continue
 		}
 		target := filepath.Join(dstDir, name)
@@ -712,6 +712,17 @@ func extractFeatureLayer(reader io.Reader, dstDir string) error {
 			}
 		}
 	}
+}
+
+func archivePathHasDotDot(name string) bool {
+	for _, part := range strings.FieldsFunc(name, func(r rune) bool {
+		return r == '/' || r == '\\'
+	}) {
+		if part == ".." {
+			return true
+		}
+	}
+	return false
 }
 
 func newTarStream(reader io.Reader) (*tar.Reader, error) {
