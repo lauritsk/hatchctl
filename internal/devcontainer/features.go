@@ -22,8 +22,12 @@ import (
 )
 
 type ResolvedFeature struct {
+	SourceKind    string
 	Source        string
 	Path          string
+	Version       string
+	Resolved      string
+	Integrity     string
 	Options       map[string]string
 	DependsOn     []string
 	InstallsAfter []string
@@ -77,9 +81,13 @@ type ociManifest struct {
 	} `json:"layers"`
 }
 
-func ResolveFeatures(configDir string, cacheDir string, values map[string]any) ([]ResolvedFeature, error) {
+func ResolveFeatures(configPath string, configDir string, cacheDir string, values map[string]any) ([]ResolvedFeature, error) {
 	if len(values) == 0 {
 		return nil, nil
+	}
+	lockFile, _, err := ReadFeatureLockFile(configPath)
+	if err != nil {
+		return nil, err
 	}
 	features := make([]ResolvedFeature, 0, len(values))
 	byAlias := map[string]int{}
@@ -88,7 +96,7 @@ func ResolveFeatures(configDir string, cacheDir string, values map[string]any) (
 		if !enabled {
 			continue
 		}
-		featurePath, err := resolveFeaturePath(configDir, cacheDir, source)
+		featurePath, kind, resolvedRef, integrity, version, err := resolveFeaturePath(configDir, cacheDir, source, lockFile[source])
 		if err != nil {
 			return nil, err
 		}
@@ -100,8 +108,12 @@ func ResolveFeatures(configDir string, cacheDir string, values map[string]any) (
 			return nil, fmt.Errorf("load feature %q: missing id in devcontainer-feature.json", source)
 		}
 		feature := ResolvedFeature{
+			SourceKind:    kind,
 			Source:        source,
 			Path:          featurePath,
+			Version:       version,
+			Resolved:      resolvedRef,
+			Integrity:     integrity,
 			Options:       materializeFeatureOptions(manifest, options),
 			DependsOn:     sortedKeys(manifest.DependsOn),
 			InstallsAfter: append([]string(nil), manifest.InstallsAfter...),
@@ -126,22 +138,30 @@ func ResolveFeatures(configDir string, cacheDir string, values map[string]any) (
 		byAlias[source] = idx
 		byAlias[manifest.ID] = idx
 	}
+	if err := WriteFeatureLockFile(configPath, features); err != nil {
+		return nil, err
+	}
 	return orderFeatures(features, byAlias)
 }
 
-func resolveFeaturePath(configDir string, cacheDir string, source string) (string, error) {
+func resolveFeaturePath(configDir string, cacheDir string, source string, lock FeatureLockEntry) (string, string, string, string, string, error) {
 	resolved, err := resolveLocalFeaturePath(configDir, source)
 	if err == nil {
-		return resolved, nil
+		return resolved, "file-path", source, "", "", nil
 	}
 	if !isMissingPathError(err) {
-		return "", err
+		return "", "", "", "", "", err
+	}
+	if strings.HasPrefix(source, "https://") || strings.HasPrefix(source, "http://") {
+		resolved, integrity, err := fetchTarballFeature(cacheDir, source, lock)
+		return resolved, "direct-tarball", source, integrity, source, err
 	}
 	ref, err := parseOCIReference(source)
 	if err != nil {
-		return "", fmt.Errorf("feature %q not found locally and is not a valid OCI reference: %w", source, err)
+		return "", "", "", "", "", fmt.Errorf("feature %q not found locally and is not a valid remote feature source: %w", source, err)
 	}
-	return fetchOCIFeature(cacheDir, source, ref)
+	resolvedPath, resolvedRef, integrity, version, err := fetchOCIFeature(cacheDir, source, ref, lock)
+	return resolvedPath, "oci", resolvedRef, integrity, version, err
 }
 
 func resolveLocalFeaturePath(configDir string, source string) (string, error) {
@@ -196,39 +216,90 @@ func parseOCIReference(source string) (ociReference, error) {
 	}, nil
 }
 
-func fetchOCIFeature(cacheDir string, source string, ref ociReference) (string, error) {
+func fetchOCIFeature(cacheDir string, source string, ref ociReference, lock FeatureLockEntry) (string, string, string, string, error) {
 	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
-		return "", err
+		return "", "", "", "", err
 	}
 	key := sha256.Sum256([]byte(source))
 	baseDir := filepath.Join(cacheDir, hex.EncodeToString(key[:]))
-	manifest, digest, token, err := fetchOCIManifest(ref)
+	manifestRef := ref
+	if lock.Integrity != "" {
+		manifestRef.Reference = lock.Integrity
+	}
+	manifest, digest, token, err := fetchOCIManifest(manifestRef)
 	if err != nil {
-		return "", err
+		return "", "", "", "", err
 	}
 	if digest == "" {
-		digest = ref.Reference
+		digest = manifestRef.Reference
 	}
 	featureDir := filepath.Join(baseDir, sanitizeFeatureCacheRef(digest))
 	if _, err := os.Stat(filepath.Join(featureDir, "devcontainer-feature.json")); err == nil {
-		return featureDir, nil
+		return featureDir, ref.Registry + "/" + ref.Repository + "@" + digest, digest, ref.Reference, nil
 	}
 	if len(manifest.Layers) == 0 {
-		return "", fmt.Errorf("OCI feature %q has no layers", source)
+		return "", "", "", "", fmt.Errorf("OCI feature %q has no layers", source)
 	}
 	if err := os.RemoveAll(featureDir); err != nil {
-		return "", err
+		return "", "", "", "", err
 	}
 	if err := os.MkdirAll(featureDir, 0o755); err != nil {
-		return "", err
+		return "", "", "", "", err
 	}
 	if err := fetchOCIBlob(ref, manifest.Layers[0].Digest, token, featureDir); err != nil {
-		return "", err
+		return "", "", "", "", err
 	}
 	if _, err := os.Stat(filepath.Join(featureDir, "devcontainer-feature.json")); err != nil {
-		return "", fmt.Errorf("OCI feature %q did not contain devcontainer-feature.json", source)
+		return "", "", "", "", fmt.Errorf("OCI feature %q did not contain devcontainer-feature.json", source)
 	}
-	return featureDir, nil
+	return featureDir, ref.Registry + "/" + ref.Repository + "@" + digest, digest, ref.Reference, nil
+}
+
+func fetchTarballFeature(cacheDir string, source string, lock FeatureLockEntry) (string, string, error) {
+	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
+		return "", "", err
+	}
+	key := sha256.Sum256([]byte(source))
+	baseDir := filepath.Join(cacheDir, hex.EncodeToString(key[:]))
+	body, err := fetchTarballBytes(source)
+	if err != nil {
+		return "", "", err
+	}
+	sum := sha256.Sum256(body)
+	integrity := "sha256:" + hex.EncodeToString(sum[:])
+	if lock.Integrity != "" && lock.Integrity != integrity {
+		return "", "", fmt.Errorf("feature %q integrity mismatch: got %s want %s", source, integrity, lock.Integrity)
+	}
+	featureDir := filepath.Join(baseDir, sanitizeFeatureCacheRef(integrity))
+	if _, err := os.Stat(filepath.Join(featureDir, "devcontainer-feature.json")); err == nil {
+		return featureDir, integrity, nil
+	}
+	if err := os.RemoveAll(featureDir); err != nil {
+		return "", "", err
+	}
+	if err := os.MkdirAll(featureDir, 0o755); err != nil {
+		return "", "", err
+	}
+	if err := extractFeatureLayer(bytes.NewReader(body), featureDir); err != nil {
+		return "", "", err
+	}
+	if _, err := os.Stat(filepath.Join(featureDir, "devcontainer-feature.json")); err != nil {
+		return "", "", fmt.Errorf("tarball feature %q did not contain devcontainer-feature.json", source)
+	}
+	return featureDir, integrity, nil
+}
+
+func fetchTarballBytes(rawURL string) ([]byte, error) {
+	resp, err := http.Get(rawURL)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("feature download failed: %s", strings.TrimSpace(string(body)))
+	}
+	return io.ReadAll(resp.Body)
 }
 
 func fetchOCIManifest(ref ociReference) (ociManifest, string, string, error) {

@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -29,7 +30,8 @@ func TestResolveFeaturesOrdersDependenciesAndInstallsAfter(t *testing.T) {
 		"installsAfter": ["beta"]
 	}`)
 
-	features, err := ResolveFeatures(configDir, t.TempDir(), map[string]any{
+	configPath := filepath.Join(configDir, "devcontainer.json")
+	features, err := ResolveFeatures(configPath, configDir, t.TempDir(), map[string]any{
 		"./gamma": true,
 		"./beta":  true,
 		"./alpha": true,
@@ -56,7 +58,8 @@ func TestResolveFeaturesMaterializesOptionEnvironment(t *testing.T) {
 		}
 	}`)
 
-	features, err := ResolveFeatures(configDir, t.TempDir(), map[string]any{
+	configPath := filepath.Join(configDir, "devcontainer.json")
+	features, err := ResolveFeatures(configPath, configDir, t.TempDir(), map[string]any{
 		"./tool": map[string]any{"other-option": true},
 	})
 	if err != nil {
@@ -81,11 +84,15 @@ func TestResolveFeaturesFetchesOCIRegistryFeature(t *testing.T) {
 		"devcontainer-feature.json": `{"id":"remote-tool","containerEnv":{"REMOTE":"yes"}}`,
 		"install.sh":                "#!/bin/sh\nexit 0\n",
 	})
-	server := newFeatureRegistryServer(t, layer)
+	server, requests := newFeatureRegistryServer(t, layer)
 	defer server.Close()
 	registryHost := strings.TrimPrefix(server.URL, "http://")
+	configPath := filepath.Join(t.TempDir(), ".devcontainer", "devcontainer.json")
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
 
-	features, err := ResolveFeatures(t.TempDir(), t.TempDir(), map[string]any{
+	features, err := ResolveFeatures(configPath, filepath.Dir(configPath), t.TempDir(), map[string]any{
 		registryHost + "/features/remote-tool:1": true,
 	})
 	if err != nil {
@@ -102,6 +109,65 @@ func TestResolveFeaturesFetchesOCIRegistryFeature(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(features[0].Path, "install.sh")); err != nil {
 		t.Fatalf("expected extracted feature install script: %v", err)
+	}
+	lockData, err := os.ReadFile(FeatureLockFilePath(configPath))
+	if err != nil {
+		t.Fatalf("read lockfile: %v", err)
+	}
+	if !strings.Contains(string(lockData), registryHost+`/features/remote-tool:1`) || !strings.Contains(string(lockData), `"integrity": "sha256:test-manifest"`) {
+		t.Fatalf("unexpected oci lockfile %s", string(lockData))
+	}
+	manifestRequests := *requests
+	if manifestRequests["/v2/features/remote-tool/manifests/sha256:test-manifest"] != 0 {
+		t.Fatalf("unexpected digest request on first resolve %#v", manifestRequests)
+	}
+	_, err = ResolveFeatures(configPath, filepath.Dir(configPath), t.TempDir(), map[string]any{
+		registryHost + "/features/remote-tool:1": true,
+	})
+	if err != nil {
+		t.Fatalf("resolve oci feature with lockfile: %v", err)
+	}
+	if (*requests)["/v2/features/remote-tool/manifests/sha256:test-manifest"] == 0 {
+		t.Fatalf("expected digest-pinned manifest request, got %#v", *requests)
+	}
+}
+
+func TestResolveFeaturesFetchesTarballFeatureAndPinsIntegrity(t *testing.T) {
+	layer := buildFeatureLayer(t, map[string]string{
+		"devcontainer-feature.json": `{"id":"tarball-tool","containerEnv":{"TARBALL":"yes"}}`,
+		"install.sh":                "#!/bin/sh\nexit 0\n",
+	})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/devcontainer-feature-tarball-tool.tgz" {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write(layer)
+	}))
+	defer server.Close()
+	configPath := filepath.Join(t.TempDir(), ".devcontainer.json")
+	featureURL := server.URL + "/devcontainer-feature-tarball-tool.tgz"
+
+	features, err := ResolveFeatures(configPath, filepath.Dir(configPath), t.TempDir(), map[string]any{featureURL: true})
+	if err != nil {
+		t.Fatalf("resolve tarball feature: %v", err)
+	}
+	if len(features) != 1 || features[0].SourceKind != "direct-tarball" {
+		t.Fatalf("unexpected tarball features %#v", features)
+	}
+	lockData, err := os.ReadFile(FeatureLockFilePath(configPath))
+	if err != nil {
+		t.Fatalf("read tarball lockfile: %v", err)
+	}
+	if !strings.Contains(string(lockData), featureURL) || !strings.Contains(string(lockData), `"integrity": "sha256:`) {
+		t.Fatalf("unexpected tarball lockfile %s", string(lockData))
+	}
+	badIntegrity := fmt.Sprintf(`{"%s":{"resolved":"%s","integrity":"sha256:bad"}}`, featureURL, featureURL)
+	if err := os.WriteFile(FeatureLockFilePath(configPath), []byte(badIntegrity), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ResolveFeatures(configPath, filepath.Dir(configPath), t.TempDir(), map[string]any{featureURL: true}); err == nil || !strings.Contains(err.Error(), "integrity mismatch") {
+		t.Fatalf("expected tarball integrity mismatch, got %v", err)
 	}
 }
 
@@ -153,10 +219,11 @@ func buildFeatureLayer(t *testing.T, files map[string]string) []byte {
 	return buffer.Bytes()
 }
 
-func newFeatureRegistryServer(t *testing.T, layer []byte) *httptest.Server {
+func newFeatureRegistryServer(t *testing.T, layer []byte) (*httptest.Server, *map[string]int) {
 	t.Helper()
 	const token = "test-token"
 	digest := "sha256:test-layer"
+	requests := map[string]int{}
 	manifestBody, err := json.Marshal(map[string]any{
 		"schemaVersion": 2,
 		"config":        map[string]any{"digest": "sha256:test-config"},
@@ -168,11 +235,12 @@ func newFeatureRegistryServer(t *testing.T, layer []byte) *httptest.Server {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests[r.URL.Path]++
 		switch {
 		case strings.HasPrefix(r.URL.Path, "/token"):
 			_ = json.NewEncoder(w).Encode(map[string]string{"token": token})
-		case strings.HasSuffix(r.URL.Path, "/manifests/1"):
+		case strings.HasSuffix(r.URL.Path, "/manifests/1") || strings.HasSuffix(r.URL.Path, "/manifests/sha256:test-manifest"):
 			if r.Header.Get("Authorization") != "Bearer "+token {
 				w.Header().Set("Www-Authenticate", `Bearer realm="`+serverURLFromRequest(r)+`/token",service="registry.test",scope="repository:features/remote-tool:pull"`)
 				w.WriteHeader(http.StatusUnauthorized)
@@ -191,6 +259,7 @@ func newFeatureRegistryServer(t *testing.T, layer []byte) *httptest.Server {
 			http.NotFound(w, r)
 		}
 	}))
+	return server, &requests
 }
 
 func serverURLFromRequest(r *http.Request) string {

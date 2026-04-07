@@ -445,3 +445,61 @@ func TestResolveSupportsBuildDockerfileAndContextFiles(t *testing.T) {
 		t.Fatalf("unexpected build context %q", got)
 	}
 }
+
+func TestResolvePrefersDotDevcontainerConfigOverRootConfig(t *testing.T) {
+	t.Parallel()
+
+	workspace := t.TempDir()
+	configDir := filepath.Join(workspace, ".devcontainer")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(workspace, ".devcontainer.json"), []byte(`{"image":"alpine:3.20","workspaceFolder":"/root-config"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	preferredPath := filepath.Join(configDir, "devcontainer.json")
+	if err := os.WriteFile(preferredPath, []byte(`{"image":"alpine:3.20","workspaceFolder":"/preferred-config"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	resolved, err := Resolve(workspace, "")
+	if err != nil {
+		t.Fatalf("resolve preferred config: %v", err)
+	}
+	if resolved.ConfigPath != preferredPath || resolved.RemoteWorkspace != "/preferred-config" {
+		t.Fatalf("unexpected resolved config %#v", resolved)
+	}
+}
+
+func TestResolveSupportsComposeFileArraysWithRealFiles(t *testing.T) {
+	t.Parallel()
+
+	workspace := t.TempDir()
+	configDir := filepath.Join(workspace, ".devcontainer")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	first := filepath.Join(configDir, "compose.yml")
+	second := filepath.Join(configDir, "docker-compose.override.yml")
+	if err := os.WriteFile(first, []byte("services:\n  app:\n    image: alpine:3.20\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(second, []byte("services:\n  app:\n    environment:\n      EXTRA: one\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(configDir, "devcontainer.json"), []byte(`{
+		"dockerComposeFile": ["compose.yml", "docker-compose.override.yml"],
+		"service": "app",
+		"workspaceFolder": "/workspace"
+	}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	resolved, err := Resolve(workspace, "")
+	if err != nil {
+		t.Fatalf("resolve compose array config: %v", err)
+	}
+	if got := strings.Join(resolved.ComposeFiles, ","); got != first+","+second {
+		t.Fatalf("unexpected compose files %q", got)
+	}
+}

@@ -266,11 +266,11 @@ func Resolve(workspaceArg string, configArg string) (ResolvedConfig, error) {
 		ManagedByLabel:  ManagedByValue,
 	}
 
-	features, err := ResolveFeatures(configDir, filepath.Join(stateDir, "features-cache"), config.Features)
+	features, err := ResolveFeatures(configPath, configDir, filepath.Join(stateDir, "features-cache"), config.Features)
 	if err != nil {
 		return ResolvedConfig{}, err
 	}
-	if err := WriteFeatureLockFile(stateDir, features); err != nil {
+	if err := WriteFeatureStateFile(stateDir, features); err != nil {
 		return ResolvedConfig{}, err
 	}
 	metadata := make([]MetadataEntry, 0, len(features))

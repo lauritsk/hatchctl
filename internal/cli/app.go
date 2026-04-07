@@ -122,6 +122,7 @@ func (a *App) runExec(ctx context.Context, args []string) error {
 	fs.SetOutput(a.err)
 	workspace := fs.String("workspace", "", "workspace folder (defaults to current directory)")
 	configPath := fs.String("config", "", "path to devcontainer.json")
+	jsonOut := fs.Bool("json", false, "emit machine-readable JSON")
 	remoteEnv := multiValue{}
 	fs.Var(&remoteEnv, "env", "extra remote environment variables in KEY=VALUE form")
 	if err := fs.Parse(args); err != nil {
@@ -132,17 +133,35 @@ func (a *App) runExec(ctx context.Context, args []string) error {
 		return errors.New("exec requires a command")
 	}
 
+	stdout := a.out
+	stderr := a.err
+	var stdoutBuffer strings.Builder
+	var stderrBuffer strings.Builder
+	if *jsonOut {
+		stdout = &stdoutBuffer
+		stderr = &stderrBuffer
+	}
 	code, err := a.runner.Exec(ctx, runtime.ExecOptions{
 		Workspace:  *workspace,
 		ConfigPath: *configPath,
 		Args:       cmd,
 		RemoteEnv:  remoteEnv.Map(),
 		Stdin:      os.Stdin,
-		Stdout:     a.out,
-		Stderr:     a.err,
+		Stdout:     stdout,
+		Stderr:     stderr,
 	})
 	if err != nil {
 		return err
+	}
+	if *jsonOut {
+		if err := writeJSON(a.out, map[string]any{
+			"exitCode": code,
+			"stdout":   stdoutBuffer.String(),
+			"stderr":   stderrBuffer.String(),
+			"command":  cmd,
+		}); err != nil {
+			return err
+		}
 	}
 	if code != 0 {
 		return runtime.ExitError{Code: code}
@@ -222,6 +241,7 @@ func (a *App) runUserCommands(ctx context.Context, args []string) error {
 	workspace := fs.String("workspace", "", "workspace folder (defaults to current directory)")
 	configPath := fs.String("config", "", "path to devcontainer.json")
 	phase := fs.String("phase", "all", "one of: all, create, start, attach")
+	jsonOut := fs.Bool("json", false, "emit machine-readable JSON")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -233,6 +253,9 @@ func (a *App) runUserCommands(ctx context.Context, args []string) error {
 	})
 	if err != nil {
 		return err
+	}
+	if *jsonOut {
+		return writeJSON(a.out, result)
 	}
 	_, err = fmt.Fprintf(a.out, "Ran lifecycle commands for %s (%s).\n", result.ContainerID, result.Phase)
 	return err

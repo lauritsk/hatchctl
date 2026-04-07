@@ -156,7 +156,7 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 		return UpResult{}, err
 	}
 	if opts.Verbose {
-		fmt.Fprintf(os.Stderr, "source=%s image=%s workspace=%s\n", resolved.SourceKind, resolved.ImageName, resolved.WorkspaceFolder)
+		fmt.Fprintf(os.Stderr, "plan source=%s config=%s workspace=%s state=%s target-image=%s\n", resolved.SourceKind, resolved.ConfigPath, resolved.WorkspaceFolder, resolved.StateDir, resolved.ImageName)
 	}
 	if err := os.MkdirAll(resolved.StateDir, 0o755); err != nil {
 		return UpResult{}, err
@@ -239,7 +239,7 @@ func (r *Runner) Build(ctx context.Context, opts BuildOptions) (BuildResult, err
 		return BuildResult{}, err
 	}
 	if opts.Verbose {
-		fmt.Fprintf(os.Stderr, "source=%s image=%s workspace=%s\n", resolved.SourceKind, resolved.ImageName, resolved.WorkspaceFolder)
+		fmt.Fprintf(os.Stderr, "plan source=%s config=%s workspace=%s state=%s target-image=%s\n", resolved.SourceKind, resolved.ConfigPath, resolved.WorkspaceFolder, resolved.StateDir, resolved.ImageName)
 	}
 	image, err := r.ensureImage(ctx, resolved)
 	if err != nil {

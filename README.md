@@ -13,12 +13,14 @@ Implemented now:
 - single-container image and Dockerfile flows
 - local file-path feature consumption for single-container image and Dockerfile flows
 - OCI feature consumption for single-container image and Dockerfile flows
+- direct tarball feature consumption for single-container image and Dockerfile flows
 - minimal Compose config discovery, build, up, exec, and reuse for a single service
 - persisted Compose override-file generation for mounts, env, labels, and command behavior
 - Compose feature consumption for image-based and Dockerfile-based single-service flows
 - Compose bridge support and Compose UID/GID remap parity for single-service flows
-- persisted feature lockfile groundwork under the workspace state dir
+- config-adjacent feature lockfiles with digest and integrity reuse
 - `up`, `build`, `exec`, `config`, `run`, and `bridge doctor`
+- machine-readable JSON output for `up`, `build`, `exec`, `config`, `run`, and `bridge doctor`
 - lifecycle execution for `initializeCommand`, `onCreateCommand`, `updateContentCommand`, `postCreateCommand`, `postStartCommand`, and `postAttachCommand`
 - workspace-scoped state and managed container reuse
 - mounted bridge helpers plus host bridge runtime for browser-open forwarding on macOS
@@ -26,7 +28,7 @@ Implemented now:
 Deferred to the next slices:
 
 - full metadata merge parity
-- broader feature source parity beyond local file-path and OCI features
+- broader feature source parity beyond local file-path, OCI, and direct tarballs
 - Compose support
 - richer UI and verbosity modes
 
@@ -40,8 +42,7 @@ Reference revision:
 
 Known gaps relative to that baseline:
 
-- non-OCI remote feature sources and lockfile parity
-- fuller lockfile parity including digest pinning and reuse behavior
+- deprecated GitHub shorthand feature references and fuller lockfile policy controls
 - broader compatibility documentation and automation-oriented output parity
 
 ## Commands
