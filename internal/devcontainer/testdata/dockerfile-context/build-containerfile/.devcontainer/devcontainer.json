@@ -1,0 +1,7 @@
+{
+  "build": {
+    "dockerfile": "Containerfile",
+    "context": "../container-context"
+  },
+  "workspaceFolder": "/workspace"
+}

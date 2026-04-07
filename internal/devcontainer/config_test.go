@@ -1,7 +1,10 @@
 package devcontainer
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -537,6 +540,157 @@ func TestResolvePrefersDotDevcontainerConfigOverRootConfig(t *testing.T) {
 	}
 	if resolved.ConfigPath != preferredPath || resolved.RemoteWorkspace != "/preferred-config" {
 		t.Fatalf("unexpected resolved config %#v", resolved)
+	}
+}
+
+func TestResolveFixturePrefersDotDevcontainerConfig(t *testing.T) {
+	t.Parallel()
+
+	workspace := copyFixtureWorkspace(t, "config-discovery/prefer-dotdevcontainer")
+	resolved, err := Resolve(context.Background(), workspace, "")
+	if err != nil {
+		t.Fatalf("resolve fixture config: %v", err)
+	}
+	if filepath.Base(filepath.Dir(resolved.ConfigPath)) != ".devcontainer" {
+		t.Fatalf("expected .devcontainer config, got %s", resolved.ConfigPath)
+	}
+	if resolved.RemoteWorkspace != "/preferred-config" {
+		t.Fatalf("unexpected fixture workspace folder %q", resolved.RemoteWorkspace)
+	}
+}
+
+func TestResolveFixtureComposeFileArrayOrder(t *testing.T) {
+	t.Parallel()
+
+	workspace := copyFixtureWorkspace(t, "compose-files/array-precedence")
+	resolved, err := Resolve(context.Background(), workspace, "")
+	if err != nil {
+		t.Fatalf("resolve compose fixture: %v", err)
+	}
+	if len(resolved.ComposeFiles) != 2 {
+		t.Fatalf("unexpected compose files %#v", resolved.ComposeFiles)
+	}
+	if filepath.Base(resolved.ComposeFiles[0]) != "compose.base.yml" || filepath.Base(resolved.ComposeFiles[1]) != "compose.override.yml" {
+		t.Fatalf("unexpected compose file order %#v", resolved.ComposeFiles)
+	}
+	if resolved.ComposeService != "app" {
+		t.Fatalf("unexpected compose service %q", resolved.ComposeService)
+	}
+}
+
+func TestResolveFixtureBuildContainerfileContext(t *testing.T) {
+	t.Parallel()
+
+	workspace := copyFixtureWorkspace(t, "dockerfile-context/build-containerfile")
+	resolved, err := Resolve(context.Background(), workspace, "")
+	if err != nil {
+		t.Fatalf("resolve dockerfile fixture: %v", err)
+	}
+	if got := EffectiveDockerfile(resolved.Config); got != "Containerfile" {
+		t.Fatalf("unexpected fixture dockerfile %q", got)
+	}
+	if got := EffectiveContext(resolved.Config); got != "../container-context" {
+		t.Fatalf("unexpected fixture context %q", got)
+	}
+}
+
+func TestResolveReadOnlyFixtureReusesRemoteFeatureLockfile(t *testing.T) {
+	t.Parallel()
+
+	layer := buildFeatureLayer(t, map[string]string{
+		"devcontainer-feature.json": `{"id":"fixture-tool","containerEnv":{"FIXTURE":"yes"}}`,
+		"install.sh":                "#!/bin/sh\nexit 0\n",
+	})
+	serverRequests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		serverRequests++
+		if r.URL.Path != "/devcontainer-feature-fixture-tool.tgz" {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write(layer)
+	}))
+	defer server.Close()
+
+	workspace := copyFixtureWorkspace(t, "remote-feature-lockfile/direct-tarball")
+	featureURL := server.URL + "/devcontainer-feature-fixture-tool.tgz"
+	sum := sha256.Sum256(layer)
+	integrity := "sha256:" + hex.EncodeToString(sum[:])
+	configPath := filepath.Join(workspace, ".devcontainer.json")
+	lockPath := FeatureLockFilePath(configPath)
+	rewriteFixturePlaceholders(t, configPath, map[string]string{"__FEATURE_SOURCE__": featureURL})
+	rewriteFixturePlaceholders(t, lockPath, map[string]string{
+		"__FEATURE_SOURCE__":    featureURL,
+		"__FEATURE_INTEGRITY__": integrity,
+	})
+
+	stateDir, err := WorkspaceStateDir(workspace, configPath)
+	if err != nil {
+		t.Fatalf("compute state dir: %v", err)
+	}
+	cacheKey := sha256.Sum256([]byte(featureURL))
+	featureDir := filepath.Join(stateDir, "features-cache", hex.EncodeToString(cacheKey[:]), sanitizeFeatureCacheRef(integrity))
+	if err := os.MkdirAll(featureDir, 0o755); err != nil {
+		t.Fatalf("create cached feature dir: %v", err)
+	}
+	if err := extractFeatureLayer(bytes.NewReader(layer), featureDir); err != nil {
+		t.Fatalf("extract cached feature: %v", err)
+	}
+
+	resolved, err := ResolveReadOnly(context.Background(), workspace, "")
+	if err != nil {
+		t.Fatalf("resolve read-only fixture: %v", err)
+	}
+	if len(resolved.Features) != 1 || resolved.Features[0].Metadata.ID != "fixture-tool" {
+		t.Fatalf("unexpected resolved fixture features %#v", resolved.Features)
+	}
+	if serverRequests != 0 {
+		t.Fatalf("expected cached lockfile reuse without network, got %d requests", serverRequests)
+	}
+}
+
+func copyFixtureWorkspace(t *testing.T, fixture string) string {
+	t.Helper()
+	source := filepath.Join("testdata", fixture)
+	workspace := t.TempDir()
+	if err := filepath.WalkDir(source, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(source, path)
+		if err != nil {
+			return err
+		}
+		if rel == "." {
+			return nil
+		}
+		target := filepath.Join(workspace, rel)
+		if d.IsDir() {
+			return os.MkdirAll(target, 0o755)
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(target, data, 0o644)
+	}); err != nil {
+		t.Fatalf("copy fixture workspace %s: %v", fixture, err)
+	}
+	return workspace
+}
+
+func rewriteFixturePlaceholders(t *testing.T, path string, replacements map[string]string) {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read fixture file %s: %v", path, err)
+	}
+	contents := string(data)
+	for oldValue, newValue := range replacements {
+		contents = strings.ReplaceAll(contents, oldValue, newValue)
+	}
+	if err := os.WriteFile(path, []byte(contents), 0o644); err != nil {
+		t.Fatalf("rewrite fixture file %s: %v", path, err)
 	}
 }
 
