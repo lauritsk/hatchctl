@@ -288,6 +288,44 @@ func TestResolveFeaturesRejectsOversizedTarballs(t *testing.T) {
 	}
 }
 
+func TestExtractFeatureLayerSkipsNonLocalAndDotDotArchivePaths(t *testing.T) {
+	dstDir := t.TempDir()
+	parentDir := filepath.Dir(dstDir)
+	layer := buildFeatureLayerEntries(t, []featureLayerEntry{
+		{Name: "ok.txt", Contents: "ok"},
+		{Name: "../outside.txt", Contents: "outside"},
+		{Name: "/absolute.txt", Contents: "absolute"},
+		{Name: "nested/../normalized.txt", Contents: "normalized"},
+	})
+
+	if err := extractFeatureLayer(bytes.NewReader(layer), dstDir); err != nil {
+		t.Fatalf("extract feature layer: %v", err)
+	}
+
+	if data, err := os.ReadFile(filepath.Join(dstDir, "ok.txt")); err != nil || string(data) != "ok" {
+		t.Fatalf("expected ok.txt to be extracted, got %q, %v", string(data), err)
+	}
+	if _, err := os.Stat(filepath.Join(dstDir, "normalized.txt")); !os.IsNotExist(err) {
+		t.Fatalf("expected normalized path with .. segment to be skipped, got %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(parentDir, "outside.txt")); !os.IsNotExist(err) {
+		t.Fatalf("expected parent traversal target to be skipped, got %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dstDir, "absolute.txt")); !os.IsNotExist(err) {
+		t.Fatalf("expected absolute archive path to be skipped, got %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(parentDir, "absolute.txt")); !os.IsNotExist(err) {
+		t.Fatalf("expected absolute archive path outside destination to be skipped, got %v", err)
+	}
+	entries, err := os.ReadDir(dstDir)
+	if err != nil {
+		t.Fatalf("read destination entries: %v", err)
+	}
+	if len(entries) != 1 || entries[0].Name() != "ok.txt" {
+		t.Fatalf("unexpected extracted entries %#v", entries)
+	}
+}
+
 func writeFeatureFixture(t *testing.T, dir string, manifest string) {
 	t.Helper()
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -316,14 +354,28 @@ func featureMetadataForTest(features []ResolvedFeature) []MetadataEntry {
 
 func buildFeatureLayer(t *testing.T, files map[string]string) []byte {
 	t.Helper()
+	entries := make([]featureLayerEntry, 0, len(files))
+	for name, contents := range files {
+		entries = append(entries, featureLayerEntry{Name: name, Contents: contents})
+	}
+	return buildFeatureLayerEntries(t, entries)
+}
+
+type featureLayerEntry struct {
+	Name     string
+	Contents string
+}
+
+func buildFeatureLayerEntries(t *testing.T, entries []featureLayerEntry) []byte {
+	t.Helper()
 	var buffer bytes.Buffer
 	gzipWriter := gzip.NewWriter(&buffer)
 	tarWriter := tar.NewWriter(gzipWriter)
-	for name, contents := range files {
-		if err := tarWriter.WriteHeader(&tar.Header{Name: name, Mode: 0o755, Size: int64(len(contents))}); err != nil {
+	for _, entry := range entries {
+		if err := tarWriter.WriteHeader(&tar.Header{Name: entry.Name, Mode: 0o755, Size: int64(len(entry.Contents))}); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := tarWriter.Write([]byte(contents)); err != nil {
+		if _, err := tarWriter.Write([]byte(entry.Contents)); err != nil {
 			t.Fatal(err)
 		}
 	}
