@@ -2,11 +2,13 @@
 
 A terminal-first Development Containers CLI in Go.
 
-## Status
+## Overview
 
-`hatchctl` now contains the first real rewrite slice for a `devcontainer-cli` replacement.
+`hatchctl` is a Go implementation of a Development Containers workflow with compatibility goals informed by `devcontainer-cli`, while keeping a terminal-first command surface.
 
-Implemented now:
+The project supports running and inspecting devcontainer-based environments across single-container and Compose-based setups, with feature installation, lifecycle execution, and bridge support where implemented.
+
+## Capabilities
 
 - config discovery for `.devcontainer/devcontainer.json` and `.devcontainer.json`
 - JSONC parsing for devcontainer files
@@ -25,16 +27,9 @@ Implemented now:
 - workspace-scoped state and managed container reuse
 - mounted bridge helpers plus host bridge runtime for browser-open forwarding on macOS
 
-Deferred to the next slices:
-
-- full metadata merge parity
-- broader feature source parity beyond local file-path, OCI, and direct tarballs
-- Compose support
-- richer UI and verbosity modes
-
 ## Upstream Baseline
 
-Current parity work in this repository is synced against `@devcontainers/cli` `v0.85.0-7-g7707502`.
+Behavior and compatibility work in this repository is tracked against `@devcontainers/cli` `v0.85.0-7-g7707502`.
 
 Reference revision:
 
@@ -58,15 +53,7 @@ hatchctl bridge doctor
 
 ## Compatibility Goals
 
-The rewrite is targeting behavioral compatibility with `devcontainer-cli` for the files it supports, while adopting a cleaner terminal-first command surface.
-
-Current scope:
-
-- single-container runtime workflows first
-- Compose second
-- broader features parity and authoring workflows after runtime parity is stable
-
-`../cli` is the reference implementation during the rewrite.
+`hatchctl` targets behavioral compatibility with `devcontainer-cli` for supported configuration and runtime flows, while keeping a cleaner terminal-oriented interface.
 
 ## Development
 
