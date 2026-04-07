@@ -28,6 +28,8 @@ type UpOptions struct {
 	Recreate       bool
 	BridgeEnabled  bool
 	Verbose        bool
+	Debug          bool
+	Progress       io.Writer
 }
 
 type UpResult struct {
@@ -43,6 +45,8 @@ type BuildOptions struct {
 	ConfigPath     string
 	LockfilePolicy devcontainer.FeatureLockfilePolicy
 	Verbose        bool
+	Debug          bool
+	Progress       io.Writer
 }
 
 type BuildResult struct {
@@ -53,6 +57,9 @@ type ExecOptions struct {
 	Workspace      string
 	ConfigPath     string
 	LockfilePolicy devcontainer.FeatureLockfilePolicy
+	Verbose        bool
+	Debug          bool
+	Progress       io.Writer
 	Args           []string
 	RemoteEnv      map[string]string
 	Stdin          io.Reader
@@ -64,6 +71,9 @@ type ReadConfigOptions struct {
 	Workspace      string
 	ConfigPath     string
 	LockfilePolicy devcontainer.FeatureLockfilePolicy
+	Verbose        bool
+	Debug          bool
+	Progress       io.Writer
 }
 
 type ReadConfigResult struct {
@@ -108,6 +118,9 @@ type RunLifecycleOptions struct {
 	Workspace      string
 	ConfigPath     string
 	LockfilePolicy devcontainer.FeatureLockfilePolicy
+	Verbose        bool
+	Debug          bool
+	Progress       io.Writer
 	Phase          string
 }
 
@@ -120,6 +133,9 @@ type BridgeDoctorOptions struct {
 	Workspace      string
 	ConfigPath     string
 	LockfilePolicy devcontainer.FeatureLockfilePolicy
+	Verbose        bool
+	Debug          bool
+	Progress       io.Writer
 }
 
 type ExitError struct {
@@ -131,6 +147,7 @@ func (e ExitError) Error() string {
 }
 
 func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
+	r.emitProgress(opts.Progress, "Resolving development container")
 	resolved, err := devcontainer.ResolveWithOptions(ctx, opts.Workspace, opts.ConfigPath, devcontainer.ResolveOptions{
 		AllowNetwork:      true,
 		WriteFeatureLock:  true,
@@ -140,8 +157,8 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 	if err != nil {
 		return UpResult{}, err
 	}
-	if opts.Verbose {
-		fmt.Fprintf(os.Stderr, "plan source=%s config=%s workspace=%s state=%s target-image=%s\n", resolved.SourceKind, resolved.ConfigPath, resolved.WorkspaceFolder, resolved.StateDir, resolved.ImageName)
+	if opts.Debug {
+		r.emitPlan(opts.Progress, resolved)
 	}
 	if err := os.MkdirAll(resolved.StateDir, 0o755); err != nil {
 		return UpResult{}, err
@@ -157,28 +174,34 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 	}
 
 	if opts.Recreate && state.ContainerID != "" {
+		r.emitProgress(opts.Progress, "Recreating managed container")
 		_ = r.removeContainer(ctx, state.ContainerID)
 		state = devcontainer.State{}
 	}
 
+	r.emitProgress(opts.Progress, "Ensuring container image")
 	image, err := r.ensureImage(ctx, resolved)
 	if err != nil {
 		return UpResult{}, err
 	}
+	r.emitProgress(opts.Progress, "Applying runtime metadata")
 	if err := r.enrichMergedConfig(ctx, &resolved, image); err != nil {
 		return UpResult{}, err
 	}
+	r.emitProgress(opts.Progress, "Reconciling container user")
 	image, err = r.ensureUpdatedUIDImage(ctx, resolved, image)
 	if err != nil {
 		return UpResult{}, err
 	}
 	var bridgeReport *bridge.Report
+	r.emitProgress(opts.Progress, "Configuring bridge support")
 	bridgeReport, err = r.applyBridgeConfig(&resolved, opts.BridgeEnabled)
 	if err != nil {
 		return UpResult{}, err
 	}
 	overridePath := ""
 	if resolved.SourceKind == "compose" {
+		r.emitProgress(opts.Progress, "Preparing Compose override")
 		overridePath, err = writeComposeOverride(resolved, image)
 		if err != nil {
 			return UpResult{}, err
@@ -186,11 +209,13 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 		defer os.Remove(overridePath)
 	}
 
+	r.emitProgress(opts.Progress, "Ensuring managed container")
 	containerID, created, err := r.ensureContainer(ctx, resolved, image, opts.BridgeEnabled, overridePath)
 	if err != nil {
 		return UpResult{}, err
 	}
 	if bridgeReport != nil {
+		r.emitProgress(opts.Progress, "Starting bridge session")
 		startedBridge, err := bridge.Start(resolved.StateDir, opts.BridgeEnabled, containerID)
 		if err != nil {
 			return UpResult{}, err
@@ -198,6 +223,7 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 		bridgeReport = (*bridge.Report)(startedBridge)
 	}
 
+	r.emitProgress(opts.Progress, "Running lifecycle commands")
 	if err := r.runLifecycleForUp(ctx, resolved, containerID, created, state.LifecycleReady); err != nil {
 		return UpResult{}, err
 	}
@@ -208,6 +234,7 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 	if bridgeReport != nil {
 		state.BridgeSessionID = bridgeReport.ID
 	}
+	r.emitProgress(opts.Progress, "Writing workspace state")
 	if err := devcontainer.WriteState(resolved.StateDir, state); err != nil {
 		return UpResult{}, err
 	}
@@ -222,6 +249,7 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 }
 
 func (r *Runner) Build(ctx context.Context, opts BuildOptions) (BuildResult, error) {
+	r.emitProgress(opts.Progress, "Resolving development container")
 	resolved, err := devcontainer.ResolveWithOptions(ctx, opts.Workspace, opts.ConfigPath, devcontainer.ResolveOptions{
 		AllowNetwork:      true,
 		WriteFeatureLock:  true,
@@ -231,16 +259,19 @@ func (r *Runner) Build(ctx context.Context, opts BuildOptions) (BuildResult, err
 	if err != nil {
 		return BuildResult{}, err
 	}
-	if opts.Verbose {
-		fmt.Fprintf(os.Stderr, "plan source=%s config=%s workspace=%s state=%s target-image=%s\n", resolved.SourceKind, resolved.ConfigPath, resolved.WorkspaceFolder, resolved.StateDir, resolved.ImageName)
+	if opts.Debug {
+		r.emitPlan(opts.Progress, resolved)
 	}
+	r.emitProgress(opts.Progress, "Ensuring container image")
 	image, err := r.ensureImage(ctx, resolved)
 	if err != nil {
 		return BuildResult{}, err
 	}
+	r.emitProgress(opts.Progress, "Applying runtime metadata")
 	if err := r.enrichMergedConfig(ctx, &resolved, image); err != nil {
 		return BuildResult{}, err
 	}
+	r.emitProgress(opts.Progress, "Reconciling container user")
 	image, err = r.ensureUpdatedUIDImage(ctx, resolved, image)
 	if err != nil {
 		return BuildResult{}, err
@@ -249,6 +280,7 @@ func (r *Runner) Build(ctx context.Context, opts BuildOptions) (BuildResult, err
 }
 
 func (r *Runner) Exec(ctx context.Context, opts ExecOptions) (int, error) {
+	r.emitProgress(opts.Progress, "Resolving development container")
 	resolved, err := devcontainer.ResolveWithOptions(ctx, opts.Workspace, opts.ConfigPath, devcontainer.ResolveOptions{
 		AllowNetwork:      true,
 		WriteFeatureLock:  true,
@@ -258,13 +290,18 @@ func (r *Runner) Exec(ctx context.Context, opts ExecOptions) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	if opts.Debug {
+		r.emitPlan(opts.Progress, resolved)
+	}
 	image := resolved.Config.Image
 	if image == "" && resolved.SourceKind != "compose" {
 		image = resolved.ImageName
 	}
+	r.emitProgress(opts.Progress, "Applying runtime metadata")
 	if err := r.enrichMergedConfig(ctx, &resolved, image); err != nil {
 		return 0, err
 	}
+	r.emitProgress(opts.Progress, "Finding managed container")
 	containerID, err := r.findContainer(ctx, resolved)
 	if err != nil {
 		return 0, err
@@ -293,6 +330,7 @@ func (r *Runner) Exec(ctx context.Context, opts ExecOptions) (int, error) {
 	}
 	args = append(args, containerID)
 	args = append(args, opts.Args...)
+	r.emitProgress(opts.Progress, fmt.Sprintf("Executing command in %s", containerID))
 
 	err = r.docker.Run(ctx, docker.RunOptions{
 		Args:   args,
@@ -313,16 +351,21 @@ func (r *Runner) Exec(ctx context.Context, opts ExecOptions) (int, error) {
 }
 
 func (r *Runner) ReadConfig(ctx context.Context, opts ReadConfigOptions) (ReadConfigResult, error) {
+	r.emitProgress(opts.Progress, "Inspecting resolved configuration")
 	resolved, err := devcontainer.ResolveReadOnlyWithOptions(ctx, opts.Workspace, opts.ConfigPath, devcontainer.ResolveOptions{
 		LockfilePolicy: opts.LockfilePolicy,
 	})
 	if err != nil {
 		return ReadConfigResult{}, err
 	}
+	if opts.Debug {
+		r.emitPlan(opts.Progress, resolved)
+	}
 	image := resolved.Config.Image
 	if image == "" && resolved.SourceKind != "compose" {
 		image = resolved.ImageName
 	}
+	r.emitProgress(opts.Progress, "Applying runtime metadata")
 	if err := r.enrichMergedConfig(ctx, &resolved, image); err != nil {
 		return ReadConfigResult{}, err
 	}
@@ -384,6 +427,7 @@ func (r *Runner) ReadConfig(ctx context.Context, opts ReadConfigOptions) (ReadCo
 }
 
 func (r *Runner) RunLifecycle(ctx context.Context, opts RunLifecycleOptions) (RunLifecycleResult, error) {
+	r.emitProgress(opts.Progress, "Resolving development container")
 	resolved, err := devcontainer.ResolveWithOptions(ctx, opts.Workspace, opts.ConfigPath, devcontainer.ResolveOptions{
 		AllowNetwork:      true,
 		WriteFeatureLock:  true,
@@ -393,6 +437,10 @@ func (r *Runner) RunLifecycle(ctx context.Context, opts RunLifecycleOptions) (Ru
 	if err != nil {
 		return RunLifecycleResult{}, err
 	}
+	if opts.Debug {
+		r.emitPlan(opts.Progress, resolved)
+	}
+	r.emitProgress(opts.Progress, "Finding managed container")
 	containerID, err := r.findContainer(ctx, resolved)
 	if err != nil {
 		return RunLifecycleResult{}, err
@@ -401,6 +449,7 @@ func (r *Runner) RunLifecycle(ctx context.Context, opts RunLifecycleOptions) (Ru
 	if image == "" && resolved.SourceKind != "compose" {
 		image = resolved.ImageName
 	}
+	r.emitProgress(opts.Progress, "Applying runtime metadata")
 	if err := r.enrichMergedConfig(ctx, &resolved, image); err != nil {
 		return RunLifecycleResult{}, err
 	}
@@ -408,6 +457,7 @@ func (r *Runner) RunLifecycle(ctx context.Context, opts RunLifecycleOptions) (Ru
 	if phase == "" {
 		phase = "all"
 	}
+	r.emitProgress(opts.Progress, "Running lifecycle commands")
 	if err := r.runLifecyclePhase(ctx, resolved, containerID, phase); err != nil {
 		return RunLifecycleResult{}, err
 	}
@@ -415,13 +465,31 @@ func (r *Runner) RunLifecycle(ctx context.Context, opts RunLifecycleOptions) (Ru
 }
 
 func (r *Runner) BridgeDoctor(ctx context.Context, opts BridgeDoctorOptions) (bridge.Report, error) {
+	r.emitProgress(opts.Progress, "Inspecting bridge state")
 	resolved, err := devcontainer.ResolveReadOnlyWithOptions(ctx, opts.Workspace, opts.ConfigPath, devcontainer.ResolveOptions{
 		LockfilePolicy: opts.LockfilePolicy,
 	})
 	if err != nil {
 		return bridge.Report{}, err
 	}
+	if opts.Debug {
+		r.emitPlan(opts.Progress, resolved)
+	}
 	return bridge.Doctor(resolved.StateDir)
+}
+
+func (r *Runner) emitProgress(w io.Writer, message string) {
+	if w == nil || message == "" {
+		return
+	}
+	_, _ = fmt.Fprintf(w, "==> %s\n", message)
+}
+
+func (r *Runner) emitPlan(w io.Writer, resolved devcontainer.ResolvedConfig) {
+	if w == nil {
+		return
+	}
+	_, _ = fmt.Fprintf(w, "plan source=%s config=%s workspace=%s state=%s target-image=%s\n", resolved.SourceKind, resolved.ConfigPath, resolved.WorkspaceFolder, resolved.StateDir, resolved.ImageName)
 }
 
 const updateUIDDockerfile = `ARG BASE_IMAGE

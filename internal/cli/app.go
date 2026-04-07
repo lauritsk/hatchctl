@@ -21,25 +21,42 @@ type App struct {
 	out io.Writer
 	err io.Writer
 
-	runner *runtime.Runner
+	runner runner
+}
+
+type runner interface {
+	Up(context.Context, runtime.UpOptions) (runtime.UpResult, error)
+	Build(context.Context, runtime.BuildOptions) (runtime.BuildResult, error)
+	Exec(context.Context, runtime.ExecOptions) (int, error)
+	ReadConfig(context.Context, runtime.ReadConfigOptions) (runtime.ReadConfigResult, error)
+	RunLifecycle(context.Context, runtime.RunLifecycleOptions) (runtime.RunLifecycleResult, error)
+	BridgeDoctor(context.Context, runtime.BridgeDoctorOptions) (bridge.Report, error)
 }
 
 func New(out io.Writer, err io.Writer) *App {
 	engine := docker.NewClient("docker")
+	return NewWithRunner(out, err, runtime.NewRunner(engine))
+}
+
+func NewWithRunner(out io.Writer, err io.Writer, runner runner) *App {
 	return &App{
 		out:    out,
 		err:    err,
-		runner: runtime.NewRunner(engine),
+		runner: runner,
 	}
 }
 
 func (a *App) Run(ctx context.Context, args []string) error {
-	if len(args) == 0 {
+	global, commandArgs, err := parseGlobalOptions(args)
+	if err != nil {
+		return err
+	}
+	if len(commandArgs) == 0 {
 		a.printHelp()
 		return nil
 	}
 
-	switch args[0] {
+	switch commandArgs[0] {
 	case "help", "--help", "-h":
 		a.printHelp()
 		return nil
@@ -47,23 +64,23 @@ func (a *App) Run(ctx context.Context, args []string) error {
 		_, err := fmt.Fprintln(a.out, version.Version)
 		return err
 	case "up":
-		return a.runUp(ctx, args[1:])
+		return a.runUp(ctx, commandArgs[1:], global)
 	case "build":
-		return a.runBuild(ctx, args[1:])
+		return a.runBuild(ctx, commandArgs[1:], global)
 	case "exec":
-		return a.runExec(ctx, args[1:])
+		return a.runExec(ctx, commandArgs[1:], global)
 	case "config":
-		return a.runConfig(ctx, args[1:])
+		return a.runConfig(ctx, commandArgs[1:], global)
 	case "run":
-		return a.runUserCommands(ctx, args[1:])
+		return a.runUserCommands(ctx, commandArgs[1:], global)
 	case "bridge":
-		return a.runBridge(ctx, args[1:])
+		return a.runBridge(ctx, commandArgs[1:], global)
 	default:
-		return fmt.Errorf("unknown command %q\n\n%s", args[0], helpText())
+		return fmt.Errorf("unknown command %q\n\n%s", commandArgs[0], helpText())
 	}
 }
 
-func (a *App) runUp(ctx context.Context, args []string) error {
+func (a *App) runUp(ctx context.Context, args []string, global globalOptions) error {
 	fs := flag.NewFlagSet("up", flag.ContinueOnError)
 	fs.SetOutput(a.err)
 	workspace := fs.String("workspace", "", "workspace folder (defaults to current directory)")
@@ -72,7 +89,8 @@ func (a *App) runUp(ctx context.Context, args []string) error {
 	recreate := fs.Bool("recreate", false, "remove and recreate an existing managed container")
 	bridgeEnabled := fs.Bool("bridge", false, "enable macOS auth bridge scaffolding")
 	jsonOut := fs.Bool("json", false, "emit machine-readable JSON")
-	verbose := fs.Bool("verbose", false, "print the runtime plan before executing")
+	verbose := fs.Bool("verbose", global.Verbose, "print progress while running")
+	debug := fs.Bool("debug", global.Debug, "print detailed execution diagnostics")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -87,7 +105,9 @@ func (a *App) runUp(ctx context.Context, args []string) error {
 		LockfilePolicy: policy,
 		Recreate:       *recreate,
 		BridgeEnabled:  *bridgeEnabled,
-		Verbose:        *verbose,
+		Verbose:        *verbose || *debug,
+		Debug:          *debug,
+		Progress:       progressWriter(a.err, *jsonOut, *verbose || *debug),
 	})
 	if err != nil {
 		return err
@@ -98,14 +118,15 @@ func (a *App) runUp(ctx context.Context, args []string) error {
 	return a.printUpResult(result)
 }
 
-func (a *App) runBuild(ctx context.Context, args []string) error {
+func (a *App) runBuild(ctx context.Context, args []string, global globalOptions) error {
 	fs := flag.NewFlagSet("build", flag.ContinueOnError)
 	fs.SetOutput(a.err)
 	workspace := fs.String("workspace", "", "workspace folder (defaults to current directory)")
 	configPath := fs.String("config", "", "path to devcontainer.json")
 	lockfilePolicy := fs.String("lockfile-policy", "auto", "lockfile policy: auto, frozen, or update")
 	jsonOut := fs.Bool("json", false, "emit machine-readable JSON")
-	verbose := fs.Bool("verbose", false, "print the runtime plan before executing")
+	verbose := fs.Bool("verbose", global.Verbose, "print progress while running")
+	debug := fs.Bool("debug", global.Debug, "print detailed execution diagnostics")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -118,7 +139,9 @@ func (a *App) runBuild(ctx context.Context, args []string) error {
 		Workspace:      *workspace,
 		ConfigPath:     *configPath,
 		LockfilePolicy: policy,
-		Verbose:        *verbose,
+		Verbose:        *verbose || *debug,
+		Debug:          *debug,
+		Progress:       progressWriter(a.err, *jsonOut, *verbose || *debug),
 	})
 	if err != nil {
 		return err
@@ -130,13 +153,15 @@ func (a *App) runBuild(ctx context.Context, args []string) error {
 	return err
 }
 
-func (a *App) runExec(ctx context.Context, args []string) error {
+func (a *App) runExec(ctx context.Context, args []string, global globalOptions) error {
 	fs := flag.NewFlagSet("exec", flag.ContinueOnError)
 	fs.SetOutput(a.err)
 	workspace := fs.String("workspace", "", "workspace folder (defaults to current directory)")
 	configPath := fs.String("config", "", "path to devcontainer.json")
 	lockfilePolicy := fs.String("lockfile-policy", "auto", "lockfile policy: auto, frozen, or update")
 	jsonOut := fs.Bool("json", false, "emit machine-readable JSON")
+	verbose := fs.Bool("verbose", global.Verbose, "print progress while running")
+	debug := fs.Bool("debug", global.Debug, "print detailed execution diagnostics")
 	remoteEnv := multiValue{}
 	fs.Var(&remoteEnv, "env", "extra remote environment variables in KEY=VALUE form")
 	if err := fs.Parse(args); err != nil {
@@ -163,6 +188,9 @@ func (a *App) runExec(ctx context.Context, args []string) error {
 		Workspace:      *workspace,
 		ConfigPath:     *configPath,
 		LockfilePolicy: policy,
+		Verbose:        *verbose || *debug,
+		Debug:          *debug,
+		Progress:       progressWriter(a.err, *jsonOut, *verbose || *debug),
 		Args:           cmd,
 		RemoteEnv:      remoteEnv.Map(),
 		Stdin:          os.Stdin,
@@ -188,13 +216,15 @@ func (a *App) runExec(ctx context.Context, args []string) error {
 	return nil
 }
 
-func (a *App) runConfig(ctx context.Context, args []string) error {
+func (a *App) runConfig(ctx context.Context, args []string, global globalOptions) error {
 	fs := flag.NewFlagSet("config", flag.ContinueOnError)
 	fs.SetOutput(a.err)
 	workspace := fs.String("workspace", "", "workspace folder (defaults to current directory)")
 	configPath := fs.String("config", "", "path to devcontainer.json")
 	lockfilePolicy := fs.String("lockfile-policy", "frozen", "lockfile policy: auto, frozen, or update")
 	jsonOut := fs.Bool("json", false, "emit machine-readable JSON")
+	verbose := fs.Bool("verbose", global.Verbose, "print progress while running")
+	debug := fs.Bool("debug", global.Debug, "print detailed execution diagnostics")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -207,6 +237,9 @@ func (a *App) runConfig(ctx context.Context, args []string) error {
 		Workspace:      *workspace,
 		ConfigPath:     *configPath,
 		LockfilePolicy: policy,
+		Verbose:        *verbose || *debug,
+		Debug:          *debug,
+		Progress:       progressWriter(a.err, *jsonOut, *verbose || *debug),
 	})
 	if err != nil {
 		return err
@@ -260,7 +293,7 @@ func (a *App) runConfig(ctx context.Context, args []string) error {
 	return err
 }
 
-func (a *App) runUserCommands(ctx context.Context, args []string) error {
+func (a *App) runUserCommands(ctx context.Context, args []string, global globalOptions) error {
 	fs := flag.NewFlagSet("run", flag.ContinueOnError)
 	fs.SetOutput(a.err)
 	workspace := fs.String("workspace", "", "workspace folder (defaults to current directory)")
@@ -268,6 +301,8 @@ func (a *App) runUserCommands(ctx context.Context, args []string) error {
 	lockfilePolicy := fs.String("lockfile-policy", "auto", "lockfile policy: auto, frozen, or update")
 	phase := fs.String("phase", "all", "one of: all, create, start, attach")
 	jsonOut := fs.Bool("json", false, "emit machine-readable JSON")
+	verbose := fs.Bool("verbose", global.Verbose, "print progress while running")
+	debug := fs.Bool("debug", global.Debug, "print detailed execution diagnostics")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -280,6 +315,9 @@ func (a *App) runUserCommands(ctx context.Context, args []string) error {
 		Workspace:      *workspace,
 		ConfigPath:     *configPath,
 		LockfilePolicy: policy,
+		Verbose:        *verbose || *debug,
+		Debug:          *debug,
+		Progress:       progressWriter(a.err, *jsonOut, *verbose || *debug),
 		Phase:          *phase,
 	})
 	if err != nil {
@@ -292,7 +330,7 @@ func (a *App) runUserCommands(ctx context.Context, args []string) error {
 	return err
 }
 
-func (a *App) runBridge(ctx context.Context, args []string) error {
+func (a *App) runBridge(ctx context.Context, args []string, global globalOptions) error {
 	if len(args) == 0 || args[0] == "help" || args[0] == "--help" || args[0] == "-h" {
 		_, err := fmt.Fprintln(a.out, "Usage: hatchctl bridge doctor [--workspace PATH] [--config PATH] [--json]")
 		return err
@@ -310,6 +348,8 @@ func (a *App) runBridge(ctx context.Context, args []string) error {
 	configPath := fs.String("config", "", "path to devcontainer.json")
 	lockfilePolicy := fs.String("lockfile-policy", "frozen", "lockfile policy: auto, frozen, or update")
 	jsonOut := fs.Bool("json", false, "emit machine-readable JSON")
+	verbose := fs.Bool("verbose", global.Verbose, "print progress while running")
+	debug := fs.Bool("debug", global.Debug, "print detailed execution diagnostics")
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
 	}
@@ -322,6 +362,9 @@ func (a *App) runBridge(ctx context.Context, args []string) error {
 		Workspace:      *workspace,
 		ConfigPath:     *configPath,
 		LockfilePolicy: policy,
+		Verbose:        *verbose || *debug,
+		Debug:          *debug,
+		Progress:       progressWriter(a.err, *jsonOut, *verbose || *debug),
 	})
 	if err != nil {
 		return err
@@ -362,6 +405,10 @@ func helpText() string {
 
 Terminal-first Development Containers in Go.
 
+Global flags:
+  --verbose  Print progress while running
+  --debug    Print detailed execution diagnostics
+
 Commands:
   hatchctl up       Build and start a dev container
   hatchctl build    Build the dev container image only
@@ -372,10 +419,12 @@ Commands:
   hatchctl version  Print version information
 
 Examples:
-  hatchctl up
-  hatchctl up --workspace ../my-project --bridge
-  hatchctl exec -- go test ./...
-  hatchctl build --json
+	  hatchctl up
+	  hatchctl --verbose up
+	  hatchctl build --debug
+	  hatchctl up --workspace ../my-project --bridge
+	  hatchctl exec -- go test ./...
+	  hatchctl build --json
   hatchctl config --json
 `) + "\n"
 }
@@ -402,6 +451,44 @@ func writeJSON(w io.Writer, value any) error {
 
 func parseLockfilePolicy(value string) (devcontainer.FeatureLockfilePolicy, error) {
 	return devcontainer.ParseFeatureLockfilePolicy(value)
+}
+
+type globalOptions struct {
+	Verbose bool
+	Debug   bool
+}
+
+func parseGlobalOptions(args []string) (globalOptions, []string, error) {
+	var global globalOptions
+	remaining := make([]string, 0, len(args))
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch arg {
+		case "--verbose":
+			global.Verbose = true
+		case "--debug":
+			global.Debug = true
+			global.Verbose = true
+		case "help", "--help", "-h", "version", "--version", "-v":
+			remaining = append(remaining, args[i:]...)
+			return global, remaining, nil
+		default:
+			if strings.HasPrefix(arg, "-") {
+				remaining = append(remaining, args[i:]...)
+				return global, remaining, nil
+			}
+			remaining = append(remaining, args[i:]...)
+			return global, remaining, nil
+		}
+	}
+	return global, remaining, nil
+}
+
+func progressWriter(w io.Writer, jsonOut bool, enabled bool) io.Writer {
+	if jsonOut || !enabled {
+		return nil
+	}
+	return w
 }
 
 type multiValue []string
