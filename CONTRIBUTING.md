@@ -37,5 +37,6 @@ Releases are created from git tags and published through GitHub Actions.
 
 - `mise run release:version` prepares the next release version
 - pushing the resulting `v*` tag triggers the release workflow
+- `cog.toml` configures Cocogitto to generate `v`-prefixed tags and the repository changelog
 
 `mise run release:version` may legitimately do nothing if the current commit history does not contain a release-worthy Conventional Commit.
