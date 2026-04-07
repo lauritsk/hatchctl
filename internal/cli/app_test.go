@@ -3,10 +3,10 @@ package cli
 import (
 	"bytes"
 	"context"
-	"io"
 	"testing"
 
 	"github.com/lauritsk/hatchctl/internal/bridge"
+	ui "github.com/lauritsk/hatchctl/internal/display"
 	"github.com/lauritsk/hatchctl/internal/runtime"
 )
 
@@ -44,15 +44,22 @@ func (s stubRunner) BridgeDoctor(context.Context, runtime.BridgeDoctorOptions) (
 func TestParseGlobalOptionsStripsLeadingVerboseFlags(t *testing.T) {
 	t.Parallel()
 
-	global, remaining, err := parseGlobalOptions([]string{"--verbose", "--debug", "up", "--workspace", "/tmp/demo"})
-	if err != nil {
-		t.Fatalf("parse global options: %v", err)
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	var got runtime.UpOptions
+	app := NewWithRunner(&out, &errOut, stubRunner{up: func(_ context.Context, opts runtime.UpOptions) (runtime.UpResult, error) {
+		got = opts
+		return runtime.UpResult{}, nil
+	}})
+
+	if err := app.Run(context.Background(), []string{"--verbose", "--debug", "up", "--workspace", "/tmp/demo"}); err != nil {
+		t.Fatalf("run app: %v", err)
 	}
-	if !global.Verbose || !global.Debug {
-		t.Fatalf("unexpected global options %#v", global)
+	if !got.Verbose || !got.Debug {
+		t.Fatalf("unexpected global options %#v", got)
 	}
-	if len(remaining) != 3 || remaining[0] != "up" {
-		t.Fatalf("unexpected remaining args %#v", remaining)
+	if got.Workspace != "/tmp/demo" {
+		t.Fatalf("unexpected workspace %q", got.Workspace)
 	}
 }
 
@@ -67,11 +74,11 @@ func TestRunUpUsesGlobalDebugForProgressAndPlan(t *testing.T) {
 		if !opts.Verbose || !opts.Debug {
 			t.Fatalf("expected verbose+debug options, got %#v", opts)
 		}
-		if opts.Progress == nil {
-			t.Fatal("expected progress writer")
+		if opts.Events == nil {
+			t.Fatal("expected event sink")
 		}
-		_, _ = io.WriteString(opts.Progress, "==> Resolving development container\n")
-		_, _ = io.WriteString(opts.Progress, "plan source=image config=/tmp/devcontainer.json workspace=/workspace state=/tmp/state target-image=hatchctl-demo\n")
+		opts.Events.Emit(ui.Event{Kind: ui.EventProgress, Message: "Resolving development container"})
+		opts.Events.Emit(ui.Event{Kind: ui.EventDebug, Message: "plan source=image config=/tmp/devcontainer.json workspace=/workspace state=/tmp/state target-image=hatchctl-demo"})
 		return runtime.UpResult{ContainerID: "abc123", Image: "hatchctl-demo", RemoteWorkspaceFolder: "/workspace", StateDir: "/tmp/state"}, nil
 	}})
 
@@ -95,8 +102,8 @@ func TestRunUpJSONDisablesProgressOutput(t *testing.T) {
 	var out bytes.Buffer
 	var errOut bytes.Buffer
 	app := NewWithRunner(&out, &errOut, stubRunner{up: func(_ context.Context, opts runtime.UpOptions) (runtime.UpResult, error) {
-		if opts.Progress != nil {
-			t.Fatal("expected no progress writer for json output")
+		if opts.Events != nil {
+			t.Fatal("expected no event sink for json output")
 		}
 		return runtime.UpResult{ContainerID: "abc123", Image: "hatchctl-demo", RemoteWorkspaceFolder: "/workspace", StateDir: "/tmp/state"}, nil
 	}})

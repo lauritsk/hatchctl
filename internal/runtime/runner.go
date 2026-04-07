@@ -10,6 +10,7 @@ import (
 
 	"github.com/lauritsk/hatchctl/internal/bridge"
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
+	ui "github.com/lauritsk/hatchctl/internal/display"
 	"github.com/lauritsk/hatchctl/internal/docker"
 )
 
@@ -43,7 +44,7 @@ type UpOptions struct {
 	BridgeEnabled  bool
 	Verbose        bool
 	Debug          bool
-	Progress       io.Writer
+	Events         ui.Sink
 }
 
 type UpResult struct {
@@ -60,7 +61,7 @@ type BuildOptions struct {
 	LockfilePolicy devcontainer.FeatureLockfilePolicy
 	Verbose        bool
 	Debug          bool
-	Progress       io.Writer
+	Events         ui.Sink
 }
 
 type BuildResult struct {
@@ -73,7 +74,7 @@ type ExecOptions struct {
 	LockfilePolicy devcontainer.FeatureLockfilePolicy
 	Verbose        bool
 	Debug          bool
-	Progress       io.Writer
+	Events         ui.Sink
 	Args           []string
 	RemoteEnv      map[string]string
 	Stdin          io.Reader
@@ -87,7 +88,7 @@ type ReadConfigOptions struct {
 	LockfilePolicy devcontainer.FeatureLockfilePolicy
 	Verbose        bool
 	Debug          bool
-	Progress       io.Writer
+	Events         ui.Sink
 }
 
 type ReadConfigResult struct {
@@ -134,7 +135,7 @@ type RunLifecycleOptions struct {
 	LockfilePolicy devcontainer.FeatureLockfilePolicy
 	Verbose        bool
 	Debug          bool
-	Progress       io.Writer
+	Events         ui.Sink
 	Phase          string
 }
 
@@ -149,7 +150,7 @@ type BridgeDoctorOptions struct {
 	LockfilePolicy devcontainer.FeatureLockfilePolicy
 	Verbose        bool
 	Debug          bool
-	Progress       io.Writer
+	Events         ui.Sink
 }
 
 type ExitError struct {
@@ -163,7 +164,7 @@ type prepareResolveOptions struct {
 	ReadOnly       bool
 	ProgressLabel  string
 	Debug          bool
-	Progress       io.Writer
+	Events         ui.Sink
 }
 
 func (e ExitError) Error() string {
@@ -177,7 +178,7 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 		LockfilePolicy: opts.LockfilePolicy,
 		ProgressLabel:  "Resolving development container",
 		Debug:          opts.Debug,
-		Progress:       opts.Progress,
+		Events:         opts.Events,
 	})
 	if err != nil {
 		return UpResult{}, err
@@ -196,34 +197,34 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 	}
 
 	if opts.Recreate && state.ContainerID != "" {
-		r.emitProgress(opts.Progress, "Recreating managed container")
+		r.emitProgress(opts.Events, "Recreating managed container")
 		_ = r.removeContainer(ctx, state.ContainerID)
 		state = devcontainer.State{}
 	}
 
-	r.emitProgress(opts.Progress, "Ensuring container image")
+	r.emitProgress(opts.Events, "Ensuring container image")
 	image, err := r.ensureImage(ctx, resolved)
 	if err != nil {
 		return UpResult{}, err
 	}
-	r.emitProgress(opts.Progress, "Applying runtime metadata")
+	r.emitProgress(opts.Events, "Applying runtime metadata")
 	if err := r.enrichMergedConfig(ctx, &resolved, image); err != nil {
 		return UpResult{}, err
 	}
-	r.emitProgress(opts.Progress, "Reconciling container user")
+	r.emitProgress(opts.Events, "Reconciling container user")
 	image, err = r.ensureUpdatedUIDImage(ctx, resolved, image)
 	if err != nil {
 		return UpResult{}, err
 	}
 	var bridgeReport *bridge.Report
-	r.emitProgress(opts.Progress, "Configuring bridge support")
+	r.emitProgress(opts.Events, "Configuring bridge support")
 	bridgeReport, err = r.applyBridgeConfig(&resolved, opts.BridgeEnabled)
 	if err != nil {
 		return UpResult{}, err
 	}
 	overridePath := ""
 	if resolved.SourceKind == "compose" {
-		r.emitProgress(opts.Progress, "Preparing Compose override")
+		r.emitProgress(opts.Events, "Preparing Compose override")
 		overridePath, err = writeComposeOverride(resolved, image)
 		if err != nil {
 			return UpResult{}, err
@@ -231,13 +232,13 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 		defer os.Remove(overridePath)
 	}
 
-	r.emitProgress(opts.Progress, "Ensuring managed container")
+	r.emitProgress(opts.Events, "Ensuring managed container")
 	containerID, created, err := r.ensureContainer(ctx, resolved, image, opts.BridgeEnabled, overridePath)
 	if err != nil {
 		return UpResult{}, err
 	}
 	if bridgeReport != nil {
-		r.emitProgress(opts.Progress, "Starting bridge session")
+		r.emitProgress(opts.Events, "Starting bridge session")
 		startedBridge, err := bridge.Start(resolved.StateDir, opts.BridgeEnabled, containerID)
 		if err != nil {
 			return UpResult{}, err
@@ -245,7 +246,7 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 		bridgeReport = (*bridge.Report)(startedBridge)
 	}
 
-	r.emitProgress(opts.Progress, "Running lifecycle commands")
+	r.emitProgress(opts.Events, "Running lifecycle commands")
 	if err := r.runLifecycleForUp(ctx, resolved, containerID, created, state.LifecycleReady); err != nil {
 		return UpResult{}, err
 	}
@@ -256,7 +257,7 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 	if bridgeReport != nil {
 		state.BridgeSessionID = bridgeReport.ID
 	}
-	r.emitProgress(opts.Progress, "Writing workspace state")
+	r.emitProgress(opts.Events, "Writing workspace state")
 	if err := devcontainer.WriteState(resolved.StateDir, state); err != nil {
 		return UpResult{}, err
 	}
@@ -277,21 +278,21 @@ func (r *Runner) Build(ctx context.Context, opts BuildOptions) (BuildResult, err
 		LockfilePolicy: opts.LockfilePolicy,
 		ProgressLabel:  "Resolving development container",
 		Debug:          opts.Debug,
-		Progress:       opts.Progress,
+		Events:         opts.Events,
 	})
 	if err != nil {
 		return BuildResult{}, err
 	}
-	r.emitProgress(opts.Progress, "Ensuring container image")
+	r.emitProgress(opts.Events, "Ensuring container image")
 	image, err := r.ensureImage(ctx, resolved)
 	if err != nil {
 		return BuildResult{}, err
 	}
-	r.emitProgress(opts.Progress, "Applying runtime metadata")
+	r.emitProgress(opts.Events, "Applying runtime metadata")
 	if err := r.enrichMergedConfig(ctx, &resolved, image); err != nil {
 		return BuildResult{}, err
 	}
-	r.emitProgress(opts.Progress, "Reconciling container user")
+	r.emitProgress(opts.Events, "Reconciling container user")
 	image, err = r.ensureUpdatedUIDImage(ctx, resolved, image)
 	if err != nil {
 		return BuildResult{}, err
@@ -306,12 +307,12 @@ func (r *Runner) Exec(ctx context.Context, opts ExecOptions) (int, error) {
 		LockfilePolicy: opts.LockfilePolicy,
 		ProgressLabel:  "Resolving development container",
 		Debug:          opts.Debug,
-		Progress:       opts.Progress,
+		Events:         opts.Events,
 	})
 	if err != nil {
 		return 0, err
 	}
-	r.emitProgress(opts.Progress, "Finding managed container")
+	r.emitProgress(opts.Events, "Finding managed container")
 	containerID, err := r.findContainer(ctx, resolved)
 	if err != nil {
 		return 0, err
@@ -340,7 +341,7 @@ func (r *Runner) Exec(ctx context.Context, opts ExecOptions) (int, error) {
 	}
 	args = append(args, containerID)
 	args = append(args, opts.Args...)
-	r.emitProgress(opts.Progress, fmt.Sprintf("Executing command in %s", containerID))
+	r.emitProgress(opts.Events, fmt.Sprintf("Executing command in %s", containerID))
 
 	err = r.docker.Run(ctx, docker.RunOptions{
 		Args:   args,
@@ -368,7 +369,7 @@ func (r *Runner) ReadConfig(ctx context.Context, opts ReadConfigOptions) (ReadCo
 		ReadOnly:       true,
 		ProgressLabel:  "Inspecting resolved configuration",
 		Debug:          opts.Debug,
-		Progress:       opts.Progress,
+		Events:         opts.Events,
 	})
 	if err != nil {
 		return ReadConfigResult{}, err
@@ -437,12 +438,12 @@ func (r *Runner) RunLifecycle(ctx context.Context, opts RunLifecycleOptions) (Ru
 		LockfilePolicy: opts.LockfilePolicy,
 		ProgressLabel:  "Resolving development container",
 		Debug:          opts.Debug,
-		Progress:       opts.Progress,
+		Events:         opts.Events,
 	})
 	if err != nil {
 		return RunLifecycleResult{}, err
 	}
-	r.emitProgress(opts.Progress, "Finding managed container")
+	r.emitProgress(opts.Events, "Finding managed container")
 	containerID, err := r.findContainer(ctx, resolved)
 	if err != nil {
 		return RunLifecycleResult{}, err
@@ -451,7 +452,7 @@ func (r *Runner) RunLifecycle(ctx context.Context, opts RunLifecycleOptions) (Ru
 	if phase == "" {
 		phase = "all"
 	}
-	r.emitProgress(opts.Progress, "Running lifecycle commands")
+	r.emitProgress(opts.Events, "Running lifecycle commands")
 	if err := r.runLifecyclePhase(ctx, resolved, containerID, phase); err != nil {
 		return RunLifecycleResult{}, err
 	}
@@ -466,7 +467,7 @@ func (r *Runner) BridgeDoctor(ctx context.Context, opts BridgeDoctorOptions) (br
 		ReadOnly:       true,
 		ProgressLabel:  "Inspecting bridge state",
 		Debug:          opts.Debug,
-		Progress:       opts.Progress,
+		Events:         opts.Events,
 	})
 	if err != nil {
 		return bridge.Report{}, err
@@ -475,7 +476,7 @@ func (r *Runner) BridgeDoctor(ctx context.Context, opts BridgeDoctorOptions) (br
 }
 
 func (r *Runner) prepareResolved(ctx context.Context, opts prepareResolveOptions) (devcontainer.ResolvedConfig, error) {
-	r.emitProgress(opts.Progress, opts.ProgressLabel)
+	r.emitProgress(opts.Events, opts.ProgressLabel)
 	resolveOpts := devcontainer.ResolveOptions{LockfilePolicy: opts.LockfilePolicy}
 	if !opts.ReadOnly {
 		resolveOpts.AllowNetwork = true
@@ -495,7 +496,7 @@ func (r *Runner) prepareResolved(ctx context.Context, opts prepareResolveOptions
 		return devcontainer.ResolvedConfig{}, err
 	}
 	if opts.Debug {
-		r.emitPlan(opts.Progress, resolved)
+		r.emitPlan(opts.Events, resolved)
 	}
 	return resolved, nil
 }
@@ -506,7 +507,7 @@ func (r *Runner) prepareEnrichedResolved(ctx context.Context, opts prepareResolv
 		return devcontainer.ResolvedConfig{}, "", err
 	}
 	image := preparedImage(resolved)
-	r.emitProgress(opts.Progress, "Applying runtime metadata")
+	r.emitProgress(opts.Events, "Applying runtime metadata")
 	if err := r.enrichMergedConfig(ctx, &resolved, image); err != nil {
 		return devcontainer.ResolvedConfig{}, "", err
 	}
@@ -521,18 +522,18 @@ func preparedImage(resolved devcontainer.ResolvedConfig) string {
 	return image
 }
 
-func (r *Runner) emitProgress(w io.Writer, message string) {
-	if w == nil || message == "" {
+func (r *Runner) emitProgress(events ui.Sink, message string) {
+	if events == nil || message == "" {
 		return
 	}
-	_, _ = fmt.Fprintf(w, "==> %s\n", message)
+	events.Emit(ui.Event{Kind: ui.EventProgress, Message: message})
 }
 
-func (r *Runner) emitPlan(w io.Writer, resolved devcontainer.ResolvedConfig) {
-	if w == nil {
+func (r *Runner) emitPlan(events ui.Sink, resolved devcontainer.ResolvedConfig) {
+	if events == nil {
 		return
 	}
-	_, _ = fmt.Fprintf(w, "plan source=%s config=%s workspace=%s state=%s target-image=%s\n", resolved.SourceKind, resolved.ConfigPath, resolved.WorkspaceFolder, resolved.StateDir, resolved.ImageName)
+	events.Emit(ui.Event{Kind: ui.EventDebug, Message: fmt.Sprintf("plan source=%s config=%s workspace=%s state=%s target-image=%s", resolved.SourceKind, resolved.ConfigPath, resolved.WorkspaceFolder, resolved.StateDir, resolved.ImageName)})
 }
 
 func (r *Runner) commandIO() commandIO {
