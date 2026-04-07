@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## [v0.1.2](https://github.com/lauritsk/hatchctl/compare/85c0692f9a9873d0648efa8eee811d8f8ff79e81..v0.1.2) - 2026-04-07
+#### Bug Fixes
+- separate goreleaser archive outputs - ([85c0692](https://github.com/lauritsk/hatchctl/commit/85c0692f9a9873d0648efa8eee811d8f8ff79e81)) - Karl Hans Laurits
+
+- - -
+
 ## [v0.1.1](https://github.com/lauritsk/hatchctl/compare/c66c83c88fa8eea82ac7ed74c8ebcee6b9eb7ded..v0.1.1) - 2026-04-07
 #### Bug Fixes
 - repair release workflow authentication - ([c0ee5de](https://github.com/lauritsk/hatchctl/commit/c0ee5de0e38da28f62ba947659587abca725835e)) - Karl Hans Laurits
