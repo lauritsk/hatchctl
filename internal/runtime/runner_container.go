@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/lauritsk/hatchctl/internal/bridge"
@@ -22,7 +21,7 @@ func (r *Runner) ensureComposeContainer(ctx context.Context, resolved devcontain
 			return containerID, false, nil
 		}
 	}
-	if err := r.docker.Run(ctx, docker.RunOptions{Args: append(r.composeArgs(resolved, overridePath), "up", "--no-build", "-d", resolved.ComposeService), Dir: resolved.ConfigDir, Stdout: os.Stdout, Stderr: os.Stderr}); err != nil {
+	if err := r.docker.Run(ctx, docker.RunOptions{Args: append(r.composeArgs(resolved, overridePath), "up", "--no-build", "-d", resolved.ComposeService), Dir: resolved.ConfigDir, Stdout: r.stdout, Stderr: r.stderr}); err != nil {
 		return "", false, err
 	}
 	containerID, err = r.findComposeContainer(ctx, resolved)
@@ -40,7 +39,7 @@ func (r *Runner) ensureContainer(ctx context.Context, resolved devcontainer.Reso
 	if err == nil && containerID != "" {
 		status, statusErr := r.docker.Output(ctx, "inspect", "--format", "{{.State.Status}}", containerID)
 		if statusErr == nil && status != "running" {
-			if err := r.docker.Run(ctx, docker.RunOptions{Args: []string{"start", containerID}, Stdout: os.Stdout, Stderr: os.Stderr}); err != nil {
+			if err := r.docker.Run(ctx, docker.RunOptions{Args: []string{"start", containerID}, Stdout: r.stdout, Stderr: r.stderr}); err != nil {
 				return "", false, err
 			}
 		}
@@ -115,7 +114,7 @@ func (r *Runner) findContainer(ctx context.Context, resolved devcontainer.Resolv
 }
 
 func (r *Runner) removeContainer(ctx context.Context, containerID string) error {
-	return r.docker.Run(ctx, docker.RunOptions{Args: []string{"rm", "-f", containerID}, Stdout: os.Stdout, Stderr: os.Stderr})
+	return r.docker.Run(ctx, docker.RunOptions{Args: []string{"rm", "-f", containerID}, Stdout: r.stdout, Stderr: r.stderr})
 }
 
 func (r *Runner) reconcileState(ctx context.Context, resolved devcontainer.ResolvedConfig, state devcontainer.State) (devcontainer.State, error) {

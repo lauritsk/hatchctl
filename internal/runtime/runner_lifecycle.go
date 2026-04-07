@@ -3,7 +3,6 @@ package runtime
 import (
 	"context"
 	"fmt"
-	"os"
 
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	"github.com/lauritsk/hatchctl/internal/docker"
@@ -11,7 +10,7 @@ import (
 
 func (r *Runner) runLifecycleForUp(ctx context.Context, resolved devcontainer.ResolvedConfig, containerID string, created bool, lifecycleReady bool) error {
 	if created || !lifecycleReady {
-		if err := runHostLifecycle(ctx, resolved.WorkspaceFolder, resolved.Config.InitializeCommand); err != nil {
+		if err := runHostLifecycle(ctx, resolved.WorkspaceFolder, resolved.Config.InitializeCommand, r.commandIO(), r.hostCommandRunner); err != nil {
 			return err
 		}
 		if err := r.runContainerLifecycleList(ctx, containerID, resolved, resolved.Merged.OnCreateCommands); err != nil {
@@ -33,7 +32,7 @@ func (r *Runner) runLifecycleForUp(ctx context.Context, resolved devcontainer.Re
 func (r *Runner) runLifecyclePhase(ctx context.Context, resolved devcontainer.ResolvedConfig, containerID string, phase string) error {
 	switch phase {
 	case "all":
-		if err := runHostLifecycle(ctx, resolved.WorkspaceFolder, resolved.Config.InitializeCommand); err != nil {
+		if err := runHostLifecycle(ctx, resolved.WorkspaceFolder, resolved.Config.InitializeCommand, r.commandIO(), r.hostCommandRunner); err != nil {
 			return err
 		}
 		if err := r.runContainerLifecycleList(ctx, containerID, resolved, resolved.Merged.OnCreateCommands); err != nil {
@@ -50,7 +49,7 @@ func (r *Runner) runLifecyclePhase(ctx context.Context, resolved devcontainer.Re
 		}
 		return r.runContainerLifecycleList(ctx, containerID, resolved, resolved.Merged.PostAttachCommands)
 	case "create":
-		if err := runHostLifecycle(ctx, resolved.WorkspaceFolder, resolved.Config.InitializeCommand); err != nil {
+		if err := runHostLifecycle(ctx, resolved.WorkspaceFolder, resolved.Config.InitializeCommand, r.commandIO(), r.hostCommandRunner); err != nil {
 			return err
 		}
 		if err := r.runContainerLifecycleList(ctx, containerID, resolved, resolved.Merged.OnCreateCommands); err != nil {
@@ -97,6 +96,6 @@ func (r *Runner) runContainerLifecycle(ctx context.Context, containerID string, 
 		}
 		dockerArgs = append(dockerArgs, containerID)
 		dockerArgs = append(dockerArgs, args...)
-		return r.docker.Run(ctx, docker.RunOptions{Args: dockerArgs, Stdout: os.Stdout, Stderr: os.Stderr})
+		return r.docker.Run(ctx, docker.RunOptions{Args: dockerArgs, Stdout: r.stdout, Stderr: r.stderr})
 	}, command)
 }

@@ -14,11 +14,25 @@ import (
 )
 
 type Runner struct {
-	docker *docker.Client
+	docker            *docker.Client
+	stdin             io.Reader
+	stdout            io.Writer
+	stderr            io.Writer
+	hostCommandRunner hostCommandRunner
 }
 
 func NewRunner(client *docker.Client) *Runner {
-	return &Runner{docker: client}
+	return NewRunnerWithIO(client, os.Stdin, os.Stdout, os.Stderr)
+}
+
+func NewRunnerWithIO(client *docker.Client, stdin io.Reader, stdout io.Writer, stderr io.Writer) *Runner {
+	return &Runner{
+		docker:            client,
+		stdin:             stdin,
+		stdout:            stdout,
+		stderr:            stderr,
+		hostCommandRunner: defaultHostCommandRunner,
+	}
 }
 
 type UpOptions struct {
@@ -490,6 +504,10 @@ func (r *Runner) emitPlan(w io.Writer, resolved devcontainer.ResolvedConfig) {
 		return
 	}
 	_, _ = fmt.Fprintf(w, "plan source=%s config=%s workspace=%s state=%s target-image=%s\n", resolved.SourceKind, resolved.ConfigPath, resolved.WorkspaceFolder, resolved.StateDir, resolved.ImageName)
+}
+
+func (r *Runner) commandIO() commandIO {
+	return commandIO{Stdin: r.stdin, Stdout: r.stdout, Stderr: r.stderr}
 }
 
 const updateUIDDockerfile = `ARG BASE_IMAGE

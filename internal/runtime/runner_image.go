@@ -78,7 +78,7 @@ func (r *Runner) buildDockerfileImage(ctx context.Context, resolved devcontainer
 		args = append(args, resolved.Config.Build.Options...)
 	}
 	args = append(args, contextDir)
-	return r.docker.Run(ctx, docker.RunOptions{Args: args, Stdout: os.Stdout, Stderr: os.Stderr})
+	return r.docker.Run(ctx, docker.RunOptions{Args: args, Stdout: r.stdout, Stderr: r.stderr})
 }
 
 func (r *Runner) ensureImageWithFeatures(ctx context.Context, resolved devcontainer.ResolvedConfig) (string, error) {
@@ -121,7 +121,7 @@ func (r *Runner) ensureFeaturesImageFromBase(ctx context.Context, resolved devco
 		"--build-arg", "BASE_IMAGE=" + baseImage,
 		buildDir,
 	}
-	if err := r.docker.Run(ctx, docker.RunOptions{Args: args, Stdout: os.Stdout, Stderr: os.Stderr}); err != nil {
+	if err := r.docker.Run(ctx, docker.RunOptions{Args: args, Stdout: r.stdout, Stderr: r.stderr}); err != nil {
 		entries, _ := os.ReadDir(buildDir)
 		names := make([]string, 0, len(entries))
 		for _, entry := range entries {
@@ -143,7 +143,7 @@ func (r *Runner) ensureComposeImage(ctx context.Context, resolved devcontainer.R
 	}
 	baseImage := service.Image
 	if service.Build.Enabled() {
-		if err := r.docker.Run(ctx, docker.RunOptions{Args: append(r.composeBaseArgs(resolved), "build", resolved.ComposeService), Dir: resolved.ConfigDir, Stdout: os.Stdout, Stderr: os.Stderr}); err != nil {
+		if err := r.docker.Run(ctx, docker.RunOptions{Args: append(r.composeBaseArgs(resolved), "build", resolved.ComposeService), Dir: resolved.ConfigDir, Stdout: r.stdout, Stderr: r.stderr}); err != nil {
 			return "", err
 		}
 		if baseImage == "" {
@@ -217,7 +217,7 @@ func (r *Runner) ensureUpdatedUIDImage(ctx context.Context, resolved devcontaine
 		args = append(args, "--label", devcontainer.ImageMetadataLabel+"="+metadataLabel)
 	}
 	args = append(args, resolved.StateDir)
-	if err := r.docker.Run(ctx, docker.RunOptions{Args: args, Stdout: os.Stdout, Stderr: os.Stderr}); err != nil {
+	if err := r.docker.Run(ctx, docker.RunOptions{Args: args, Stdout: r.stdout, Stderr: r.stderr}); err != nil {
 		return image, err
 	}
 	return derivedImage, nil
