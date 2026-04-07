@@ -514,5 +514,3 @@ func (m multiValue) Map() map[string]string {
 	}
 	return result
 }
-
-var _ = bridge.Report{}
