@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
@@ -167,21 +166,21 @@ func (r *Runner) ensureComposeImage(ctx context.Context, resolved devcontainer.R
 	return resolved.ComposeProject + "-" + resolved.ComposeService, nil
 }
 
-func (r *Runner) ensureUpdatedUIDImage(ctx context.Context, resolved devcontainer.ResolvedConfig, image string) (string, error) {
-	if runtime.GOOS != "linux" && runtime.GOOS != "darwin" {
-		return image, nil
+func (r *Runner) ensureUpdatedUIDContainer(ctx context.Context, resolved devcontainer.ResolvedConfig, image string, containerID string) error {
+	if containerID == "" {
+		return nil
 	}
 	if resolved.Merged.UpdateRemoteUserUID != nil && !*resolved.Merged.UpdateRemoteUserUID {
-		return image, nil
+		return nil
 	}
 	uid := os.Getuid()
 	gid := os.Getgid()
 	if uid <= 0 || gid <= 0 {
-		return image, nil
+		return nil
 	}
 	inspect, err := r.docker.InspectImage(ctx, image)
 	if err != nil {
-		return image, err
+		return err
 	}
 	imageUser := inspect.Config.User
 	if imageUser == "" {
@@ -189,38 +188,20 @@ func (r *Runner) ensureUpdatedUIDImage(ctx context.Context, resolved devcontaine
 	}
 	remoteUser := firstNonEmpty(resolved.Merged.RemoteUser, resolved.Merged.ContainerUser, imageUser)
 	if remoteUser == "" || remoteUser == "root" || isNumericUser(remoteUser) {
-		return image, nil
-	}
-	derivedImage := resolved.ImageName + "-uid"
-	dockerfilePath := filepath.Join(resolved.StateDir, "updateUID.Dockerfile")
-	if err := os.MkdirAll(resolved.StateDir, 0o755); err != nil {
-		return image, err
-	}
-	if err := os.WriteFile(dockerfilePath, []byte(updateUIDDockerfile), 0o600); err != nil {
-		return image, err
-	}
-	metadataLabel, err := devcontainer.MetadataLabelValue(resolved.Merged.Metadata)
-	if err != nil {
-		return image, err
+		return nil
 	}
 	args := []string{
-		"build",
-		"-f", dockerfilePath,
-		"-t", derivedImage,
-		"--build-arg", "BASE_IMAGE=" + image,
-		"--build-arg", "REMOTE_USER=" + remoteUser,
-		"--build-arg", fmt.Sprintf("NEW_UID=%d", uid),
-		"--build-arg", fmt.Sprintf("NEW_GID=%d", gid),
-		"--build-arg", "IMAGE_USER=" + imageUser,
+		"exec", "-u", "root", containerID,
+		"sh", "-lc", updateUIDCommand,
+		"sh",
+		remoteUser,
+		fmt.Sprintf("%d", uid),
+		fmt.Sprintf("%d", gid),
 	}
-	if metadataLabel != "" {
-		args = append(args, "--label", devcontainer.ImageMetadataLabel+"="+metadataLabel)
-	}
-	args = append(args, resolved.StateDir)
 	if err := r.docker.Run(ctx, docker.RunOptions{Args: args, Stdout: r.stdout, Stderr: r.stderr}); err != nil {
-		return image, err
+		return err
 	}
-	return derivedImage, nil
+	return nil
 }
 
 func (r *Runner) inspectImageUser(ctx context.Context, image string) (string, error) {

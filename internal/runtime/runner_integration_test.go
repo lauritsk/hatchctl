@@ -483,7 +483,6 @@ func TestUpUpdatesNamedNonRootUserUID(t *testing.T) {
 	}
 	t.Cleanup(func() {
 		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rmi", "-f", baseImage}})
-		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rmi", "-f", devcontainer.ImageName(workspace, filepath.Join(configDir, "devcontainer.json")) + "-uid"}})
 	})
 
 	configPath := filepath.Join(configDir, "devcontainer.json")
@@ -494,10 +493,10 @@ func TestUpUpdatesNamedNonRootUserUID(t *testing.T) {
 	runner := NewRunner(client)
 	buildResult, err := runner.Build(ctx, BuildOptions{Workspace: workspace})
 	if err != nil {
-		t.Fatalf("build derived image: %v", err)
+		t.Fatalf("build image: %v", err)
 	}
-	if !strings.HasSuffix(buildResult.Image, "-uid") {
-		t.Fatalf("expected derived uid image, got %q", buildResult.Image)
+	if buildResult.Image != baseImage {
+		t.Fatalf("expected base image, got %q", buildResult.Image)
 	}
 
 	upResult, err := runner.Up(ctx, UpOptions{Workspace: workspace, Recreate: true})
@@ -1254,10 +1253,10 @@ func TestComposeUpUpdatesNamedNonRootUserUID(t *testing.T) {
 	runner := NewRunner(client)
 	buildResult, err := runner.Build(ctx, BuildOptions{Workspace: workspace})
 	if err != nil {
-		t.Fatalf("build compose uid image: %v", err)
+		t.Fatalf("build compose image: %v", err)
 	}
-	if !strings.HasSuffix(buildResult.Image, "-uid") {
-		t.Fatalf("expected compose uid image, got %q", buildResult.Image)
+	if buildResult.Image != baseImage {
+		t.Fatalf("expected compose base image, got %q", buildResult.Image)
 	}
 	upResult, err := runner.Up(ctx, UpOptions{Workspace: workspace, Recreate: true})
 	if err != nil {
@@ -1265,7 +1264,6 @@ func TestComposeUpUpdatesNamedNonRootUserUID(t *testing.T) {
 	}
 	t.Cleanup(func() {
 		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rm", "-f", upResult.ContainerID}})
-		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rmi", "-f", buildResult.Image}})
 		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rmi", "-f", baseImage}})
 	})
 

@@ -3,11 +3,11 @@
 ## Not Done
 
 - persist or cache a resolved workspace/runtime plan so `up`, `build`, `exec`, `config`, and lifecycle commands stop re-resolving and re-inspecting the same state repeatedly
-- move UID/GID reconciliation out of derived image rebuilds and into a runtime-oriented approach where possible
 - evaluate a hybrid Docker integration that uses the Engine API for inspect/start/exec-heavy paths while keeping Compose behavior compatible where the CLI is still the best fit
 
 ## Done
 
+- [x] move UID/GID reconciliation out of derived image rebuilds and into a runtime-oriented approach where possible
 - [x] redesign bridge transport around a persistent localhost-only control/data channel so browser-open and localhost callback auth flows still work without a detached wide-bind HTTP server or per-connection `docker exec`
 - [x] harden single-container metadata parity
 - [x] persist merged `devcontainer.metadata` on built images and managed containers
