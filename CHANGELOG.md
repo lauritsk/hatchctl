@@ -1,0 +1,61 @@
+# Changelog
+All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
+
+- - -
+## [v0.1.0](https://github.com/lauritsk/hatchctl/compare/8d08d1ba8510d10cc98236e0c8fb3b1a684abd22..v0.1.0) - 2026-04-07
+#### Features
+- improve command progress and debug output - ([de50e4b](https://github.com/lauritsk/hatchctl/commit/de50e4b8627ab480cf5821d872446210de69b31b)) - Karl Hans Laurits
+- add feature lockfile policies - ([f079660](https://github.com/lauritsk/hatchctl/commit/f0796607aea706fef41fb9874234bc1e9468770d)) - Karl Hans Laurits
+- verify remote images with cosign library - ([ef8b4c1](https://github.com/lauritsk/hatchctl/commit/ef8b4c1d74aa661c1fe7255a2b26ef6ad8397f09)) - Karl Hans Laurits
+- add feature lockfile and tarball support - ([dfa25d2](https://github.com/lauritsk/hatchctl/commit/dfa25d29e38a2240a4de850a67a9fdb94d868160)) - Karl Hans Laurits
+- add compose bridge and uid parity - ([6b4dbf8](https://github.com/lauritsk/hatchctl/commit/6b4dbf88487e81ce0aad104eba764b94a4aabe09)) - Karl Hans Laurits
+- add compose feature support - ([bbffa5e](https://github.com/lauritsk/hatchctl/commit/bbffa5ea02972bd1b27572c4a4f641698684ce94)) - Karl Hans Laurits
+- persist compose override files - ([b525acf](https://github.com/lauritsk/hatchctl/commit/b525acf72ff8c84bdf5d947773a2816ce06b7603)) - Karl Hans Laurits
+- add oci features and compose support - ([17f3a0d](https://github.com/lauritsk/hatchctl/commit/17f3a0d503a0b403f8cf76185d1191c4d38306de)) - Karl Hans Laurits
+- add local single-container feature support - ([1774022](https://github.com/lauritsk/hatchctl/commit/1774022ba9aee2a257dc825151ff508107202255)) - Karl Hans Laurits
+- use mounted bridge helper binary - ([a0eca42](https://github.com/lauritsk/hatchctl/commit/a0eca422439c76c6d3b4fe2b10596fece0df007b)) - Karl Hans Laurits
+- start host bridge runtime - ([c6f74e0](https://github.com/lauritsk/hatchctl/commit/c6f74e0a1764e6d7b1783eaee6c4a67941da6889)) - Karl Hans Laurits
+- mount bridge helper binaries - ([79f1f00](https://github.com/lauritsk/hatchctl/commit/79f1f00302bf871a8f748d37c57f9b4bc736b764)) - Karl Hans Laurits
+- reconcile managed container state - ([23029a7](https://github.com/lauritsk/hatchctl/commit/23029a7566584b9dbf48da13310d4bce6f3cc028)) - Karl Hans Laurits
+- update non-root user uid and gid - ([f9895a3](https://github.com/lauritsk/hatchctl/commit/f9895a3cb0d04d0087dec6c69e65615b77f5e715)) - Karl Hans Laurits
+- tighten exec runtime behavior - ([d1d106d](https://github.com/lauritsk/hatchctl/commit/d1d106d4941940f8bf616190fba40f4e53b6ee3a)) - Karl Hans Laurits
+- refine remote user fallback - ([f765429](https://github.com/lauritsk/hatchctl/commit/f7654292f254aaac59d4e8c451850f5fc961ef5a)) - Karl Hans Laurits
+- inspect managed container config state - ([ec36ea3](https://github.com/lauritsk/hatchctl/commit/ec36ea33284d80cd7bd0844ccba69d0b41cfd58d)) - Karl Hans Laurits
+- wire forward ports into merged runtime config - ([26b519e](https://github.com/lauritsk/hatchctl/commit/26b519e17ad8790cfb6219c405a35d22c83cc7f9)) - Karl Hans Laurits
+- persist devcontainer metadata labels - ([deeba0d](https://github.com/lauritsk/hatchctl/commit/deeba0d71f5a14fe06e5c8207652373e775957f5)) - Karl Hans Laurits
+- merge image metadata into runtime config - ([5f8be5e](https://github.com/lauritsk/hatchctl/commit/5f8be5e96945762b741c75e706da73bd4c46a7ed)) - Karl Hans Laurits
+- bootstrap single-container runtime foundation - ([54f42c4](https://github.com/lauritsk/hatchctl/commit/54f42c48623c036951fb4f8bb9d8848da10efbb1)) - Karl Hans Laurits
+#### Bug Fixes
+- harden archive extraction and CI checks - ([129c6e7](https://github.com/lauritsk/hatchctl/commit/129c6e7b00c29080921b2bd2cdcf019dd35127d4)) - Karl Hans Laurits
+- tighten permissions on generated runtime files - ([c44cdc6](https://github.com/lauritsk/hatchctl/commit/c44cdc617eb71217d1fcb8654b7eba95d73196d1)) - Karl Hans Laurits
+- preserve compose override mount semantics - ([7af0099](https://github.com/lauritsk/hatchctl/commit/7af00998bc1b5a955a5244592f9bfa3981abf6e1)) - Karl Hans Laurits
+- harden bridge state and remote feature resolution - ([e6e0e5d](https://github.com/lauritsk/hatchctl/commit/e6e0e5d86035df7152c5dc51c0e8fc7080a936ad)) - Karl Hans Laurits
+- treat feature option env values as data during builds - ([e196153](https://github.com/lauritsk/hatchctl/commit/e196153dbc7baac41e784167c5b1a812b67805cf)) - Karl Hans Laurits
+- make compose override generation ephemeral - ([285c73f](https://github.com/lauritsk/hatchctl/commit/285c73f450a9771074924fbc75f810a48405c9bb)) - Karl Hans Laurits
+- separate read-only resolution and package bridge helper - ([49d00b1](https://github.com/lauritsk/hatchctl/commit/49d00b1c1c4a746fab3d17fe668bdd2c0ec27f94)) - Karl Hans Laurits
+- correct linux bridge integration assertions - ([ec63898](https://github.com/lauritsk/hatchctl/commit/ec63898d3e5c7e4c6f4e927abaf060c2fd1162d2)) - Karl Hans Laurits
+#### Documentation
+- prepare repo for public v0.1.0 release - ([e153292](https://github.com/lauritsk/hatchctl/commit/e1532923bb4e88322bf893d106789ecba3fd249e)) - Karl Hans Laurits
+- update completed todo items - ([b7d0ea8](https://github.com/lauritsk/hatchctl/commit/b7d0ea8e3d37f3236dd42bc327a88a1c34206466)) - Karl Hans Laurits
+- clarify compose override lifecycle - ([9d1e21e](https://github.com/lauritsk/hatchctl/commit/9d1e21e86470e37c59ede8ff78300c192929fbad)) - Karl Hans Laurits
+- rewrite project README - ([7146436](https://github.com/lauritsk/hatchctl/commit/7146436e322e883e38fced5fd1d994c192f1705c)) - Karl Hans Laurits
+#### Tests
+- add fixture-backed config regressions - ([c7f24e9](https://github.com/lauritsk/hatchctl/commit/c7f24e9366aa243dbfb54672148b40db80994cf9)) - Karl Hans Laurits
+- provide bridge helper in integration tests - ([7471510](https://github.com/lauritsk/hatchctl/commit/74715109d0863960750a5d6049f7298b556b74e6)) - Karl Hans Laurits
+- cover read-only runtime and helper lookup - ([619d01a](https://github.com/lauritsk/hatchctl/commit/619d01a69c9e33217a6d6e15d1b9594f6f03243c)) - Karl Hans Laurits
+#### Refactoring
+- migrate CLI to Cobra and terminal UI events - ([4c1baa4](https://github.com/lauritsk/hatchctl/commit/4c1baa4f3cc0e9fb393587479f1fad315e363621)) - Karl Hans Laurits
+- deduplicate small runtime helpers - ([6f499c4](https://github.com/lauritsk/hatchctl/commit/6f499c44a0f45173fff9cd1480b066f7eb64bb21)) - Karl Hans Laurits
+- centralize runtime prepare flow - ([cc0f701](https://github.com/lauritsk/hatchctl/commit/cc0f7016cdc5e38e3f1d716fca2b4f0691ca66ab)) - Karl Hans Laurits
+- inject runtime stdio and host command execution - ([7265f3e](https://github.com/lauritsk/hatchctl/commit/7265f3eda30e592057470819a62025d332c60d36)) - Karl Hans Laurits
+- simplify runtime helpers and docker errors - ([15fba98](https://github.com/lauritsk/hatchctl/commit/15fba98e22bfbbaacbddf355887f13897271a6d0)) - Karl Hans Laurits
+- split runtime image and container code - ([c4e3139](https://github.com/lauritsk/hatchctl/commit/c4e31390c949be6051761e2069b5e77d47fd4c3c)) - Karl Hans Laurits
+- split runtime compose and lifecycle code - ([de0fc3f](https://github.com/lauritsk/hatchctl/commit/de0fc3fc725b0a4586bf4573e72ebb890eac507b)) - Karl Hans Laurits
+#### Miscellaneous Chores
+- configure Cocogitto defaults - ([13f095c](https://github.com/lauritsk/hatchctl/commit/13f095c25075c37be116c57c02edb2d881071e86)) - Karl Hans Laurits
+- remove leftover compile anchor - ([c98bbf0](https://github.com/lauritsk/hatchctl/commit/c98bbf0989dfa3768254b8365a73ac2251465676)) - Karl Hans Laurits
+- initialize hatchctl repository - ([8d08d1b](https://github.com/lauritsk/hatchctl/commit/8d08d1ba8510d10cc98236e0c8fb3b1a684abd22)) - Karl Hans Laurits
+
+- - -
+
+Changelog generated by [cocogitto](https://github.com/cocogitto/cocogitto).
