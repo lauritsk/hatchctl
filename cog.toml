@@ -8,3 +8,7 @@ template = "remote"
 remote = "github.com"
 owner = "lauritsk"
 repository = "hatchctl"
+
+[[changelog.authors]]
+signature = "karl@laurits.dev"
+username = "lauritsk"
