@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"slices"
 	"strings"
 
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
@@ -285,9 +284,7 @@ func multilineEnv(containerUser string, remoteUser string) string {
 }
 
 func sortedFeatureOptionKeys(values map[string]string) []string {
-	keys := slices.Collect(mapsKeys(values))
-	slices.Sort(keys)
-	return keys
+	return sortedMapKeys(values)
 }
 
 func dockerfileQuotedValue(value string) string {

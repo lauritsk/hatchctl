@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"strings"
 
 	"github.com/lauritsk/hatchctl/internal/bridge"
@@ -283,9 +282,11 @@ func (r *Runner) Exec(ctx context.Context, opts ExecOptions) (int, error) {
 	if err == nil {
 		return 0, nil
 	}
-	var exitErr *exec.ExitError
-	if errors.As(err, &exitErr) {
-		return exitErr.ExitCode(), nil
+	var dockerErr *docker.Error
+	if errors.As(err, &dockerErr) {
+		if code, ok := dockerErr.ExitCode(); ok {
+			return code, nil
+		}
 	}
 	return 0, err
 }

@@ -246,15 +246,11 @@ func yamlQuoted(value string) string {
 }
 
 func sortedStringKeys(values map[string]string) []string {
-	keys := slices.Collect(mapsKeys(values))
-	sort.Strings(keys)
-	return keys
+	return sortedMapKeys(values)
 }
 
 func sortedVolumeNames(values map[string]struct{}) []string {
-	keys := slices.Collect(mapsKeys(values))
-	sort.Strings(keys)
-	return keys
+	return sortedMapKeys(values)
 }
 
 func fileExists(path string) bool {
@@ -270,4 +266,10 @@ func mapsKeys[K comparable, V any](values map[K]V) func(func(K) bool) {
 			}
 		}
 	}
+}
+
+func sortedMapKeys[V any](values map[string]V) []string {
+	keys := slices.Collect(mapsKeys(values))
+	sort.Strings(keys)
+	return keys
 }

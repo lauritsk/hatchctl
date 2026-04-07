@@ -243,24 +243,11 @@ func helperBinaryCandidates() []string {
 			filepath.Join(exeDir, "libexec", base),
 		)
 	}
-	repo := repoRoot()
-	candidates = append(candidates,
-		filepath.Join(repo, ".dist", "bridge-helper", base),
-		filepath.Join(repo, ".dist", "bridge-helper", runtime.GOARCH, "hatchctl-bridge-helper"),
-	)
 	return candidates
 }
 
 func helperArtifactName() string {
 	return fmt.Sprintf("hatchctl-bridge-helper-linux-%s", runtime.GOARCH)
-}
-
-func repoRoot() string {
-	_, file, _, ok := runtime.Caller(0)
-	if !ok {
-		return "."
-	}
-	return filepath.Clean(filepath.Join(filepath.Dir(file), "..", ".."))
 }
 
 func applySession(session *Session, merged devcontainer.MergedConfig) devcontainer.MergedConfig {

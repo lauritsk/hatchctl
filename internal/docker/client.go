@@ -41,6 +41,14 @@ func (e *Error) Unwrap() error {
 	return e.Err
 }
 
+func (e *Error) ExitCode() (int, bool) {
+	var exitErr *exec.ExitError
+	if !errors.As(e.Err, &exitErr) {
+		return 0, false
+	}
+	return exitErr.ExitCode(), true
+}
+
 func IsNotFound(err error) bool {
 	var dockerErr *Error
 	if !errors.As(err, &dockerErr) {
