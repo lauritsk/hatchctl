@@ -1,5 +1,14 @@
 # TODO
 
+## Not Done
+
+- persist or cache a resolved workspace/runtime plan so `up`, `build`, `exec`, `config`, and lifecycle commands stop re-resolving and re-inspecting the same state repeatedly
+- move UID/GID reconciliation out of derived image rebuilds and into a runtime-oriented approach where possible
+- evaluate a hybrid Docker integration that uses the Engine API for inspect/start/exec-heavy paths while keeping Compose behavior compatible where the CLI is still the best fit
+
+## Done
+
+- [x] redesign bridge transport around a persistent localhost-only control/data channel so browser-open and localhost callback auth flows still work without a detached wide-bind HTTP server or per-connection `docker exec`
 - [x] harden single-container metadata parity
 - [x] persist merged `devcontainer.metadata` on built images and managed containers
 - [x] add Docker-backed integration tests for image labels, merged env, merged users, and lifecycle ordering
@@ -32,7 +41,6 @@
 - [x] document supported compatibility surface and known gaps
 - [x] document the latest `devcontainer-cli` version/revision this project was synced against so future sync passes can review only newer upstream changes
 - [x] decide first public release scope and cut `v0.1.0` only when single-container runtime, bridge, and feature consumption are solid enough for real use
-
 - [x] verify container signature with cosign by default (if possible)
 - [x] consider more security improvements / secure-by-default things that could be implemented in this project
 - [x] harden feature option handling so feature env values are treated as data, not shell code during image builds
@@ -45,4 +53,3 @@
 - [x] remove leftover compile anchors and cleanup artifacts like `var _ = bridge.Report{}` once no longer needed
 - [x] deduplicate map-sorting and other tiny helper utilities where modern stdlib/shared helpers already cover the need
 - [x] consider whether Charm CLI tooling could improve usability, visuals, and simplify parts of the command UX
-- consider pros and cons of using the Docker SDK directly instead of shelling out to the Docker CLI

@@ -3,10 +3,10 @@ package bridge
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
-	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
@@ -25,7 +25,6 @@ const containerHelperBin = "/var/run/hatchctl/bridge/bin/hatchctl-bridge-helper"
 type statusFile struct {
 	SessionID   string          `json:"sessionId"`
 	ContainerID string          `json:"containerId"`
-	ControlPort int             `json:"controlPort"`
 	PID         int             `json:"pid,omitempty"`
 	Forwarded   []forwardStatus `json:"forwarded,omitempty"`
 	LastPort    int             `json:"lastForwardedPort,omitempty"`
@@ -47,12 +46,22 @@ type forwardedPort struct {
 	exact    bool
 }
 
+type bridgeRequest struct {
+	Kind string `json:"kind"`
+	URL  string `json:"url,omitempty"`
+	Port int    `json:"port,omitempty"`
+}
+
+type bridgeResponse struct {
+	OK    bool   `json:"ok"`
+	Error string `json:"error,omitempty"`
+}
+
 type bridgeHostService struct {
 	session     *Session
 	containerID string
 	openURL     func(string) error
 	forwardURL  func(int) (int, bool, error)
-	execArgs    func(string, int) []string
 	mu          sync.Mutex
 	forwarded   map[int]forwardedPort
 }
@@ -98,7 +107,13 @@ func Start(stateDir string, enabled bool, containerID string) (*Session, error) 
 		return nil, err
 	}
 	_ = cmd.Process.Release()
-	if err := waitForReady(session.Port, 5*time.Second); err != nil {
+	if err := waitForSocket(session.SocketPath, 5*time.Second); err != nil {
+		return nil, err
+	}
+	if err := ensureHelperService(session, containerID); err != nil {
+		return nil, err
+	}
+	if err := waitForHelper(session.HelperSock, 5*time.Second); err != nil {
 		return nil, err
 	}
 	session.Status = "running"
@@ -110,30 +125,36 @@ func Serve(ctx context.Context, stateDir string, containerID string) error {
 	if err != nil {
 		return err
 	}
-	if session.Port == 0 {
-		return fmt.Errorf("bridge port not configured")
+	listener, err := listenUnixSocket(session.SocketPath)
+	if err != nil {
+		return err
 	}
+	defer func() {
+		_ = listener.Close()
+		_ = os.Remove(session.SocketPath)
+	}()
 	if err := os.WriteFile(session.PIDPath, []byte(strconv.Itoa(os.Getpid())), 0o600); err != nil {
 		return err
 	}
 	if err := writeStatus(session, containerID, "running", "", nil, 0, false); err != nil {
 		return err
 	}
-	service := newBridgeHostService(session, containerID, defaultOpen)
-	handler := service.handler()
-	server := &http.Server{Addr: bridgeListenAddress(session), Handler: handler}
 	go func() {
 		<-ctx.Done()
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancel()
-		_ = server.Shutdown(shutdownCtx)
+		_ = listener.Close()
 	}()
-	err = server.ListenAndServe()
-	if err == nil || err == http.ErrServerClosed {
-		return nil
+	service := newBridgeHostService(session, containerID, defaultOpen)
+	for {
+		conn, err := listener.Accept()
+		if err != nil {
+			if ctx.Err() != nil || isClosedListener(err) {
+				return nil
+			}
+			_ = writeStatus(session, containerID, "error", err.Error(), nil, 0, false)
+			return err
+		}
+		go service.handleConn(conn)
 	}
-	_ = writeStatus(session, containerID, "error", err.Error(), nil, 0, false)
-	return err
 }
 
 func newBridgeHostService(session *Session, containerID string, opener func(string) error) *bridgeHostService {
@@ -144,56 +165,44 @@ func newBridgeHostService(session *Session, containerID string, opener func(stri
 		forwarded:   map[int]forwardedPort{},
 	}
 	service.forwardURL = service.ensureForward
-	service.execArgs = connectorExecArgs
 	return service
 }
 
-func (s *bridgeHostService) handler() http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost || r.URL.Path != "/open" {
-			http.NotFound(w, r)
+func (s *bridgeHostService) handleConn(conn net.Conn) {
+	defer conn.Close()
+	var request bridgeRequest
+	if err := json.NewDecoder(conn).Decode(&request); err != nil {
+		_ = writeBridgeResponse(conn, bridgeResponse{Error: "invalid request"})
+		return
+	}
+	switch request.Kind {
+	case "ping":
+		_ = writeBridgeResponse(conn, bridgeResponse{OK: true})
+	case "open":
+		if request.URL == "" {
+			_ = writeBridgeResponse(conn, bridgeResponse{Error: "missing url"})
 			return
 		}
-		payload := struct {
-			URL   string `json:"url"`
-			Token string `json:"token"`
-		}{}
-		contentType := r.Header.Get("Content-Type")
-		if strings.Contains(contentType, "application/json") {
-			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-				http.Error(w, "invalid request", http.StatusBadRequest)
-				return
-			}
-		} else {
-			if err := r.ParseForm(); err != nil {
-				http.Error(w, "invalid form", http.StatusBadRequest)
-				return
-			}
-			payload.URL = r.Form.Get("url")
-			payload.Token = r.Form.Get("token")
-		}
-		if payload.Token != s.session.Token || payload.URL == "" {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
+		if _, err := url.ParseRequestURI(request.URL); err != nil {
+			_ = writeBridgeResponse(conn, bridgeResponse{Error: "invalid url"})
 			return
 		}
-		if _, err := url.ParseRequestURI(payload.URL); err != nil {
-			http.Error(w, "invalid url", http.StatusBadRequest)
-			return
-		}
-		rewritten, err := s.rewriteLocalURL(payload.URL)
+		rewritten, err := s.rewriteLocalURL(request.URL)
 		if err != nil {
 			_ = writeStatus(s.session, s.containerID, "rewrite failed", err.Error(), nil, 0, false)
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			_ = writeBridgeResponse(conn, bridgeResponse{Error: err.Error()})
 			return
 		}
 		if err := s.openURL(rewritten); err != nil {
 			_ = writeStatus(s.session, s.containerID, "open failed", err.Error(), s.forwardSnapshot(), 0, false)
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			_ = writeBridgeResponse(conn, bridgeResponse{Error: err.Error()})
 			return
 		}
 		_ = writeStatus(s.session, s.containerID, "open forwarded", "", s.forwardSnapshot(), 0, false)
-		w.WriteHeader(http.StatusNoContent)
-	})
+		_ = writeBridgeResponse(conn, bridgeResponse{OK: true})
+	default:
+		_ = writeBridgeResponse(conn, bridgeResponse{Error: "unknown request"})
+	}
 }
 
 func (s *bridgeHostService) rewriteLocalURL(raw string) (string, error) {
@@ -260,34 +269,31 @@ func (s *bridgeHostService) ensureForward(port int) (int, bool, error) {
 
 func (s *bridgeHostService) handleForwardConn(port int, conn net.Conn) {
 	defer conn.Close()
-	cmd := exec.Command("docker", s.execArgs(s.containerID, port)...)
-	stdin, err := cmd.StdinPipe()
+	helperConn, err := net.Dial("unix", s.session.HelperSock)
 	if err != nil {
 		return
 	}
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		_ = stdin.Close()
+	defer helperConn.Close()
+	if err := writeBridgeRequest(helperConn, bridgeRequest{Kind: "connect", Port: port}); err != nil {
 		return
 	}
-	cmd.Stderr = io.Discard
-	if err := cmd.Start(); err != nil {
-		_ = stdin.Close()
+	response, err := readBridgeResponse(helperConn)
+	if err != nil || !response.OK {
 		return
 	}
 	done := make(chan struct{}, 2)
 	go func() {
-		_, _ = io.Copy(stdin, conn)
-		_ = stdin.Close()
+		_, _ = io.Copy(helperConn, conn)
+		closeWrite(helperConn)
 		done <- struct{}{}
 	}()
 	go func() {
-		_, _ = io.Copy(conn, stdout)
+		_, _ = io.Copy(conn, helperConn)
+		closeWrite(conn)
 		done <- struct{}{}
 	}()
 	<-done
 	<-done
-	_ = cmd.Wait()
 }
 
 func (s *bridgeHostService) forwardSnapshot() []forwardStatus {
@@ -326,10 +332,6 @@ func forwardEvent(containerPort int, hostPort int) string {
 	return fmt.Sprintf("forwarded %d on host port %d", containerPort, hostPort)
 }
 
-func connectorExecArgs(containerID string, port int) []string {
-	return []string{"exec", "-i", containerID, containerHelperBin, "connect", "--port", strconv.Itoa(port)}
-}
-
 func defaultOpen(target string) error {
 	if command := os.Getenv("HATCHCTL_BRIDGE_OPEN_COMMAND"); command != "" {
 		cmd := exec.Command("/bin/sh", "-lc", command)
@@ -358,6 +360,7 @@ func stopExisting(session *Session) error {
 	_ = process.Signal(syscall.SIGTERM)
 	for range 20 {
 		if !isPIDRunning(pid) {
+			_ = os.Remove(session.SocketPath)
 			return nil
 		}
 		time.Sleep(100 * time.Millisecond)
@@ -384,26 +387,85 @@ func isPIDRunning(pid int) bool {
 	return process.Signal(syscall.Signal(0)) == nil
 }
 
-func waitForReady(port int, timeout time.Duration) error {
+func ensureHelperService(session *Session, containerID string) error {
+	if err := pingSocket(session.HelperSock); err == nil {
+		return nil
+	}
+	_ = os.Remove(session.HelperSock)
+	cmd := exec.Command(
+		"docker", "exec", "-d", containerID,
+		containerHelperBin, "serve",
+		"--socket", filepath.ToSlash(filepath.Join(containerBridgeMountPath, helperSocketName)),
+	)
+	cmd.Stdout = io.Discard
+	cmd.Stderr = io.Discard
+	return cmd.Run()
+}
+
+func waitForSocket(path string, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), 200*time.Millisecond)
-		if err == nil {
-			_ = conn.Close()
+		if err := pingSocket(path); err == nil {
 			return nil
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	return fmt.Errorf("timed out waiting for bridge on port %d", port)
+	return fmt.Errorf("timed out waiting for bridge socket %s", path)
+}
+
+func waitForHelper(path string, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if err := pingSocket(path); err == nil {
+			return nil
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	return fmt.Errorf("timed out waiting for bridge helper socket %s", path)
+}
+
+func pingSocket(path string) error {
+	conn, err := net.DialTimeout("unix", path, 200*time.Millisecond)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	if err := writeBridgeRequest(conn, bridgeRequest{Kind: "ping"}); err != nil {
+		return err
+	}
+	response, err := readBridgeResponse(conn)
+	if err != nil {
+		return err
+	}
+	if !response.OK {
+		return errors.New(response.Error)
+	}
+	return nil
+}
+
+func listenUnixSocket(path string) (net.Listener, error) {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return nil, err
+	}
+	_ = os.Remove(path)
+	listener, err := net.Listen("unix", path)
+	if err != nil {
+		return nil, err
+	}
+	if err := os.Chmod(path, 0o600); err != nil {
+		_ = listener.Close()
+		_ = os.Remove(path)
+		return nil, err
+	}
+	return listener, nil
 }
 
 func writeBridgeConfig(session *Session, containerID string) error {
 	config := map[string]any{
 		"sessionId":   session.ID,
 		"containerId": containerID,
-		"controlPort": session.Port,
-		"token":       session.Token,
-		"host":        session.Host,
+		"socketPath":  session.SocketPath,
+		"helperSock":  session.HelperSock,
 		"statusPath":  session.StatusPath,
 		"pidPath":     session.PIDPath,
 	}
@@ -418,7 +480,6 @@ func writeStatus(session *Session, containerID string, event string, lastError s
 	status := statusFile{
 		SessionID:   session.ID,
 		ContainerID: containerID,
-		ControlPort: session.Port,
 		PID:         os.Getpid(),
 		Forwarded:   forwarded,
 		LastPort:    lastPort,
@@ -437,14 +498,30 @@ func writeStatus(session *Session, containerID string, event string, lastError s
 	return os.WriteFile(session.StatusPath, data, 0o600)
 }
 
-func bridgeListenAddress(session *Session) string {
-	port := 0
-	host := "0.0.0.0"
-	if session != nil {
-		port = session.Port
-		if session.Host == "127.0.0.1" || session.Host == "localhost" {
-			host = "127.0.0.1"
-		}
+func writeBridgeRequest(w io.Writer, request bridgeRequest) error {
+	return json.NewEncoder(w).Encode(request)
+}
+
+func writeBridgeResponse(w io.Writer, response bridgeResponse) error {
+	response.OK = response.Error == ""
+	return json.NewEncoder(w).Encode(response)
+}
+
+func readBridgeResponse(r io.Reader) (bridgeResponse, error) {
+	var response bridgeResponse
+	if err := json.NewDecoder(r).Decode(&response); err != nil {
+		return bridgeResponse{}, err
 	}
-	return net.JoinHostPort(host, strconv.Itoa(port))
+	return response, nil
+}
+
+func closeWrite(conn net.Conn) {
+	type closeWriter interface{ CloseWrite() error }
+	if closer, ok := conn.(closeWriter); ok {
+		_ = closer.CloseWrite()
+	}
+}
+
+func isClosedListener(err error) bool {
+	return errors.Is(err, net.ErrClosed) || strings.Contains(strings.ToLower(err.Error()), "use of closed network connection")
 }

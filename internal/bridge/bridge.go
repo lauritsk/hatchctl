@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -21,6 +20,8 @@ type Session struct {
 	Host       string `json:"host,omitempty"`
 	Port       int    `json:"port,omitempty"`
 	Token      string `json:"token,omitempty"`
+	SocketPath string `json:"socketPath,omitempty"`
+	HelperSock string `json:"helperSock,omitempty"`
 	StatePath  string `json:"statePath"`
 	ConfigPath string `json:"configPath,omitempty"`
 	PIDPath    string `json:"pidPath,omitempty"`
@@ -36,6 +37,8 @@ type Report = Session
 const (
 	containerBridgeMountPath = "/var/run/hatchctl/bridge"
 	helperBinaryEnvVar       = "HATCHCTL_BRIDGE_HELPER"
+	hostSocketName           = "bridge.sock"
+	helperSocketName         = "helper.sock"
 )
 
 func Prepare(stateDir string, enabled bool) (*Session, error) {
@@ -62,20 +65,11 @@ func Prepare(stateDir string, enabled bool) (*Session, error) {
 		return nil, err
 	}
 	session.Enabled = enabled
-	if enabled && runtime.GOOS == "darwin" {
-		if session.Host == "" {
-			session.Host = "host.docker.internal"
-		}
-		if session.Token == "" {
-			session.Token = randomToken(24)
-		}
-		if session.Port == 0 {
-			port, err := findFreePort()
-			if err != nil {
-				return nil, err
-			}
-			session.Port = port
-		}
+	if session.SocketPath == "" {
+		session.SocketPath = filepath.Join(bridgeDir, hostSocketName)
+	}
+	if session.HelperSock == "" {
+		session.HelperSock = filepath.Join(bridgeDir, helperSocketName)
 	}
 	session.StatePath = bridgeDir
 	session.HelperPath = helperPath
@@ -175,10 +169,6 @@ func Doctor(stateDir string) (Report, error) {
 }
 
 func openShim() string {
-	launcher := "open"
-	if runtime.GOOS != "darwin" {
-		launcher = "xdg-open"
-	}
 	return fmt.Sprintf(`#!/bin/sh
 set -eu
 
@@ -191,8 +181,8 @@ if [ -n "${DEVCONTAINER_BRIDGE_OPEN_COMMAND:-}" ]; then
   DEVCONTAINER_BRIDGE_URL="$url" exec /bin/sh -lc "$DEVCONTAINER_BRIDGE_OPEN_COMMAND"
 fi
 
-exec %s "$url"
-`, launcher)
+exec %s open --socket %s --url "$url"
+`, containerHelperBin, filepath.ToSlash(filepath.Join(containerBridgeMountPath, hostSocketName)))
 }
 
 func xdgOpenShim() string {
@@ -263,16 +253,9 @@ func applySession(session *Session, merged devcontainer.MergedConfig) devcontain
 	containerEnv := cloneEnv(merged.ContainerEnv)
 	containerEnv["BROWSER"] = filepath.ToSlash(filepath.Join(session.BinPath, "devcontainer-open"))
 	containerEnv["DEVCONTAINER_BRIDGE_ENABLED"] = "true"
+	containerEnv["DEVCONTAINER_BRIDGE_SOCKET"] = filepath.ToSlash(filepath.Join(session.MountPath, hostSocketName))
+	containerEnv["DEVCONTAINER_BRIDGE_HELPER_SOCKET"] = filepath.ToSlash(filepath.Join(session.MountPath, helperSocketName))
 	containerEnv["PATH"] = prependPath(session.BinPath, containerEnv["PATH"])
-	if session.Host != "" {
-		containerEnv["DEVCONTAINER_BRIDGE_HOST"] = session.Host
-	}
-	if session.Port != 0 {
-		containerEnv["DEVCONTAINER_BRIDGE_PORT"] = fmt.Sprintf("%d", session.Port)
-	}
-	if session.Token != "" {
-		containerEnv["DEVCONTAINER_BRIDGE_TOKEN"] = session.Token
-	}
 	mount := fmt.Sprintf("type=bind,source=%s,target=%s", session.StatePath, session.MountPath)
 	merged.ContainerEnv = containerEnv
 	merged.Mounts = appendMount(merged.Mounts, mount)
@@ -289,20 +272,12 @@ func loadOrCreateSession(bridgeDir string, enabled bool) (*Session, error) {
 	}
 	session = &Session{
 		ID:         randomToken(12),
-		Host:       "host.docker.internal",
-		Port:       0,
-		Token:      randomToken(24),
+		SocketPath: filepath.Join(bridgeDir, hostSocketName),
+		HelperSock: filepath.Join(bridgeDir, helperSocketName),
 		StatePath:  bridgeDir,
 		ConfigPath: filepath.Join(bridgeDir, "bridge-config.json"),
 		PIDPath:    filepath.Join(bridgeDir, "bridge.pid"),
 		StatusPath: filepath.Join(bridgeDir, "bridge-status.json"),
-	}
-	if enabled && runtime.GOOS == "darwin" {
-		port, err := findFreePort()
-		if err != nil {
-			return nil, err
-		}
-		session.Port = port
 	}
 	if err := saveSession(bridgeDir, session); err != nil {
 		return nil, err
@@ -330,19 +305,6 @@ func saveSession(bridgeDir string, session *Session) error {
 		return err
 	}
 	return os.WriteFile(path, data, 0o600)
-}
-
-func findFreePort() (int, error) {
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		return 0, err
-	}
-	defer listener.Close()
-	addr, ok := listener.Addr().(*net.TCPAddr)
-	if !ok {
-		return 0, fmt.Errorf("unexpected listener address %T", listener.Addr())
-	}
-	return addr.Port, nil
 }
 
 func randomToken(bytesLen int) string {

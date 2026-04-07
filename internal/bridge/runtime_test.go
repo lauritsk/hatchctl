@@ -2,62 +2,19 @@ package bridge
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
 
-func TestOpenHandlerRequiresValidToken(t *testing.T) {
+func TestBridgeHostServiceHandlesOpenRequest(t *testing.T) {
 	t.Parallel()
-	session := &Session{ID: "session", Token: "secret", Port: 1234, StatusPath: filepath.Join(t.TempDir(), "bridge-status.json")}
-	handler := newBridgeHostService(session, "container", func(string) error { return nil }).handler()
-	req := httptest.NewRequest(http.MethodPost, "/open", nil)
-	req.Header.Set("Content-Type", "application/json")
-	res := httptest.NewRecorder()
-
-	handler.ServeHTTP(res, req)
-
-	if res.Code != http.StatusBadRequest {
-		t.Fatalf("unexpected status %d", res.Code)
-	}
-}
-
-func TestOpenHandlerForwardsURL(t *testing.T) {
-	t.Parallel()
-	statusPath := filepath.Join(t.TempDir(), "bridge-status.json")
-	session := &Session{ID: "session", Token: "secret", Port: 1234, StatusPath: statusPath}
-	var opened string
-	service := newBridgeHostService(session, "container", func(target string) error {
-		opened = target
-		return nil
-	})
-	service.forwardURL = func(port int) (int, bool, error) { return port + 1000, false, nil }
-	handler := service.handler()
-	req := httptest.NewRequest(http.MethodPost, "/open?url=https%3A%2F%2Fexample.com&token=secret", nil)
-	res := httptest.NewRecorder()
-
-	handler.ServeHTTP(res, req)
-
-	if res.Code != http.StatusNoContent {
-		t.Fatalf("unexpected status %d", res.Code)
-	}
-	if opened != "https://example.com" {
-		t.Fatalf("unexpected opened url %q", opened)
-	}
-	if _, err := os.Stat(statusPath); err != nil {
-		t.Fatalf("expected status file: %v", err)
-	}
-}
-
-func TestOpenHandlerRewritesLocalhostURL(t *testing.T) {
-	t.Parallel()
-	session := &Session{ID: "session", Token: "secret", Port: 1234, StatusPath: filepath.Join(t.TempDir(), "bridge-status.json")}
+	session := &Session{ID: "session", StatusPath: filepath.Join(t.TempDir(), "bridge-status.json")}
 	var opened string
 	service := newBridgeHostService(session, "container", func(target string) error {
 		opened = target
@@ -69,14 +26,18 @@ func TestOpenHandlerRewritesLocalhostURL(t *testing.T) {
 		}
 		return 19090, false, nil
 	}
-	handler := service.handler()
-	req := httptest.NewRequest(http.MethodPost, "/open?url=http%3A%2F%2Flocalhost%3A8080%2Fcb&token=secret", nil)
-	res := httptest.NewRecorder()
-
-	handler.ServeHTTP(res, req)
-
-	if res.Code != http.StatusNoContent {
-		t.Fatalf("unexpected status %d", res.Code)
+	client, server := net.Pipe()
+	defer client.Close()
+	go service.handleConn(server)
+	if err := writeBridgeRequest(client, bridgeRequest{Kind: "open", URL: "http://localhost:8080/cb"}); err != nil {
+		t.Fatalf("write request: %v", err)
+	}
+	response, err := readBridgeResponse(client)
+	if err != nil {
+		t.Fatalf("read response: %v", err)
+	}
+	if !response.OK {
+		t.Fatalf("unexpected response %#v", response)
 	}
 	if opened != "http://127.0.0.1:19090/cb" {
 		t.Fatalf("unexpected rewritten url %q", opened)
@@ -110,12 +71,99 @@ func TestHelperConnectCopiesTraffic(t *testing.T) {
 	}
 }
 
-func TestConnectorExecArgsUsesHelperBinary(t *testing.T) {
+func TestHelperServeConnectsToContainerLocalhost(t *testing.T) {
 	t.Parallel()
-	got := strings.Join(connectorExecArgs("container123", 8123), " ")
-	want := fmt.Sprintf("exec -i container123 %s connect --port 8123", containerHelperBin)
-	if got != want {
-		t.Fatalf("unexpected connector exec args %q", got)
+	tcpListener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tcpListener.Close()
+	go func() {
+		conn, err := tcpListener.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		data, _ := io.ReadAll(conn)
+		_, _ = conn.Write(append([]byte("reply:"), data...))
+	}()
+
+	unixPath := testSocketPath(t, "helper.sock")
+	unixListener, err := listenUnixSocket(unixPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_ = unixListener.Close()
+		_ = os.Remove(unixPath)
+	}()
+	go func() {
+		conn, err := unixListener.Accept()
+		if err != nil {
+			return
+		}
+		handleHelperConn(conn)
+	}()
+
+	conn, err := net.Dial("unix", unixPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	port := tcpListener.Addr().(*net.TCPAddr).Port
+	if err := writeBridgeRequest(conn, bridgeRequest{Kind: "connect", Port: port}); err != nil {
+		t.Fatalf("write request: %v", err)
+	}
+	response, err := readBridgeResponse(conn)
+	if err != nil {
+		t.Fatalf("read response: %v", err)
+	}
+	if !response.OK {
+		t.Fatalf("unexpected response %#v", response)
+	}
+	if _, err := conn.Write([]byte("hello")); err != nil {
+		t.Fatalf("write data: %v", err)
+	}
+	closeWrite(conn)
+	data, err := io.ReadAll(conn)
+	if err != nil {
+		t.Fatalf("read proxied data: %v", err)
+	}
+	if got := string(data); got != "reply:hello" {
+		t.Fatalf("unexpected proxied data %q", got)
+	}
+}
+
+func TestHelperOpenUsesBridgeSocket(t *testing.T) {
+	t.Parallel()
+	path := testSocketPath(t, "bridge.sock")
+	listener, err := listenUnixSocket(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_ = listener.Close()
+		_ = os.Remove(path)
+	}()
+	requests := make(chan bridgeRequest, 1)
+	go func() {
+		conn, err := listener.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		var req bridgeRequest
+		if err := readBridgeRequest(conn, &req); err == nil {
+			requests <- req
+			_ = writeBridgeResponse(conn, bridgeResponse{OK: true})
+		}
+	}()
+	if err := helperOpen([]string{"--socket", path, "--url", "https://example.com"}); err != nil {
+		t.Fatalf("helper open: %v", err)
+	}
+	req := <-requests
+	if req.Kind != "open" || req.URL != "https://example.com" {
+		t.Fatalf("unexpected request %#v", req)
 	}
 }
 
@@ -156,6 +204,8 @@ func TestPrepareAndRuntimeFilesUseOwnerOnlyPermissions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("prepare bridge session: %v", err)
 	}
+	session.SocketPath = testSocketPath(t, "bridge.sock")
+	session.HelperSock = testSocketPath(t, "helper.sock")
 	if err := writeBridgeConfig(session, "container"); err != nil {
 		t.Fatalf("write bridge config: %v", err)
 	}
@@ -179,18 +229,35 @@ func TestPrepareAndRuntimeFilesUseOwnerOnlyPermissions(t *testing.T) {
 	assertMode(session.ConfigPath, 0o600)
 	assertMode(session.StatusPath, 0o600)
 
+	listener, err := listenUnixSocket(session.SocketPath)
+	if err != nil {
+		t.Fatalf("listen bridge socket: %v", err)
+	}
+	defer func() {
+		_ = listener.Close()
+		_ = os.Remove(session.SocketPath)
+	}()
+	assertMode(session.SocketPath, 0o600)
+
 	if err := os.WriteFile(session.PIDPath, []byte("123"), 0o600); err != nil {
 		t.Fatalf("write pid file: %v", err)
 	}
 	assertMode(session.PIDPath, 0o600)
+	if session.SocketPath == "" || session.HelperSock == "" {
+		t.Fatalf("expected socket paths in session %#v", session)
+	}
 }
 
-func TestBridgeListenAddressNarrowsLocalhostSessions(t *testing.T) {
-	t.Parallel()
-	if got := bridgeListenAddress(&Session{Host: "localhost", Port: 8123}); got != "127.0.0.1:8123" {
-		t.Fatalf("unexpected localhost listen address %q", got)
+func readBridgeRequest(r io.Reader, request *bridgeRequest) error {
+	return json.NewDecoder(r).Decode(request)
+}
+
+func testSocketPath(t *testing.T, name string) string {
+	t.Helper()
+	dir, err := os.MkdirTemp("/tmp", "hct-bridge-")
+	if err != nil {
+		t.Fatalf("create temp dir: %v", err)
 	}
-	if got := bridgeListenAddress(&Session{Host: "host.docker.internal", Port: 8123}); got != "0.0.0.0:8123" {
-		t.Fatalf("unexpected default listen address %q", got)
-	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	return filepath.Join(dir, name)
 }
