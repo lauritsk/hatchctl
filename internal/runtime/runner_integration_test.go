@@ -854,6 +854,61 @@ func TestBuildConsumesLocalFeaturesFromImageSource(t *testing.T) {
 	}
 }
 
+func TestBuildTreatsFeatureOptionValuesAsData(t *testing.T) {
+	client := dockerClientForTest(t)
+	ctx := context.Background()
+	workspace := t.TempDir()
+	configDir := filepath.Join(workspace, ".devcontainer")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	baseImage := "hatchctl-feature-data-test-" + sanitizeName(filepath.Base(workspace))
+	baseDockerfileDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(baseDockerfileDir, "Dockerfile"), []byte("FROM alpine:3.20\nRUN mkdir -p /usr/local/share\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.Run(ctx, docker.RunOptions{Args: []string{"build", "-t", baseImage, baseDockerfileDir}}); err != nil {
+		t.Fatalf("build base image: %v", err)
+	}
+	derivedImage := devcontainer.ImageName(workspace, filepath.Join(configDir, "devcontainer.json"))
+	t.Cleanup(func() {
+		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rmi", "-f", derivedImage}})
+		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rmi", "-f", baseImage}})
+	})
+	writeLocalFeature(t, filepath.Join(configDir, "feature-a"), `{
+		"id": "feature-a",
+		"options": {
+			"dangerous": {"default": "safe"}
+		}
+	}`, "#!/bin/sh\nset -eu\nprintf '%s' \"$DANGEROUS\" > /usr/local/share/feature-dangerous\n")
+	config := `{
+		"image": "` + baseImage + `",
+		"workspaceFolder": "/workspaces/demo",
+		"features": {
+			"./feature-a": {
+				"dangerous": "$(touch /tmp/pwned) literal 'quoted' value"
+			}
+		}
+	}`
+	if err := os.WriteFile(filepath.Join(configDir, "devcontainer.json"), []byte(config), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	runner := NewRunner(client)
+	buildResult, err := runner.Build(ctx, BuildOptions{Workspace: workspace})
+	if err != nil {
+		t.Fatalf("build image with dangerous feature option: %v", err)
+	}
+
+	output, err := client.Output(ctx, "run", "--rm", buildResult.Image, "sh", "-lc", "cat /usr/local/share/feature-dangerous; printf '|'; if [ -e /tmp/pwned ]; then printf pwned; else printf clean; fi")
+	if err != nil {
+		t.Fatalf("inspect built image state: %v", err)
+	}
+	if got := strings.TrimSpace(output); got != "$(touch /tmp/pwned) literal 'quoted' value|clean" {
+		t.Fatalf("unexpected dangerous option handling %q", got)
+	}
+}
+
 func TestUpConsumesLocalFeaturesFromDockerfileSource(t *testing.T) {
 	client := dockerClientForTest(t)
 	ctx := context.Background()

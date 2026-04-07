@@ -243,7 +243,11 @@ func writeFeatureBuildContext(buildDir string, features []devcontainer.ResolvedF
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(filepath.Join(buildDir, "devcontainer-features.builtin.env"), []byte(multilineEnv(containerUser, remoteUser)), 0o644); err != nil {
+	builtinEnv := map[string]string{
+		"_CONTAINER_USER": containerUser,
+		"_REMOTE_USER":    remoteUser,
+	}
+	if err := os.WriteFile(filepath.Join(buildDir, "devcontainer-features.builtin.env"), []byte(shellEnvScript(builtinEnv)), 0o644); err != nil {
 		return err
 	}
 	var dockerfile strings.Builder
@@ -257,11 +261,7 @@ func writeFeatureBuildContext(buildDir string, features []devcontainer.ResolvedF
 			return err
 		}
 		if len(feature.Options) > 0 {
-			var lines []string
-			for _, key := range sortedFeatureOptionKeys(feature.Options) {
-				lines = append(lines, key+"="+feature.Options[key])
-			}
-			if err := os.WriteFile(filepath.Join(dst, "devcontainer-features.env"), []byte(strings.Join(lines, "\n")+"\n"), 0o644); err != nil {
+			if err := os.WriteFile(filepath.Join(dst, "devcontainer-features.env"), []byte(shellEnvScript(feature.Options)), 0o644); err != nil {
 				return err
 			}
 		}
@@ -271,7 +271,7 @@ func writeFeatureBuildContext(buildDir string, features []devcontainer.ResolvedF
 				dockerfile.WriteString("ENV " + key + "=" + dockerfileQuotedValue(feature.Metadata.ContainerEnv[key]) + "\n")
 			}
 		}
-		dockerfile.WriteString("RUN if [ -f /tmp/hatchctl-features/" + rel + "/install.sh ]; then cd /tmp/hatchctl-features/" + rel + " && chmod +x ./install.sh && set -a && . /tmp/dev-container-features/devcontainer-features.builtin.env && if [ -f ./devcontainer-features.env ]; then . ./devcontainer-features.env; fi && set +a && ./install.sh; fi\n")
+		dockerfile.WriteString("RUN if [ -f /tmp/hatchctl-features/" + rel + "/install.sh ]; then cd /tmp/hatchctl-features/" + rel + " && chmod +x ./install.sh && . /tmp/dev-container-features/devcontainer-features.builtin.env && if [ -f ./devcontainer-features.env ]; then . ./devcontainer-features.env; fi && ./install.sh; fi\n")
 	}
 	if metadataLabel != "" {
 		dockerfile.WriteString("LABEL " + devcontainer.ImageMetadataLabel + "=" + dockerfileQuotedValue(metadataLabel) + "\n")
@@ -279,8 +279,15 @@ func writeFeatureBuildContext(buildDir string, features []devcontainer.ResolvedF
 	return os.WriteFile(filepath.Join(buildDir, "Dockerfile"), []byte(dockerfile.String()), 0o644)
 }
 
-func multilineEnv(containerUser string, remoteUser string) string {
-	return "_CONTAINER_USER=" + containerUser + "\n_REMOTE_USER=" + remoteUser + "\n"
+func shellEnvScript(values map[string]string) string {
+	if len(values) == 0 {
+		return ""
+	}
+	var lines []string
+	for _, key := range sortedFeatureOptionKeys(values) {
+		lines = append(lines, "export "+key+"="+devcontainer.ShellQuote(values[key]))
+	}
+	return strings.Join(lines, "\n") + "\n"
 }
 
 func sortedFeatureOptionKeys(values map[string]string) []string {
