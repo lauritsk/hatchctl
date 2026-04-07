@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"os"
 	"slices"
-	"sort"
 	"strings"
 
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
@@ -164,7 +163,7 @@ func renderComposeOverride(resolved devcontainer.ResolvedConfig, image string) (
 	if metadataLabel, err := devcontainer.MetadataLabelValue(resolved.Merged.Metadata); err == nil && metadataLabel != "" {
 		labels[devcontainer.ImageMetadataLabel] = metadataLabel
 	}
-	for _, key := range sortedStringKeys(labels) {
+	for _, key := range devcontainer.SortedMapKeys(labels) {
 		service.Labels = append(service.Labels, key+"="+labels[key])
 	}
 	for _, key := range devcontainer.SortedMapKeys(resolved.Merged.ContainerEnv) {
@@ -320,26 +319,11 @@ func optionalBool(values map[string]string, key string) (*bool, bool) {
 	return &parsed, true
 }
 
-func sortedStringKeys(values map[string]string) []string {
-	return sortedMapKeys(values)
-}
-
 func sortedVolumeNames(values map[string]struct{}) []string {
-	return sortedMapKeys(values)
-}
-
-func mapsKeys[K comparable, V any](values map[K]V) func(func(K) bool) {
-	return func(yield func(K) bool) {
-		for key := range values {
-			if !yield(key) {
-				return
-			}
-		}
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
 	}
-}
-
-func sortedMapKeys[V any](values map[string]V) []string {
-	keys := slices.Collect(mapsKeys(values))
-	sort.Strings(keys)
+	slices.Sort(keys)
 	return keys
 }

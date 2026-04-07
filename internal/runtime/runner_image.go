@@ -302,7 +302,7 @@ func shellEnvScript(values map[string]string) string {
 }
 
 func sortedFeatureOptionKeys(values map[string]string) []string {
-	return sortedMapKeys(values)
+	return devcontainer.SortedMapKeys(values)
 }
 
 func dockerfileQuotedValue(value string) string {
