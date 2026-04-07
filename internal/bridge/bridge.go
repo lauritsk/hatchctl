@@ -201,11 +201,7 @@ func xdgOpenShim() string {
 
 func installHelperBinary(binPath string) error {
 	helperPath := filepath.Join(binPath, "hatchctl-bridge-helper")
-	sourcePath, err := packagedHelperBinary()
-	if err != nil {
-		return err
-	}
-	data, err := os.ReadFile(sourcePath)
+	data, err := helperBinaryData()
 	if err != nil {
 		return err
 	}
@@ -215,14 +211,27 @@ func installHelperBinary(binPath string) error {
 	return os.Chmod(helperPath, 0o755)
 }
 
-func packagedHelperBinary() (string, error) {
+func helperBinaryData() ([]byte, error) {
 	if configured := os.Getenv(helperBinaryEnvVar); configured != "" {
-		if _, err := os.Stat(configured); err != nil {
-			return "", fmt.Errorf("bridge helper %s=%q: %w", helperBinaryEnvVar, configured, err)
+		data, err := os.ReadFile(configured)
+		if err != nil {
+			return nil, fmt.Errorf("bridge helper %s=%q: %w", helperBinaryEnvVar, configured, err)
 		}
-		return configured, nil
+		return data, nil
 	}
 
+	if data, ok := embeddedHelperBinary(runtime.GOARCH); ok {
+		return data, nil
+	}
+
+	sourcePath, err := packagedHelperBinary()
+	if err != nil {
+		return nil, err
+	}
+	return os.ReadFile(sourcePath)
+}
+
+func packagedHelperBinary() (string, error) {
 	for _, candidate := range helperBinaryCandidates() {
 		if _, err := os.Stat(candidate); err == nil {
 			return candidate, nil

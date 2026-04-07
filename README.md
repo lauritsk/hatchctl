@@ -32,7 +32,9 @@ tar -xzf hatchctl_<version>_<os>_<arch>.tar.gz
 install ./hatchctl /usr/local/bin/hatchctl
 ```
 
-If you use the macOS bridge flow, keep the shipped `hatchctl-bridge-helper-linux-<arch>` artifact alongside the release assets. `hatchctl` mounts that helper into managed Linux containers when bridge support is enabled.
+macOS release builds embed the Linux bridge helpers used for bridge mode, so `hatchctl up --bridge` works without a separate helper install.
+
+Standalone `hatchctl-bridge-helper_<version>_linux_<arch>.tar.gz` release assets are still published for manual packaging and advanced setups.
 
 ## Requirements
 

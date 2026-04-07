@@ -119,19 +119,19 @@ func TestConnectorExecArgsUsesHelperBinary(t *testing.T) {
 	}
 }
 
-func TestPackagedHelperBinaryUsesConfiguredPath(t *testing.T) {
+func TestHelperBinaryDataUsesConfiguredPath(t *testing.T) {
 	helperPath := filepath.Join(t.TempDir(), helperArtifactName())
 	if err := os.WriteFile(helperPath, []byte("helper"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv(helperBinaryEnvVar, helperPath)
 
-	got, err := packagedHelperBinary()
+	got, err := helperBinaryData()
 	if err != nil {
-		t.Fatalf("packaged helper binary: %v", err)
+		t.Fatalf("helper binary data: %v", err)
 	}
-	if got != helperPath {
-		t.Fatalf("unexpected helper path %q", got)
+	if string(got) != "helper" {
+		t.Fatalf("unexpected helper data %q", string(got))
 	}
 }
 
