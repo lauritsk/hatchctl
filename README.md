@@ -17,7 +17,7 @@ The project supports running and inspecting devcontainer-based environments acro
 - OCI feature consumption for single-container image and Dockerfile flows
 - direct tarball feature consumption for single-container image and Dockerfile flows
 - minimal Compose config discovery, build, up, exec, and reuse for a single service
-- persisted Compose override-file generation for mounts, env, labels, and command behavior
+- ephemeral Compose override-file generation for mounts, env, labels, and command behavior
 - Compose feature consumption for image-based and Dockerfile-based single-service flows
 - Compose bridge support and Compose UID/GID remap parity for single-service flows
 - config-adjacent feature lockfiles with digest and integrity reuse
