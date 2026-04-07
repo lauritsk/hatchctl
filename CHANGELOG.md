@@ -2,6 +2,19 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## [v0.1.3](https://github.com/lauritsk/hatchctl/compare/901883fcf6ec5249a76a170d793c3a09c791da99..v0.1.3) - 2026-04-07
+#### Bug Fixes
+- embed bridge helpers in release builds - ([2b931ea](https://github.com/lauritsk/hatchctl/commit/2b931ea47141773eb96d2e7b3a2c7c1dea4055a5)) - Karl Hans Laurits
+- make feature fetch timeouts configurable - ([901883f](https://github.com/lauritsk/hatchctl/commit/901883fcf6ec5249a76a170d793c3a09c791da99)) - Karl Hans Laurits
+#### Refactoring
+- move uid updates to runtime - ([dae92fe](https://github.com/lauritsk/hatchctl/commit/dae92feccebf12bb7809136f0ceddedadf223a9d)) - Karl Hans Laurits
+- fold bridge helper into hatchctl - ([046ddba](https://github.com/lauritsk/hatchctl/commit/046ddba681cf169781b3c3597a444d27f6ae7777)) - Karl Hans Laurits
+- share runtime preparation state - ([9385bee](https://github.com/lauritsk/hatchctl/commit/9385bee755435e496560f77f92d2044374c02346)) - Karl Hans Laurits
+- replace bridge HTTP transport - ([c9b0cc2](https://github.com/lauritsk/hatchctl/commit/c9b0cc2d155d912a4458f6a4a365bf456aab1275)) - Karl Hans Laurits
+- stop publishing standalone bridge helper - ([eec0666](https://github.com/lauritsk/hatchctl/commit/eec066635d8a047d5146ae87fd2ec3735e525e56)) - Karl Hans Laurits
+
+- - -
+
 ## [v0.1.2](https://github.com/lauritsk/hatchctl/compare/85c0692f9a9873d0648efa8eee811d8f8ff79e81..v0.1.2) - 2026-04-07
 #### Bug Fixes
 - separate goreleaser archive outputs - ([85c0692](https://github.com/lauritsk/hatchctl/commit/85c0692f9a9873d0648efa8eee811d8f8ff79e81)) - Karl Hans Laurits
