@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"testing"
+	"time"
 
 	"github.com/lauritsk/hatchctl/internal/bridge"
 	ui "github.com/lauritsk/hatchctl/internal/display"
@@ -60,6 +61,28 @@ func TestParseGlobalOptionsStripsLeadingVerboseFlags(t *testing.T) {
 	}
 	if got.Workspace != "/tmp/demo" {
 		t.Fatalf("unexpected workspace %q", got.Workspace)
+	}
+	if got.FeatureTimeout != 90*time.Second {
+		t.Fatalf("unexpected default feature timeout %s", got.FeatureTimeout)
+	}
+}
+
+func TestRunUpPassesFeatureTimeoutFlag(t *testing.T) {
+	t.Parallel()
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	var got runtime.UpOptions
+	app := NewWithRunner(&out, &errOut, stubRunner{up: func(_ context.Context, opts runtime.UpOptions) (runtime.UpResult, error) {
+		got = opts
+		return runtime.UpResult{}, nil
+	}})
+
+	if err := app.Run(context.Background(), []string{"up", "--feature-timeout", "45s"}); err != nil {
+		t.Fatalf("run app: %v", err)
+	}
+	if got.FeatureTimeout != 45*time.Second {
+		t.Fatalf("unexpected feature timeout %s", got.FeatureTimeout)
 	}
 }
 

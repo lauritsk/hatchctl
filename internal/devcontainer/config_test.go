@@ -49,6 +49,31 @@ func TestLoadSupportsJSONC(t *testing.T) {
 	}
 }
 
+func TestLoadWrapsJSONCParseErrorsWithContext(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "devcontainer.json")
+	contents := `{
+		"image": "mcr.microsoft.com/devcontainers/base:ubuntu"
+		"workspaceFolder": "/workspaces/demo"
+	}`
+	if err := os.WriteFile(configPath, []byte(contents), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := Load(configPath)
+	if err == nil {
+		t.Fatal("expected load error")
+	}
+	if !strings.Contains(err.Error(), `3 | 		"workspaceFolder": "/workspaces/demo"`) {
+		t.Fatalf("expected source context in error, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "hint: check for a missing comma") {
+		t.Fatalf("expected hint in error, got %v", err)
+	}
+}
+
 func TestResolveFindsDefaultConfigAndBuildsRuntimeShape(t *testing.T) {
 	t.Parallel()
 

@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/lauritsk/hatchctl/internal/bridge"
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
@@ -39,6 +40,7 @@ func NewRunnerWithIO(client *docker.Client, stdin io.Reader, stdout io.Writer, s
 type UpOptions struct {
 	Workspace      string
 	ConfigPath     string
+	FeatureTimeout time.Duration
 	LockfilePolicy devcontainer.FeatureLockfilePolicy
 	Recreate       bool
 	BridgeEnabled  bool
@@ -58,6 +60,7 @@ type UpResult struct {
 type BuildOptions struct {
 	Workspace      string
 	ConfigPath     string
+	FeatureTimeout time.Duration
 	LockfilePolicy devcontainer.FeatureLockfilePolicy
 	Verbose        bool
 	Debug          bool
@@ -71,6 +74,7 @@ type BuildResult struct {
 type ExecOptions struct {
 	Workspace      string
 	ConfigPath     string
+	FeatureTimeout time.Duration
 	LockfilePolicy devcontainer.FeatureLockfilePolicy
 	Verbose        bool
 	Debug          bool
@@ -85,6 +89,7 @@ type ExecOptions struct {
 type ReadConfigOptions struct {
 	Workspace      string
 	ConfigPath     string
+	FeatureTimeout time.Duration
 	LockfilePolicy devcontainer.FeatureLockfilePolicy
 	Verbose        bool
 	Debug          bool
@@ -132,6 +137,7 @@ type ManagedContainer struct {
 type RunLifecycleOptions struct {
 	Workspace      string
 	ConfigPath     string
+	FeatureTimeout time.Duration
 	LockfilePolicy devcontainer.FeatureLockfilePolicy
 	Verbose        bool
 	Debug          bool
@@ -147,6 +153,7 @@ type RunLifecycleResult struct {
 type BridgeDoctorOptions struct {
 	Workspace      string
 	ConfigPath     string
+	FeatureTimeout time.Duration
 	LockfilePolicy devcontainer.FeatureLockfilePolicy
 	Verbose        bool
 	Debug          bool
@@ -160,6 +167,7 @@ type ExitError struct {
 type prepareResolveOptions struct {
 	Workspace      string
 	ConfigPath     string
+	FeatureTimeout time.Duration
 	LockfilePolicy devcontainer.FeatureLockfilePolicy
 	ReadOnly       bool
 	ProgressLabel  string
@@ -175,6 +183,7 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 	resolved, err := r.prepareResolved(ctx, prepareResolveOptions{
 		Workspace:      opts.Workspace,
 		ConfigPath:     opts.ConfigPath,
+		FeatureTimeout: opts.FeatureTimeout,
 		LockfilePolicy: opts.LockfilePolicy,
 		ProgressLabel:  "Resolving development container",
 		Debug:          opts.Debug,
@@ -275,6 +284,7 @@ func (r *Runner) Build(ctx context.Context, opts BuildOptions) (BuildResult, err
 	resolved, err := r.prepareResolved(ctx, prepareResolveOptions{
 		Workspace:      opts.Workspace,
 		ConfigPath:     opts.ConfigPath,
+		FeatureTimeout: opts.FeatureTimeout,
 		LockfilePolicy: opts.LockfilePolicy,
 		ProgressLabel:  "Resolving development container",
 		Debug:          opts.Debug,
@@ -304,6 +314,7 @@ func (r *Runner) Exec(ctx context.Context, opts ExecOptions) (int, error) {
 	resolved, image, err := r.prepareEnrichedResolved(ctx, prepareResolveOptions{
 		Workspace:      opts.Workspace,
 		ConfigPath:     opts.ConfigPath,
+		FeatureTimeout: opts.FeatureTimeout,
 		LockfilePolicy: opts.LockfilePolicy,
 		ProgressLabel:  "Resolving development container",
 		Debug:          opts.Debug,
@@ -365,6 +376,7 @@ func (r *Runner) ReadConfig(ctx context.Context, opts ReadConfigOptions) (ReadCo
 	resolved, image, err := r.prepareEnrichedResolved(ctx, prepareResolveOptions{
 		Workspace:      opts.Workspace,
 		ConfigPath:     opts.ConfigPath,
+		FeatureTimeout: opts.FeatureTimeout,
 		LockfilePolicy: opts.LockfilePolicy,
 		ReadOnly:       true,
 		ProgressLabel:  "Inspecting resolved configuration",
@@ -435,6 +447,7 @@ func (r *Runner) RunLifecycle(ctx context.Context, opts RunLifecycleOptions) (Ru
 	resolved, _, err := r.prepareEnrichedResolved(ctx, prepareResolveOptions{
 		Workspace:      opts.Workspace,
 		ConfigPath:     opts.ConfigPath,
+		FeatureTimeout: opts.FeatureTimeout,
 		LockfilePolicy: opts.LockfilePolicy,
 		ProgressLabel:  "Resolving development container",
 		Debug:          opts.Debug,
@@ -463,6 +476,7 @@ func (r *Runner) BridgeDoctor(ctx context.Context, opts BridgeDoctorOptions) (br
 	resolved, err := r.prepareResolved(ctx, prepareResolveOptions{
 		Workspace:      opts.Workspace,
 		ConfigPath:     opts.ConfigPath,
+		FeatureTimeout: opts.FeatureTimeout,
 		LockfilePolicy: opts.LockfilePolicy,
 		ReadOnly:       true,
 		ProgressLabel:  "Inspecting bridge state",
@@ -477,7 +491,7 @@ func (r *Runner) BridgeDoctor(ctx context.Context, opts BridgeDoctorOptions) (br
 
 func (r *Runner) prepareResolved(ctx context.Context, opts prepareResolveOptions) (devcontainer.ResolvedConfig, error) {
 	r.emitProgress(opts.Events, opts.ProgressLabel)
-	resolveOpts := devcontainer.ResolveOptions{LockfilePolicy: opts.LockfilePolicy}
+	resolveOpts := devcontainer.ResolveOptions{LockfilePolicy: opts.LockfilePolicy, FeatureHTTPTimeout: opts.FeatureTimeout}
 	if !opts.ReadOnly {
 		resolveOpts.AllowNetwork = true
 		resolveOpts.WriteFeatureLock = true

@@ -9,8 +9,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-
-	"github.com/tailscale/hujson"
+	"time"
 )
 
 const (
@@ -207,10 +206,11 @@ type ResolvedConfig struct {
 }
 
 type ResolveOptions struct {
-	AllowNetwork      bool
-	WriteFeatureLock  bool
-	WriteFeatureState bool
-	LockfilePolicy    FeatureLockfilePolicy
+	AllowNetwork       bool
+	WriteFeatureLock   bool
+	WriteFeatureState  bool
+	FeatureHTTPTimeout time.Duration
+	LockfilePolicy     FeatureLockfilePolicy
 }
 
 func Resolve(ctx context.Context, workspaceArg string, configArg string) (ResolvedConfig, error) {
@@ -305,6 +305,7 @@ func resolve(ctx context.Context, workspaceArg string, configArg string, opts Re
 		WriteLockFile:  opts.WriteFeatureLock,
 		WriteStateFile: opts.WriteFeatureState,
 		StateDir:       stateDir,
+		HTTPTimeout:    opts.FeatureHTTPTimeout,
 		LockfilePolicy: opts.LockfilePolicy,
 	})
 	if err != nil {
@@ -340,9 +341,9 @@ func Load(configPath string) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	standardized, err := hujson.Standardize(contents)
+	standardized, err := standardizeJSONC(configPath, contents)
 	if err != nil {
-		return Config{}, fmt.Errorf("parse jsonc %s: %w", configPath, err)
+		return Config{}, err
 	}
 
 	var raw map[string]any

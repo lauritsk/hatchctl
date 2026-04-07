@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-
-	"github.com/tailscale/hujson"
 )
 
 type FeatureLockFile map[string]FeatureLockEntry
@@ -72,7 +70,7 @@ func ReadFeatureLockFile(configPath string) (FeatureLockFile, bool, error) {
 	if len(bytes.TrimSpace(data)) == 0 {
 		return FeatureLockFile{}, true, nil
 	}
-	data, err = hujson.Standardize(data)
+	data, err = standardizeJSONC(path, data)
 	if err != nil {
 		return nil, true, err
 	}

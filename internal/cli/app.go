@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -97,6 +98,7 @@ func (a *App) newUpCommand(global *globalOptions) *cobra.Command {
 	var workspace string
 	var configPath string
 	var lockfilePolicy string
+	var featureTimeout time.Duration
 	var recreate bool
 	var bridgeEnabled bool
 	var jsonOut bool
@@ -113,6 +115,7 @@ func (a *App) newUpCommand(global *globalOptions) *cobra.Command {
 			result, err := a.runner.Up(cmd.Context(), runtime.UpOptions{
 				Workspace:      workspace,
 				ConfigPath:     configPath,
+				FeatureTimeout: featureTimeout,
 				LockfilePolicy: policy,
 				Recreate:       recreate,
 				BridgeEnabled:  bridgeEnabled,
@@ -131,6 +134,7 @@ func (a *App) newUpCommand(global *globalOptions) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&workspace, "workspace", "", "workspace folder (defaults to current directory)")
 	cmd.Flags().StringVar(&configPath, "config", "", "path to devcontainer.json")
+	cmd.Flags().DurationVar(&featureTimeout, "feature-timeout", 90*time.Second, "timeout for remote feature HTTP requests")
 	cmd.Flags().StringVar(&lockfilePolicy, "lockfile-policy", "auto", "lockfile policy: auto, frozen, or update")
 	cmd.Flags().BoolVar(&recreate, "recreate", false, "remove and recreate an existing managed container")
 	cmd.Flags().BoolVar(&bridgeEnabled, "bridge", false, "enable macOS auth bridge scaffolding")
@@ -142,6 +146,7 @@ func (a *App) newBuildCommand(global *globalOptions) *cobra.Command {
 	var workspace string
 	var configPath string
 	var lockfilePolicy string
+	var featureTimeout time.Duration
 	var jsonOut bool
 	cmd := &cobra.Command{
 		Use:   "build",
@@ -156,6 +161,7 @@ func (a *App) newBuildCommand(global *globalOptions) *cobra.Command {
 			result, err := a.runner.Build(cmd.Context(), runtime.BuildOptions{
 				Workspace:      workspace,
 				ConfigPath:     configPath,
+				FeatureTimeout: featureTimeout,
 				LockfilePolicy: policy,
 				Verbose:        global.Verbose || global.Debug,
 				Debug:          global.Debug,
@@ -172,6 +178,7 @@ func (a *App) newBuildCommand(global *globalOptions) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&workspace, "workspace", "", "workspace folder (defaults to current directory)")
 	cmd.Flags().StringVar(&configPath, "config", "", "path to devcontainer.json")
+	cmd.Flags().DurationVar(&featureTimeout, "feature-timeout", 90*time.Second, "timeout for remote feature HTTP requests")
 	cmd.Flags().StringVar(&lockfilePolicy, "lockfile-policy", "auto", "lockfile policy: auto, frozen, or update")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "emit machine-readable JSON")
 	return cmd
@@ -181,6 +188,7 @@ func (a *App) newExecCommand(global *globalOptions) *cobra.Command {
 	var workspace string
 	var configPath string
 	var lockfilePolicy string
+	var featureTimeout time.Duration
 	var jsonOut bool
 	var remoteEnv []string
 	cmd := &cobra.Command{
@@ -208,6 +216,7 @@ func (a *App) newExecCommand(global *globalOptions) *cobra.Command {
 			code, err := a.runner.Exec(cmd.Context(), runtime.ExecOptions{
 				Workspace:      workspace,
 				ConfigPath:     configPath,
+				FeatureTimeout: featureTimeout,
 				LockfilePolicy: policy,
 				Verbose:        global.Verbose || global.Debug,
 				Debug:          global.Debug,
@@ -239,6 +248,7 @@ func (a *App) newExecCommand(global *globalOptions) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&workspace, "workspace", "", "workspace folder (defaults to current directory)")
 	cmd.Flags().StringVar(&configPath, "config", "", "path to devcontainer.json")
+	cmd.Flags().DurationVar(&featureTimeout, "feature-timeout", 90*time.Second, "timeout for remote feature HTTP requests")
 	cmd.Flags().StringVar(&lockfilePolicy, "lockfile-policy", "auto", "lockfile policy: auto, frozen, or update")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "emit machine-readable JSON")
 	cmd.Flags().StringArrayVar(&remoteEnv, "env", nil, "extra remote environment variables in KEY=VALUE form")
@@ -249,6 +259,7 @@ func (a *App) newConfigCommand(global *globalOptions) *cobra.Command {
 	var workspace string
 	var configPath string
 	var lockfilePolicy string
+	var featureTimeout time.Duration
 	var jsonOut bool
 	cmd := &cobra.Command{
 		Use:   "config",
@@ -263,6 +274,7 @@ func (a *App) newConfigCommand(global *globalOptions) *cobra.Command {
 			result, err := a.runner.ReadConfig(cmd.Context(), runtime.ReadConfigOptions{
 				Workspace:      workspace,
 				ConfigPath:     configPath,
+				FeatureTimeout: featureTimeout,
 				LockfilePolicy: policy,
 				Verbose:        global.Verbose || global.Debug,
 				Debug:          global.Debug,
@@ -279,6 +291,7 @@ func (a *App) newConfigCommand(global *globalOptions) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&workspace, "workspace", "", "workspace folder (defaults to current directory)")
 	cmd.Flags().StringVar(&configPath, "config", "", "path to devcontainer.json")
+	cmd.Flags().DurationVar(&featureTimeout, "feature-timeout", 90*time.Second, "timeout for remote feature HTTP requests")
 	cmd.Flags().StringVar(&lockfilePolicy, "lockfile-policy", "frozen", "lockfile policy: auto, frozen, or update")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "emit machine-readable JSON")
 	return cmd
@@ -288,6 +301,7 @@ func (a *App) newRunCommand(global *globalOptions) *cobra.Command {
 	var workspace string
 	var configPath string
 	var lockfilePolicy string
+	var featureTimeout time.Duration
 	var phase string
 	var jsonOut bool
 	cmd := &cobra.Command{
@@ -303,6 +317,7 @@ func (a *App) newRunCommand(global *globalOptions) *cobra.Command {
 			result, err := a.runner.RunLifecycle(cmd.Context(), runtime.RunLifecycleOptions{
 				Workspace:      workspace,
 				ConfigPath:     configPath,
+				FeatureTimeout: featureTimeout,
 				LockfilePolicy: policy,
 				Verbose:        global.Verbose || global.Debug,
 				Debug:          global.Debug,
@@ -320,6 +335,7 @@ func (a *App) newRunCommand(global *globalOptions) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&workspace, "workspace", "", "workspace folder (defaults to current directory)")
 	cmd.Flags().StringVar(&configPath, "config", "", "path to devcontainer.json")
+	cmd.Flags().DurationVar(&featureTimeout, "feature-timeout", 90*time.Second, "timeout for remote feature HTTP requests")
 	cmd.Flags().StringVar(&lockfilePolicy, "lockfile-policy", "auto", "lockfile policy: auto, frozen, or update")
 	cmd.Flags().StringVar(&phase, "phase", "all", "one of: all, create, start, attach")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "emit machine-readable JSON")
@@ -342,6 +358,7 @@ func (a *App) newBridgeDoctorCommand(global *globalOptions) *cobra.Command {
 	var workspace string
 	var configPath string
 	var lockfilePolicy string
+	var featureTimeout time.Duration
 	var jsonOut bool
 	cmd := &cobra.Command{
 		Use:   "doctor",
@@ -356,6 +373,7 @@ func (a *App) newBridgeDoctorCommand(global *globalOptions) *cobra.Command {
 			report, err := a.runner.BridgeDoctor(cmd.Context(), runtime.BridgeDoctorOptions{
 				Workspace:      workspace,
 				ConfigPath:     configPath,
+				FeatureTimeout: featureTimeout,
 				LockfilePolicy: policy,
 				Verbose:        global.Verbose || global.Debug,
 				Debug:          global.Debug,
@@ -378,6 +396,7 @@ func (a *App) newBridgeDoctorCommand(global *globalOptions) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&workspace, "workspace", "", "workspace folder (defaults to current directory)")
 	cmd.Flags().StringVar(&configPath, "config", "", "path to devcontainer.json")
+	cmd.Flags().DurationVar(&featureTimeout, "feature-timeout", 90*time.Second, "timeout for remote feature HTTP requests")
 	cmd.Flags().StringVar(&lockfilePolicy, "lockfile-policy", "frozen", "lockfile policy: auto, frozen, or update")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "emit machine-readable JSON")
 	return cmd

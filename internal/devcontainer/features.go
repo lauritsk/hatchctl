@@ -22,11 +22,10 @@ import (
 	"time"
 
 	"github.com/lauritsk/hatchctl/internal/security"
-	"github.com/tailscale/hujson"
 )
 
 var (
-	featureHTTPTimeout             = 30 * time.Second
+	featureHTTPTimeout             = 90 * time.Second
 	featureArtifactMaxBytes  int64 = 64 << 20
 	featureMetadataMaxBytes  int64 = 2 << 20
 	featureErrorBodyMaxBytes int64 = 64 << 10
@@ -50,6 +49,7 @@ type FeatureResolveOptions struct {
 	WriteLockFile  bool
 	WriteStateFile bool
 	StateDir       string
+	HTTPTimeout    time.Duration
 	LockfilePolicy FeatureLockfilePolicy
 }
 
@@ -124,7 +124,7 @@ func ResolveFeatures(ctx context.Context, configPath string, configDir string, c
 		if err := validateFeatureLockfilePolicy(source, lockFile[source], policy); err != nil {
 			return nil, err
 		}
-		featurePath, kind, resolvedRef, integrity, version, err := resolveFeaturePath(ctx, configDir, cacheDir, source, lockFile[source], opts.AllowNetwork, policy)
+		featurePath, kind, resolvedRef, integrity, version, err := resolveFeaturePath(ctx, configDir, cacheDir, source, lockFile[source], opts.AllowNetwork, policy, opts.HTTPTimeout)
 		if err != nil {
 			return nil, err
 		}
@@ -179,7 +179,8 @@ func ResolveFeatures(ctx context.Context, configPath string, configDir string, c
 	return orderFeatures(features, byAlias)
 }
 
-func resolveFeaturePath(ctx context.Context, configDir string, cacheDir string, source string, lock FeatureLockEntry, allowNetwork bool, policy FeatureLockfilePolicy) (string, string, string, string, string, error) {
+func resolveFeaturePath(ctx context.Context, configDir string, cacheDir string, source string, lock FeatureLockEntry, allowNetwork bool, policy FeatureLockfilePolicy, httpTimeout time.Duration) (string, string, string, string, string, error) {
+	httpTimeout = effectiveFeatureHTTPTimeout(httpTimeout)
 	resolved, err := resolveLocalFeaturePath(configDir, source)
 	if err == nil {
 		return resolved, "file-path", source, "", "", nil
@@ -192,14 +193,14 @@ func resolveFeaturePath(ctx context.Context, configDir string, cacheDir string, 
 			if !allowNetwork {
 				return "", "", "", "", "", fmt.Errorf("feature %q requires network access in update lockfile mode", source)
 			}
-			resolved, integrity, err := fetchTarballFeature(ctx, cacheDir, source, lock)
+			resolved, integrity, err := fetchTarballFeature(ctx, cacheDir, source, lock, httpTimeout)
 			return resolved, "direct-tarball", source, integrity, source, err
 		}
 		if !allowNetwork {
 			resolved, integrity, err := cachedTarballFeature(cacheDir, source, lock)
 			return resolved, "direct-tarball", source, integrity, source, err
 		}
-		resolved, integrity, err := fetchTarballFeature(ctx, cacheDir, source, lock)
+		resolved, integrity, err := fetchTarballFeature(ctx, cacheDir, source, lock, httpTimeout)
 		return resolved, "direct-tarball", source, integrity, source, err
 	}
 	if githubRef, err := parseGitHubFeatureReference(source); err == nil {
@@ -208,14 +209,14 @@ func resolveFeaturePath(ctx context.Context, configDir string, cacheDir string, 
 			if !allowNetwork {
 				return "", "", "", "", "", fmt.Errorf("feature %q requires network access in update lockfile mode", source)
 			}
-			resolved, integrity, err := fetchTarballFeature(ctx, cacheDir, resolvedSource, lock)
+			resolved, integrity, err := fetchTarballFeature(ctx, cacheDir, resolvedSource, lock, httpTimeout)
 			return resolved, "github-release", resolvedSource, integrity, githubRef.version(), err
 		}
 		if !allowNetwork {
 			resolved, integrity, err := cachedTarballFeature(cacheDir, resolvedSource, lock)
 			return resolved, "github-release", resolvedSource, integrity, githubRef.version(), err
 		}
-		resolved, integrity, err := fetchTarballFeature(ctx, cacheDir, resolvedSource, lock)
+		resolved, integrity, err := fetchTarballFeature(ctx, cacheDir, resolvedSource, lock, httpTimeout)
 		return resolved, "github-release", resolvedSource, integrity, githubRef.version(), err
 	}
 	ref, err := parseOCIReference(source)
@@ -226,14 +227,14 @@ func resolveFeaturePath(ctx context.Context, configDir string, cacheDir string, 
 		if !allowNetwork {
 			return "", "", "", "", "", fmt.Errorf("feature %q requires network access in update lockfile mode", source)
 		}
-		resolvedPath, resolvedRef, integrity, version, err := fetchOCIFeature(ctx, cacheDir, source, ref, lock)
+		resolvedPath, resolvedRef, integrity, version, err := fetchOCIFeature(ctx, cacheDir, source, ref, lock, httpTimeout)
 		return resolvedPath, "oci", resolvedRef, integrity, version, err
 	}
 	if !allowNetwork {
 		resolvedPath, resolvedRef, integrity, version, err := cachedOCIFeature(cacheDir, source, ref, lock)
 		return resolvedPath, "oci", resolvedRef, integrity, version, err
 	}
-	resolvedPath, resolvedRef, integrity, version, err := fetchOCIFeature(ctx, cacheDir, source, ref, lock)
+	resolvedPath, resolvedRef, integrity, version, err := fetchOCIFeature(ctx, cacheDir, source, ref, lock, httpTimeout)
 	return resolvedPath, "oci", resolvedRef, integrity, version, err
 }
 
@@ -385,7 +386,7 @@ func parseOCIReference(source string) (ociReference, error) {
 	}, nil
 }
 
-func fetchOCIFeature(ctx context.Context, cacheDir string, source string, ref ociReference, lock FeatureLockEntry) (string, string, string, string, error) {
+func fetchOCIFeature(ctx context.Context, cacheDir string, source string, ref ociReference, lock FeatureLockEntry, httpTimeout time.Duration) (string, string, string, string, error) {
 	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
 		return "", "", "", "", err
 	}
@@ -395,7 +396,7 @@ func fetchOCIFeature(ctx context.Context, cacheDir string, source string, ref oc
 	if lock.Integrity != "" {
 		manifestRef.Reference = lock.Integrity
 	}
-	manifest, digest, token, err := fetchOCIManifest(ctx, manifestRef)
+	manifest, digest, token, err := fetchOCIManifest(ctx, manifestRef, httpTimeout)
 	if err != nil {
 		return "", "", "", "", err
 	}
@@ -423,7 +424,7 @@ func fetchOCIFeature(ctx context.Context, cacheDir string, source string, ref oc
 			_ = os.RemoveAll(featureDir)
 		}
 	}()
-	if err := fetchOCIBlob(ctx, ref, manifest.Layers[0].Digest, token, featureDir); err != nil {
+	if err := fetchOCIBlob(ctx, ref, manifest.Layers[0].Digest, token, featureDir, httpTimeout); err != nil {
 		return "", "", "", "", err
 	}
 	if _, err := os.Stat(filepath.Join(featureDir, "devcontainer-feature.json")); err != nil {
@@ -432,13 +433,13 @@ func fetchOCIFeature(ctx context.Context, cacheDir string, source string, ref oc
 	return featureDir, ref.Registry + "/" + ref.Repository + "@" + digest, digest, ref.Reference, nil
 }
 
-func fetchTarballFeature(ctx context.Context, cacheDir string, source string, lock FeatureLockEntry) (string, string, error) {
+func fetchTarballFeature(ctx context.Context, cacheDir string, source string, lock FeatureLockEntry, httpTimeout time.Duration) (string, string, error) {
 	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
 		return "", "", err
 	}
 	key := sha256.Sum256([]byte(source))
 	baseDir := filepath.Join(cacheDir, hex.EncodeToString(key[:]))
-	body, err := fetchTarballBytes(ctx, source)
+	body, err := fetchTarballBytes(ctx, source, httpTimeout)
 	if err != nil {
 		return "", "", err
 	}
@@ -486,12 +487,12 @@ func cachedTarballFeature(cacheDir string, source string, lock FeatureLockEntry)
 	return featureDir, lock.Integrity, nil
 }
 
-func fetchTarballBytes(ctx context.Context, rawURL string) ([]byte, error) {
+func fetchTarballBytes(ctx context.Context, rawURL string, httpTimeout time.Duration) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
 		return nil, err
 	}
-	resp, err := featureHTTPClient().Do(req)
+	resp, err := featureHTTPClient(httpTimeout).Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -503,13 +504,13 @@ func fetchTarballBytes(ctx context.Context, rawURL string) ([]byte, error) {
 	return readHTTPResponseBody(resp, featureArtifactMaxBytes, "feature tarball")
 }
 
-func fetchOCIManifest(ctx context.Context, ref ociReference) (ociManifest, string, string, error) {
+func fetchOCIManifest(ctx context.Context, ref ociReference, httpTimeout time.Duration) (ociManifest, string, string, error) {
 	url := registryURL(ref, path.Join("v2", ref.Repository, "manifests", ref.Reference))
 	accept := strings.Join([]string{
 		"application/vnd.oci.image.manifest.v1+json",
 		"application/vnd.docker.distribution.manifest.v2+json",
 	}, ", ")
-	body, headers, token, err := registryGET(ctx, url, accept, "")
+	body, headers, token, err := registryGET(ctx, url, accept, "", httpTimeout)
 	if err != nil {
 		return ociManifest{}, "", "", err
 	}
@@ -520,9 +521,9 @@ func fetchOCIManifest(ctx context.Context, ref ociReference) (ociManifest, strin
 	return manifest, headers.Get("Docker-Content-Digest"), token, nil
 }
 
-func fetchOCIBlob(ctx context.Context, ref ociReference, digest string, token string, dstDir string) error {
+func fetchOCIBlob(ctx context.Context, ref ociReference, digest string, token string, dstDir string, httpTimeout time.Duration) error {
 	url := registryURL(ref, path.Join("v2", ref.Repository, "blobs", digest))
-	body, _, _, err := registryGET(ctx, url, "application/octet-stream", token)
+	body, _, _, err := registryGET(ctx, url, "application/octet-stream", token, httpTimeout)
 	if err != nil {
 		return err
 	}
@@ -537,8 +538,8 @@ func registryURL(ref ociReference, resource string) string {
 	return scheme + "://" + ref.Registry + "/" + strings.TrimPrefix(resource, "/")
 }
 
-func registryGET(ctx context.Context, rawURL string, accept string, existingToken string) ([]byte, http.Header, string, error) {
-	client := featureHTTPClient()
+func registryGET(ctx context.Context, rawURL string, accept string, existingToken string, httpTimeout time.Duration) ([]byte, http.Header, string, error) {
+	client := featureHTTPClient(httpTimeout)
 	request := func(token string) ([]byte, http.Header, int, http.Header, error) {
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 		if err != nil {
@@ -569,7 +570,7 @@ func registryGET(ctx context.Context, rawURL string, accept string, existingToke
 		return nil, nil, existingToken, err
 	}
 	if status == http.StatusUnauthorized {
-		token, err := fetchRegistryBearerToken(ctx, authHeaders.Get("Www-Authenticate"))
+		token, err := fetchRegistryBearerToken(ctx, authHeaders.Get("Www-Authenticate"), httpTimeout)
 		if err != nil {
 			return nil, nil, existingToken, err
 		}
@@ -588,7 +589,7 @@ func registryGET(ctx context.Context, rawURL string, accept string, existingToke
 	return body, headers, existingToken, nil
 }
 
-func fetchRegistryBearerToken(ctx context.Context, challenge string) (string, error) {
+func fetchRegistryBearerToken(ctx context.Context, challenge string, httpTimeout time.Duration) (string, error) {
 	challenge = strings.TrimSpace(challenge)
 	if !strings.HasPrefix(strings.ToLower(challenge), "bearer ") {
 		return "", fmt.Errorf("unsupported registry auth challenge %q", challenge)
@@ -621,7 +622,7 @@ func fetchRegistryBearerToken(ctx context.Context, challenge string) (string, er
 	if err != nil {
 		return "", err
 	}
-	resp, err := featureHTTPClient().Do(req)
+	resp, err := featureHTTPClient(httpTimeout).Do(req)
 	if err != nil {
 		return "", err
 	}
@@ -646,8 +647,15 @@ func fetchRegistryBearerToken(ctx context.Context, challenge string) (string, er
 	return "", fmt.Errorf("registry token response missing token")
 }
 
-func featureHTTPClient() *http.Client {
-	return &http.Client{Timeout: featureHTTPTimeout}
+func effectiveFeatureHTTPTimeout(timeout time.Duration) time.Duration {
+	if timeout > 0 {
+		return timeout
+	}
+	return featureHTTPTimeout
+}
+
+func featureHTTPClient(timeout time.Duration) *http.Client {
+	return &http.Client{Timeout: effectiveFeatureHTTPTimeout(timeout)}
 }
 
 func readHTTPResponseBody(resp *http.Response, limit int64, label string) ([]byte, error) {
@@ -754,9 +762,9 @@ func loadFeatureManifest(featureDir string) (featureManifest, error) {
 	if err != nil {
 		return featureManifest{}, err
 	}
-	standardized, err := hujson.Standardize(data)
+	standardized, err := standardizeJSONC(path, data)
 	if err != nil {
-		return featureManifest{}, fmt.Errorf("parse jsonc %s: %w", path, err)
+		return featureManifest{}, err
 	}
 	var manifest featureManifest
 	if err := json.Unmarshal(standardized, &manifest); err != nil {

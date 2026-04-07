@@ -91,12 +91,15 @@ Known gaps relative to that baseline:
 
 ```sh
 hatchctl up
+hatchctl up --feature-timeout 2m
 hatchctl build
 hatchctl exec -- go test ./...
 hatchctl config --json
 hatchctl run --phase start
 hatchctl bridge doctor
 ```
+
+Remote feature downloads default to a `90s` HTTP timeout. Override that per command with `--feature-timeout`, for example `hatchctl up --feature-timeout 2m`.
 
 ## Compatibility Goals
 
