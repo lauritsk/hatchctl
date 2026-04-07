@@ -21,16 +21,6 @@ builds:
       - arm64
     ldflags:
       - -s -w -X github.com/lauritsk/hatchctl/internal/version.Version={{ .Version }}
-  - id: hatchctl-bridge-helper
-    main: ./cmd/hatchctl-bridge-helper
-    binary: hatchctl-bridge-helper-linux-{{ .Arch }}
-    goos:
-      - linux
-    goarch:
-      - amd64
-      - arm64
-    ldflags:
-      - -s -w
 
 checksum:
   name_template: checksums.txt
@@ -39,10 +29,6 @@ archives:
   - id: hatchctl
     ids:
       - hatchctl
-  - id: hatchctl-bridge-helper
-    ids:
-      - hatchctl-bridge-helper
-    name_template: "{{ .ProjectName }}-bridge-helper_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 
 signs:
   - cmd: cosign

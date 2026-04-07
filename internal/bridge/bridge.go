@@ -239,7 +239,7 @@ func packagedHelperBinary() (string, error) {
 			return "", err
 		}
 	}
-	return "", errors.New("packaged bridge helper not found; set HATCHCTL_BRIDGE_HELPER or install a release artifact that includes hatchctl-bridge-helper")
+	return "", errors.New("packaged bridge helper not found; set HATCHCTL_BRIDGE_HELPER or use a release build of hatchctl")
 }
 
 func helperBinaryCandidates() []string {
