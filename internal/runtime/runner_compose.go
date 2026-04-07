@@ -10,6 +10,7 @@ import (
 
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	"github.com/lauritsk/hatchctl/internal/docker"
+	"go.yaml.in/yaml/v3"
 )
 
 type composeConfig struct {
@@ -28,6 +29,48 @@ type composeBuild struct {
 	Target     string            `json:"target"`
 	Args       map[string]string `json:"args"`
 }
+
+type composeOverrideFile struct {
+	Services map[string]composeOverrideService `yaml:"services"`
+	Volumes  map[string]composeOverrideVolume  `yaml:"volumes,omitempty"`
+}
+
+type composeOverrideService struct {
+	PullPolicy  string                `yaml:"pull_policy,omitempty"`
+	Labels      []string              `yaml:"labels,omitempty"`
+	Environment []string              `yaml:"environment,omitempty"`
+	Volumes     []composeServiceMount `yaml:"volumes,omitempty"`
+	Init        bool                  `yaml:"init,omitempty"`
+	Privileged  bool                  `yaml:"privileged,omitempty"`
+	User        string                `yaml:"user,omitempty"`
+	Command     []string              `yaml:"command,omitempty"`
+	CapAdd      []string              `yaml:"cap_add,omitempty"`
+	SecurityOpt []string              `yaml:"security_opt,omitempty"`
+	Image       string                `yaml:"image,omitempty"`
+}
+
+type composeServiceMount struct {
+	Type        string                     `yaml:"type,omitempty"`
+	Source      string                     `yaml:"source,omitempty"`
+	Target      string                     `yaml:"target,omitempty"`
+	ReadOnly    bool                       `yaml:"read_only,omitempty"`
+	Consistency string                     `yaml:"consistency,omitempty"`
+	Bind        *composeBindMountOptions   `yaml:"bind,omitempty"`
+	Volume      *composeVolumeMountOptions `yaml:"volume,omitempty"`
+}
+
+type composeBindMountOptions struct {
+	Propagation    string `yaml:"propagation,omitempty"`
+	CreateHostPath *bool  `yaml:"create_host_path,omitempty"`
+	SELinux        string `yaml:"selinux,omitempty"`
+}
+
+type composeVolumeMountOptions struct {
+	NoCopy  bool   `yaml:"nocopy,omitempty"`
+	Subpath string `yaml:"subpath,omitempty"`
+}
+
+type composeOverrideVolume struct{}
 
 func (b *composeBuild) Enabled() bool {
 	return b != nil && b.Context != ""
@@ -96,22 +139,21 @@ func writeComposeOverride(resolved devcontainer.ResolvedConfig, image string) (s
 		return "", err
 	}
 	path := devcontainer.ComposeOverrideFile(resolved.StateDir)
-	if err := os.WriteFile(path, []byte(renderComposeOverride(resolved, image)), 0o644); err != nil {
+	contents, err := renderComposeOverride(resolved, image)
+	if err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(path, []byte(contents), 0o644); err != nil {
 		return "", err
 	}
 	return path, nil
 }
 
-func renderComposeOverride(resolved devcontainer.ResolvedConfig, image string) string {
-	var b strings.Builder
-	b.WriteString("services:\n")
-	b.WriteString("  ")
-	b.WriteString(resolved.ComposeService)
-	b.WriteString(":\n")
+func renderComposeOverride(resolved devcontainer.ResolvedConfig, image string) (string, error) {
+	service := composeOverrideService{}
 	if len(resolved.Features) > 0 {
-		b.WriteString("    pull_policy: never\n")
+		service.PullPolicy = "never"
 	}
-	b.WriteString("    labels:\n")
 	labels := map[string]string{}
 	for key, value := range resolved.Labels {
 		labels[key] = value
@@ -123,75 +165,56 @@ func renderComposeOverride(resolved devcontainer.ResolvedConfig, image string) s
 		labels[devcontainer.ImageMetadataLabel] = metadataLabel
 	}
 	for _, key := range sortedStringKeys(labels) {
-		b.WriteString("      - ")
-		b.WriteString(yamlQuoted(key + "=" + labels[key]))
-		b.WriteString("\n")
+		service.Labels = append(service.Labels, key+"="+labels[key])
 	}
-	if len(resolved.Merged.ContainerEnv) > 0 {
-		b.WriteString("    environment:\n")
-		for _, key := range devcontainer.SortedMapKeys(resolved.Merged.ContainerEnv) {
-			b.WriteString("      - ")
-			b.WriteString(yamlQuoted(key + "=" + resolved.Merged.ContainerEnv[key]))
-			b.WriteString("\n")
-		}
+	for _, key := range devcontainer.SortedMapKeys(resolved.Merged.ContainerEnv) {
+		service.Environment = append(service.Environment, key+"="+resolved.Merged.ContainerEnv[key])
 	}
-	b.WriteString("    volumes:\n")
 	allMounts := append([]string{resolved.WorkspaceMount}, resolved.Merged.Mounts...)
 	namedVolumes := map[string]struct{}{}
 	for _, mount := range allMounts {
 		if value, ok := composeMountValue(mount); ok {
-			b.WriteString("      - ")
-			b.WriteString(value)
-			b.WriteString("\n")
+			service.Volumes = append(service.Volumes, value)
 		}
 		if source, ok := composeNamedVolume(mount); ok {
 			namedVolumes[source] = struct{}{}
 		}
 	}
 	if resolved.Merged.Init {
-		b.WriteString("    init: true\n")
+		service.Init = true
 	}
 	if resolved.Merged.Privileged {
-		b.WriteString("    privileged: true\n")
+		service.Privileged = true
 	}
 	if user := resolved.Merged.ContainerUser; user != "" {
-		b.WriteString("    user: ")
-		b.WriteString(yamlQuoted(user))
-		b.WriteString("\n")
+		service.User = user
 	}
 	if overrideCommandEnabled(resolved.Config.OverrideCommand) {
-		b.WriteString("    command: [\"/bin/sh\", \"-lc\", \"trap 'exit 0' TERM INT; while sleep 1000; do :; done\"]\n")
+		service.Command = []string{"/bin/sh", "-lc", "trap 'exit 0' TERM INT; while sleep 1000; do :; done"}
 	}
 	if len(resolved.Merged.CapAdd) > 0 {
-		b.WriteString("    cap_add:\n")
-		for _, value := range resolved.Merged.CapAdd {
-			b.WriteString("      - ")
-			b.WriteString(yamlQuoted(value))
-			b.WriteString("\n")
-		}
+		service.CapAdd = slices.Clone(resolved.Merged.CapAdd)
 	}
 	if len(resolved.Merged.SecurityOpt) > 0 {
-		b.WriteString("    security_opt:\n")
-		for _, value := range resolved.Merged.SecurityOpt {
-			b.WriteString("      - ")
-			b.WriteString(yamlQuoted(value))
-			b.WriteString("\n")
-		}
+		service.SecurityOpt = slices.Clone(resolved.Merged.SecurityOpt)
 	}
 	if image != "" {
-		b.WriteString("    image: ")
-		b.WriteString(yamlQuoted(image))
-		b.WriteString("\n")
+		service.Image = image
+	}
+	override := composeOverrideFile{
+		Services: map[string]composeOverrideService{resolved.ComposeService: service},
 	}
 	if len(namedVolumes) > 0 {
-		b.WriteString("volumes:\n")
+		override.Volumes = make(map[string]composeOverrideVolume, len(namedVolumes))
 		for _, name := range sortedVolumeNames(namedVolumes) {
-			b.WriteString("  ")
-			b.WriteString(name)
-			b.WriteString(":\n")
+			override.Volumes[name] = composeOverrideVolume{}
 		}
 	}
-	return b.String()
+	data, err := yaml.Marshal(override)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
 }
 
 func overrideCommandEnabled(value *bool) bool {
@@ -201,28 +224,71 @@ func overrideCommandEnabled(value *bool) bool {
 	return *value
 }
 
-func composeMountValue(raw string) (string, bool) {
+func composeMountValue(raw string) (composeServiceMount, bool) {
 	parts := map[string]string{}
 	for _, segment := range strings.Split(raw, ",") {
-		key, value, ok := strings.Cut(strings.TrimSpace(segment), "=")
+		segment = strings.TrimSpace(segment)
+		if segment == "" {
+			continue
+		}
+		key, value, ok := strings.Cut(segment, "=")
 		if !ok {
+			parts[segment] = "true"
 			continue
 		}
 		parts[key] = value
 	}
 	target := parts["target"]
 	if target == "" {
-		return "", false
+		return composeServiceMount{}, false
 	}
 	switch parts["type"] {
 	case "bind", "volume":
 		source := parts["source"]
 		if source == "" {
-			return "", false
+			return composeServiceMount{}, false
 		}
-		return yamlQuoted(source + ":" + target), true
+		mount := composeServiceMount{
+			Type:   parts["type"],
+			Source: source,
+			Target: target,
+		}
+		if isTrue(parts["readonly"]) || isTrue(parts["ro"]) {
+			mount.ReadOnly = true
+		}
+		if parts["consistency"] != "" {
+			mount.Consistency = parts["consistency"]
+		}
+		if mount.Type == "bind" {
+			bind := &composeBindMountOptions{}
+			if parts["bind-propagation"] != "" {
+				bind.Propagation = parts["bind-propagation"]
+			}
+			if value, ok := optionalBool(parts, "create-host-path"); ok {
+				bind.CreateHostPath = value
+			}
+			if parts["selinux"] != "" {
+				bind.SELinux = parts["selinux"]
+			}
+			if bind.Propagation != "" || bind.CreateHostPath != nil || bind.SELinux != "" {
+				mount.Bind = bind
+			}
+		}
+		if mount.Type == "volume" {
+			volume := &composeVolumeMountOptions{}
+			if isTrue(parts["nocopy"]) {
+				volume.NoCopy = true
+			}
+			if parts["subpath"] != "" {
+				volume.Subpath = parts["subpath"]
+			}
+			if volume.NoCopy || volume.Subpath != "" {
+				mount.Volume = volume
+			}
+		}
+		return mount, true
 	default:
-		return "", false
+		return composeServiceMount{}, false
 	}
 }
 
@@ -241,8 +307,17 @@ func composeNamedVolume(raw string) (string, bool) {
 	return parts["source"], true
 }
 
-func yamlQuoted(value string) string {
-	return "'" + strings.ReplaceAll(value, "'", "''") + "'"
+func isTrue(value string) bool {
+	return strings.EqualFold(value, "true") || value == "1"
+}
+
+func optionalBool(values map[string]string, key string) (*bool, bool) {
+	value, ok := values[key]
+	if !ok || value == "" {
+		return nil, false
+	}
+	parsed := isTrue(value)
+	return &parsed, true
 }
 
 func sortedStringKeys(values map[string]string) []string {
@@ -251,11 +326,6 @@ func sortedStringKeys(values map[string]string) []string {
 
 func sortedVolumeNames(values map[string]struct{}) []string {
 	return sortedMapKeys(values)
-}
-
-func fileExists(path string) bool {
-	_, err := os.Stat(path)
-	return err == nil
 }
 
 func mapsKeys[K comparable, V any](values map[K]V) func(func(K) bool) {
