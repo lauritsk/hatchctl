@@ -118,3 +118,28 @@ func TestConnectorExecArgsUsesHelperBinary(t *testing.T) {
 		t.Fatalf("unexpected connector exec args %q", got)
 	}
 }
+
+func TestPackagedHelperBinaryUsesConfiguredPath(t *testing.T) {
+	helperPath := filepath.Join(t.TempDir(), helperArtifactName())
+	if err := os.WriteFile(helperPath, []byte("helper"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(helperBinaryEnvVar, helperPath)
+
+	got, err := packagedHelperBinary()
+	if err != nil {
+		t.Fatalf("packaged helper binary: %v", err)
+	}
+	if got != helperPath {
+		t.Fatalf("unexpected helper path %q", got)
+	}
+}
+
+func TestHelperBinaryCandidatesDoNotUseRepoLayoutFallbacks(t *testing.T) {
+	t.Parallel()
+	for _, candidate := range helperBinaryCandidates() {
+		if strings.Contains(candidate, ".dist/") || strings.Contains(candidate, ".dist\\") {
+			t.Fatalf("unexpected repo-layout helper candidate %q", candidate)
+		}
+	}
+}

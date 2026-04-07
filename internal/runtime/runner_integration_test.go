@@ -1108,6 +1108,69 @@ func TestComposeUpStartsBridgeAndReusesSession(t *testing.T) {
 	}
 }
 
+func TestReadConfigDoesNotPersistComposeOverrideFile(t *testing.T) {
+	client := dockerClientForTest(t)
+	ctx := context.Background()
+	workspace := t.TempDir()
+	configDir := filepath.Join(workspace, ".devcontainer")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	composePath := filepath.Join(configDir, "compose.yaml")
+	if err := os.WriteFile(composePath, []byte("services:\n  app:\n    image: alpine:3.20\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(configDir, "devcontainer.json"), []byte(`{
+		"dockerComposeFile": "compose.yaml",
+		"service": "app",
+		"workspaceFolder": "/workspaces/demo",
+		"containerEnv": {"COMPOSE_OVERRIDE_ENV": "yes"}
+	}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	runner := NewRunner(client)
+	result, err := runner.ReadConfig(ctx, ReadConfigOptions{Workspace: workspace})
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	if got := result.ContainerEnv["COMPOSE_OVERRIDE_ENV"]; got != "yes" {
+		t.Fatalf("unexpected container env %#v", result.ContainerEnv)
+	}
+	if _, err := os.Stat(devcontainer.ComposeOverrideFile(result.StateDir)); !os.IsNotExist(err) {
+		t.Fatalf("expected no persisted compose override, got %v", err)
+	}
+}
+
+func TestBridgeDoctorDoesNotScaffoldBridgeState(t *testing.T) {
+	client := dockerClientForTest(t)
+	ctx := context.Background()
+	workspace := t.TempDir()
+	configDir := filepath.Join(workspace, ".devcontainer")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(configDir, "devcontainer.json"), []byte(`{"image":"alpine:3.20","workspaceFolder":"/workspaces/demo"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	resolved, err := devcontainer.ResolveReadOnly(workspace, "")
+	if err != nil {
+		t.Fatalf("resolve read only: %v", err)
+	}
+	runner := NewRunner(client)
+	report, err := runner.BridgeDoctor(ctx, BridgeDoctorOptions{Workspace: workspace})
+	if err != nil {
+		t.Fatalf("bridge doctor: %v", err)
+	}
+	if report.Enabled {
+		t.Fatalf("expected disabled bridge report %#v", report)
+	}
+	if _, err := os.Stat(filepath.Join(resolved.StateDir, "bridge")); !os.IsNotExist(err) {
+		t.Fatalf("expected no scaffolded bridge dir, got %v", err)
+	}
+}
+
 func TestComposeUpUpdatesNamedNonRootUserUID(t *testing.T) {
 	client := dockerClientForTest(t)
 	ctx := context.Background()

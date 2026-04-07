@@ -1,6 +1,8 @@
 package devcontainer
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -442,6 +444,33 @@ func TestResolveReadOnlyDoesNotPersistFeatureFiles(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(resolved.StateDir, "features-lock.json")); !os.IsNotExist(err) {
 		t.Fatalf("expected no state feature file, got %v", err)
+	}
+}
+
+func TestResolveReadOnlyFailsForUncachedRemoteFeatures(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "unexpected network access", http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	workspace := t.TempDir()
+	configDir := filepath.Join(workspace, ".devcontainer")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(configDir, "devcontainer.json")
+	if err := os.WriteFile(configPath, []byte(`{
+		"image": "alpine:3.20",
+		"workspaceFolder": "/workspace",
+		"features": {"`+server.URL+`/feature.tgz": true}
+	}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := ResolveReadOnly(workspace, ""); err == nil || !strings.Contains(err.Error(), "requires network access or a lockfile integrity") {
+		t.Fatalf("expected uncached remote feature error, got %v", err)
 	}
 }
 
