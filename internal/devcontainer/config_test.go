@@ -470,7 +470,7 @@ func TestResolveReadOnlyFailsForUncachedRemoteFeatures(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := ResolveReadOnly(context.Background(), workspace, ""); err == nil || !strings.Contains(err.Error(), "requires network access or a lockfile integrity") {
+	if _, err := ResolveReadOnly(context.Background(), workspace, ""); err == nil || !strings.Contains(err.Error(), "requires a lockfile integrity in frozen lockfile mode") {
 		t.Fatalf("expected uncached remote feature error, got %v", err)
 	}
 }

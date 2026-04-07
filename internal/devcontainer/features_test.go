@@ -18,6 +18,26 @@ import (
 
 var featureResolveOpts = FeatureResolveOptions{AllowNetwork: true, WriteLockFile: true}
 
+func TestResolveFeaturesFrozenLockfileRequiresPinnedRemoteFeature(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), ".devcontainer.json")
+	_, err := ResolveFeatures(context.Background(), configPath, filepath.Dir(configPath), t.TempDir(), map[string]any{
+		"ghcr.io/devcontainers/features/go:1": true,
+	}, FeatureResolveOptions{AllowNetwork: true, LockfilePolicy: FeatureLockfilePolicyFrozen})
+	if err == nil || !strings.Contains(err.Error(), "requires a lockfile integrity in frozen lockfile mode") {
+		t.Fatalf("expected frozen lockfile error, got %v", err)
+	}
+}
+
+func TestResolveFeaturesUpdateLockfileRequiresNetwork(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), ".devcontainer.json")
+	_, err := ResolveFeatures(context.Background(), configPath, filepath.Dir(configPath), t.TempDir(), map[string]any{
+		"ghcr.io/devcontainers/features/go:1": true,
+	}, FeatureResolveOptions{LockfilePolicy: FeatureLockfilePolicyUpdate})
+	if err == nil || !strings.Contains(err.Error(), "requires network access in update lockfile mode") {
+		t.Fatalf("expected update lockfile network error, got %v", err)
+	}
+}
+
 func TestResolveFeaturesOrdersDependenciesAndInstallsAfter(t *testing.T) {
 	configDir := t.TempDir()
 	writeFeatureFixture(t, filepath.Join(configDir, "alpha"), `{
@@ -172,6 +192,46 @@ func TestResolveFeaturesFetchesTarballFeatureAndPinsIntegrity(t *testing.T) {
 	}
 	if _, err := ResolveFeatures(context.Background(), configPath, filepath.Dir(configPath), t.TempDir(), map[string]any{featureURL: true}, featureResolveOpts); err == nil || !strings.Contains(err.Error(), "integrity mismatch") {
 		t.Fatalf("expected tarball integrity mismatch, got %v", err)
+	}
+}
+
+func TestResolveFeaturesFetchesDeprecatedGitHubShorthandFeature(t *testing.T) {
+	layer := buildFeatureLayer(t, map[string]string{
+		"devcontainer-feature.json": `{"id":"gh-tool","containerEnv":{"GITHUB":"yes"}}`,
+		"install.sh":                "#!/bin/sh\nexit 0\n",
+	})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/owner/repo/releases/download/v1.2.3/feature.tgz" {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write(layer)
+	}))
+	defer server.Close()
+
+	previousBaseURL := githubReleaseBaseURL
+	githubReleaseBaseURL = server.URL
+	t.Cleanup(func() {
+		githubReleaseBaseURL = previousBaseURL
+	})
+
+	configPath := filepath.Join(t.TempDir(), ".devcontainer.json")
+	features, err := ResolveFeatures(context.Background(), configPath, filepath.Dir(configPath), t.TempDir(), map[string]any{"owner/repo/feature@v1.2.3": true}, featureResolveOpts)
+	if err != nil {
+		t.Fatalf("resolve github shorthand feature: %v", err)
+	}
+	if len(features) != 1 || features[0].SourceKind != "github-release" {
+		t.Fatalf("unexpected github shorthand features %#v", features)
+	}
+	if features[0].Metadata.ContainerEnv["GITHUB"] != "yes" {
+		t.Fatalf("unexpected feature metadata %#v", features[0].Metadata)
+	}
+	lockData, err := os.ReadFile(FeatureLockFilePath(configPath))
+	if err != nil {
+		t.Fatalf("read github shorthand lockfile: %v", err)
+	}
+	if !strings.Contains(string(lockData), `"resolved": "`+server.URL+`/owner/repo/releases/download/v1.2.3/feature.tgz"`) {
+		t.Fatalf("unexpected github shorthand lockfile %s", string(lockData))
 	}
 }
 

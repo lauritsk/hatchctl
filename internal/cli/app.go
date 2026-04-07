@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/lauritsk/hatchctl/internal/bridge"
+	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	"github.com/lauritsk/hatchctl/internal/docker"
 	"github.com/lauritsk/hatchctl/internal/runtime"
 	"github.com/lauritsk/hatchctl/internal/version"
@@ -67,6 +68,7 @@ func (a *App) runUp(ctx context.Context, args []string) error {
 	fs.SetOutput(a.err)
 	workspace := fs.String("workspace", "", "workspace folder (defaults to current directory)")
 	configPath := fs.String("config", "", "path to devcontainer.json")
+	lockfilePolicy := fs.String("lockfile-policy", "auto", "lockfile policy: auto, frozen, or update")
 	recreate := fs.Bool("recreate", false, "remove and recreate an existing managed container")
 	bridgeEnabled := fs.Bool("bridge", false, "enable macOS auth bridge scaffolding")
 	jsonOut := fs.Bool("json", false, "emit machine-readable JSON")
@@ -74,13 +76,18 @@ func (a *App) runUp(ctx context.Context, args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
+	policy, err := parseLockfilePolicy(*lockfilePolicy)
+	if err != nil {
+		return err
+	}
 
 	result, err := a.runner.Up(ctx, runtime.UpOptions{
-		Workspace:     *workspace,
-		ConfigPath:    *configPath,
-		Recreate:      *recreate,
-		BridgeEnabled: *bridgeEnabled,
-		Verbose:       *verbose,
+		Workspace:      *workspace,
+		ConfigPath:     *configPath,
+		LockfilePolicy: policy,
+		Recreate:       *recreate,
+		BridgeEnabled:  *bridgeEnabled,
+		Verbose:        *verbose,
 	})
 	if err != nil {
 		return err
@@ -96,16 +103,22 @@ func (a *App) runBuild(ctx context.Context, args []string) error {
 	fs.SetOutput(a.err)
 	workspace := fs.String("workspace", "", "workspace folder (defaults to current directory)")
 	configPath := fs.String("config", "", "path to devcontainer.json")
+	lockfilePolicy := fs.String("lockfile-policy", "auto", "lockfile policy: auto, frozen, or update")
 	jsonOut := fs.Bool("json", false, "emit machine-readable JSON")
 	verbose := fs.Bool("verbose", false, "print the runtime plan before executing")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
+	policy, err := parseLockfilePolicy(*lockfilePolicy)
+	if err != nil {
+		return err
+	}
 
 	result, err := a.runner.Build(ctx, runtime.BuildOptions{
-		Workspace:  *workspace,
-		ConfigPath: *configPath,
-		Verbose:    *verbose,
+		Workspace:      *workspace,
+		ConfigPath:     *configPath,
+		LockfilePolicy: policy,
+		Verbose:        *verbose,
 	})
 	if err != nil {
 		return err
@@ -122,10 +135,15 @@ func (a *App) runExec(ctx context.Context, args []string) error {
 	fs.SetOutput(a.err)
 	workspace := fs.String("workspace", "", "workspace folder (defaults to current directory)")
 	configPath := fs.String("config", "", "path to devcontainer.json")
+	lockfilePolicy := fs.String("lockfile-policy", "auto", "lockfile policy: auto, frozen, or update")
 	jsonOut := fs.Bool("json", false, "emit machine-readable JSON")
 	remoteEnv := multiValue{}
 	fs.Var(&remoteEnv, "env", "extra remote environment variables in KEY=VALUE form")
 	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	policy, err := parseLockfilePolicy(*lockfilePolicy)
+	if err != nil {
 		return err
 	}
 	cmd := fs.Args()
@@ -142,13 +160,14 @@ func (a *App) runExec(ctx context.Context, args []string) error {
 		stderr = &stderrBuffer
 	}
 	code, err := a.runner.Exec(ctx, runtime.ExecOptions{
-		Workspace:  *workspace,
-		ConfigPath: *configPath,
-		Args:       cmd,
-		RemoteEnv:  remoteEnv.Map(),
-		Stdin:      os.Stdin,
-		Stdout:     stdout,
-		Stderr:     stderr,
+		Workspace:      *workspace,
+		ConfigPath:     *configPath,
+		LockfilePolicy: policy,
+		Args:           cmd,
+		RemoteEnv:      remoteEnv.Map(),
+		Stdin:          os.Stdin,
+		Stdout:         stdout,
+		Stderr:         stderr,
 	})
 	if err != nil {
 		return err
@@ -174,14 +193,20 @@ func (a *App) runConfig(ctx context.Context, args []string) error {
 	fs.SetOutput(a.err)
 	workspace := fs.String("workspace", "", "workspace folder (defaults to current directory)")
 	configPath := fs.String("config", "", "path to devcontainer.json")
+	lockfilePolicy := fs.String("lockfile-policy", "frozen", "lockfile policy: auto, frozen, or update")
 	jsonOut := fs.Bool("json", false, "emit machine-readable JSON")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
+	policy, err := parseLockfilePolicy(*lockfilePolicy)
+	if err != nil {
+		return err
+	}
 
 	result, err := a.runner.ReadConfig(ctx, runtime.ReadConfigOptions{
-		Workspace:  *workspace,
-		ConfigPath: *configPath,
+		Workspace:      *workspace,
+		ConfigPath:     *configPath,
+		LockfilePolicy: policy,
 	})
 	if err != nil {
 		return err
@@ -240,16 +265,22 @@ func (a *App) runUserCommands(ctx context.Context, args []string) error {
 	fs.SetOutput(a.err)
 	workspace := fs.String("workspace", "", "workspace folder (defaults to current directory)")
 	configPath := fs.String("config", "", "path to devcontainer.json")
+	lockfilePolicy := fs.String("lockfile-policy", "auto", "lockfile policy: auto, frozen, or update")
 	phase := fs.String("phase", "all", "one of: all, create, start, attach")
 	jsonOut := fs.Bool("json", false, "emit machine-readable JSON")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
+	policy, err := parseLockfilePolicy(*lockfilePolicy)
+	if err != nil {
+		return err
+	}
 
 	result, err := a.runner.RunLifecycle(ctx, runtime.RunLifecycleOptions{
-		Workspace:  *workspace,
-		ConfigPath: *configPath,
-		Phase:      *phase,
+		Workspace:      *workspace,
+		ConfigPath:     *configPath,
+		LockfilePolicy: policy,
+		Phase:          *phase,
 	})
 	if err != nil {
 		return err
@@ -277,14 +308,20 @@ func (a *App) runBridge(ctx context.Context, args []string) error {
 	fs.SetOutput(a.err)
 	workspace := fs.String("workspace", "", "workspace folder (defaults to current directory)")
 	configPath := fs.String("config", "", "path to devcontainer.json")
+	lockfilePolicy := fs.String("lockfile-policy", "frozen", "lockfile policy: auto, frozen, or update")
 	jsonOut := fs.Bool("json", false, "emit machine-readable JSON")
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
 	}
+	policy, err := parseLockfilePolicy(*lockfilePolicy)
+	if err != nil {
+		return err
+	}
 
 	report, err := a.runner.BridgeDoctor(ctx, runtime.BridgeDoctorOptions{
-		Workspace:  *workspace,
-		ConfigPath: *configPath,
+		Workspace:      *workspace,
+		ConfigPath:     *configPath,
+		LockfilePolicy: policy,
 	})
 	if err != nil {
 		return err
@@ -361,6 +398,10 @@ func writeJSON(w io.Writer, value any) error {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 	return enc.Encode(value)
+}
+
+func parseLockfilePolicy(value string) (devcontainer.FeatureLockfilePolicy, error) {
+	return devcontainer.ParseFeatureLockfilePolicy(value)
 }
 
 type multiValue []string

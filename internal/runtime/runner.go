@@ -22,11 +22,12 @@ func NewRunner(client *docker.Client) *Runner {
 }
 
 type UpOptions struct {
-	Workspace     string
-	ConfigPath    string
-	Recreate      bool
-	BridgeEnabled bool
-	Verbose       bool
+	Workspace      string
+	ConfigPath     string
+	LockfilePolicy devcontainer.FeatureLockfilePolicy
+	Recreate       bool
+	BridgeEnabled  bool
+	Verbose        bool
 }
 
 type UpResult struct {
@@ -38,9 +39,10 @@ type UpResult struct {
 }
 
 type BuildOptions struct {
-	Workspace  string
-	ConfigPath string
-	Verbose    bool
+	Workspace      string
+	ConfigPath     string
+	LockfilePolicy devcontainer.FeatureLockfilePolicy
+	Verbose        bool
 }
 
 type BuildResult struct {
@@ -48,18 +50,20 @@ type BuildResult struct {
 }
 
 type ExecOptions struct {
-	Workspace  string
-	ConfigPath string
-	Args       []string
-	RemoteEnv  map[string]string
-	Stdin      io.Reader
-	Stdout     io.Writer
-	Stderr     io.Writer
+	Workspace      string
+	ConfigPath     string
+	LockfilePolicy devcontainer.FeatureLockfilePolicy
+	Args           []string
+	RemoteEnv      map[string]string
+	Stdin          io.Reader
+	Stdout         io.Writer
+	Stderr         io.Writer
 }
 
 type ReadConfigOptions struct {
-	Workspace  string
-	ConfigPath string
+	Workspace      string
+	ConfigPath     string
+	LockfilePolicy devcontainer.FeatureLockfilePolicy
 }
 
 type ReadConfigResult struct {
@@ -101,9 +105,10 @@ type ManagedContainer struct {
 }
 
 type RunLifecycleOptions struct {
-	Workspace  string
-	ConfigPath string
-	Phase      string
+	Workspace      string
+	ConfigPath     string
+	LockfilePolicy devcontainer.FeatureLockfilePolicy
+	Phase          string
 }
 
 type RunLifecycleResult struct {
@@ -112,8 +117,9 @@ type RunLifecycleResult struct {
 }
 
 type BridgeDoctorOptions struct {
-	Workspace  string
-	ConfigPath string
+	Workspace      string
+	ConfigPath     string
+	LockfilePolicy devcontainer.FeatureLockfilePolicy
 }
 
 type ExitError struct {
@@ -125,7 +131,12 @@ func (e ExitError) Error() string {
 }
 
 func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
-	resolved, err := devcontainer.Resolve(ctx, opts.Workspace, opts.ConfigPath)
+	resolved, err := devcontainer.ResolveWithOptions(ctx, opts.Workspace, opts.ConfigPath, devcontainer.ResolveOptions{
+		AllowNetwork:      true,
+		WriteFeatureLock:  true,
+		WriteFeatureState: true,
+		LockfilePolicy:    opts.LockfilePolicy,
+	})
 	if err != nil {
 		return UpResult{}, err
 	}
@@ -211,7 +222,12 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 }
 
 func (r *Runner) Build(ctx context.Context, opts BuildOptions) (BuildResult, error) {
-	resolved, err := devcontainer.Resolve(ctx, opts.Workspace, opts.ConfigPath)
+	resolved, err := devcontainer.ResolveWithOptions(ctx, opts.Workspace, opts.ConfigPath, devcontainer.ResolveOptions{
+		AllowNetwork:      true,
+		WriteFeatureLock:  true,
+		WriteFeatureState: true,
+		LockfilePolicy:    opts.LockfilePolicy,
+	})
 	if err != nil {
 		return BuildResult{}, err
 	}
@@ -233,7 +249,12 @@ func (r *Runner) Build(ctx context.Context, opts BuildOptions) (BuildResult, err
 }
 
 func (r *Runner) Exec(ctx context.Context, opts ExecOptions) (int, error) {
-	resolved, err := devcontainer.Resolve(ctx, opts.Workspace, opts.ConfigPath)
+	resolved, err := devcontainer.ResolveWithOptions(ctx, opts.Workspace, opts.ConfigPath, devcontainer.ResolveOptions{
+		AllowNetwork:      true,
+		WriteFeatureLock:  true,
+		WriteFeatureState: true,
+		LockfilePolicy:    opts.LockfilePolicy,
+	})
 	if err != nil {
 		return 0, err
 	}
@@ -292,7 +313,9 @@ func (r *Runner) Exec(ctx context.Context, opts ExecOptions) (int, error) {
 }
 
 func (r *Runner) ReadConfig(ctx context.Context, opts ReadConfigOptions) (ReadConfigResult, error) {
-	resolved, err := devcontainer.ResolveReadOnly(ctx, opts.Workspace, opts.ConfigPath)
+	resolved, err := devcontainer.ResolveReadOnlyWithOptions(ctx, opts.Workspace, opts.ConfigPath, devcontainer.ResolveOptions{
+		LockfilePolicy: opts.LockfilePolicy,
+	})
 	if err != nil {
 		return ReadConfigResult{}, err
 	}
@@ -361,7 +384,12 @@ func (r *Runner) ReadConfig(ctx context.Context, opts ReadConfigOptions) (ReadCo
 }
 
 func (r *Runner) RunLifecycle(ctx context.Context, opts RunLifecycleOptions) (RunLifecycleResult, error) {
-	resolved, err := devcontainer.Resolve(ctx, opts.Workspace, opts.ConfigPath)
+	resolved, err := devcontainer.ResolveWithOptions(ctx, opts.Workspace, opts.ConfigPath, devcontainer.ResolveOptions{
+		AllowNetwork:      true,
+		WriteFeatureLock:  true,
+		WriteFeatureState: true,
+		LockfilePolicy:    opts.LockfilePolicy,
+	})
 	if err != nil {
 		return RunLifecycleResult{}, err
 	}
@@ -387,7 +415,9 @@ func (r *Runner) RunLifecycle(ctx context.Context, opts RunLifecycleOptions) (Ru
 }
 
 func (r *Runner) BridgeDoctor(ctx context.Context, opts BridgeDoctorOptions) (bridge.Report, error) {
-	resolved, err := devcontainer.ResolveReadOnly(ctx, opts.Workspace, opts.ConfigPath)
+	resolved, err := devcontainer.ResolveReadOnlyWithOptions(ctx, opts.Workspace, opts.ConfigPath, devcontainer.ResolveOptions{
+		LockfilePolicy: opts.LockfilePolicy,
+	})
 	if err != nil {
 		return bridge.Report{}, err
 	}

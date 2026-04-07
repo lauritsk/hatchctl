@@ -3,6 +3,7 @@ package devcontainer
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -10,6 +11,26 @@ import (
 )
 
 type FeatureLockFile map[string]FeatureLockEntry
+
+type FeatureLockfilePolicy string
+
+const (
+	FeatureLockfilePolicyAuto   FeatureLockfilePolicy = "auto"
+	FeatureLockfilePolicyFrozen FeatureLockfilePolicy = "frozen"
+	FeatureLockfilePolicyUpdate FeatureLockfilePolicy = "update"
+)
+
+func ParseFeatureLockfilePolicy(value string) (FeatureLockfilePolicy, error) {
+	policy := FeatureLockfilePolicy(value)
+	switch policy {
+	case "", FeatureLockfilePolicyAuto:
+		return FeatureLockfilePolicyAuto, nil
+	case FeatureLockfilePolicyFrozen, FeatureLockfilePolicyUpdate:
+		return policy, nil
+	default:
+		return "", fmt.Errorf("unsupported lockfile policy %q", value)
+	}
+}
 
 type FeatureLockEntry struct {
 	Version   string `json:"version,omitempty"`

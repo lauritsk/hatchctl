@@ -210,18 +210,33 @@ type ResolveOptions struct {
 	AllowNetwork      bool
 	WriteFeatureLock  bool
 	WriteFeatureState bool
+	LockfilePolicy    FeatureLockfilePolicy
 }
 
 func Resolve(ctx context.Context, workspaceArg string, configArg string) (ResolvedConfig, error) {
-	return resolve(ctx, workspaceArg, configArg, ResolveOptions{
+	return ResolveWithOptions(ctx, workspaceArg, configArg, ResolveOptions{
 		AllowNetwork:      true,
 		WriteFeatureLock:  true,
 		WriteFeatureState: true,
+		LockfilePolicy:    FeatureLockfilePolicyAuto,
 	})
 }
 
 func ResolveReadOnly(ctx context.Context, workspaceArg string, configArg string) (ResolvedConfig, error) {
-	return resolve(ctx, workspaceArg, configArg, ResolveOptions{})
+	return ResolveReadOnlyWithOptions(ctx, workspaceArg, configArg, ResolveOptions{
+		LockfilePolicy: FeatureLockfilePolicyFrozen,
+	})
+}
+
+func ResolveWithOptions(ctx context.Context, workspaceArg string, configArg string, opts ResolveOptions) (ResolvedConfig, error) {
+	return resolve(ctx, workspaceArg, configArg, opts)
+}
+
+func ResolveReadOnlyWithOptions(ctx context.Context, workspaceArg string, configArg string, opts ResolveOptions) (ResolvedConfig, error) {
+	if opts.LockfilePolicy == "" {
+		opts.LockfilePolicy = FeatureLockfilePolicyFrozen
+	}
+	return resolve(ctx, workspaceArg, configArg, opts)
 }
 
 func resolve(ctx context.Context, workspaceArg string, configArg string, opts ResolveOptions) (ResolvedConfig, error) {
@@ -290,6 +305,7 @@ func resolve(ctx context.Context, workspaceArg string, configArg string, opts Re
 		WriteLockFile:  opts.WriteFeatureLock,
 		WriteStateFile: opts.WriteFeatureState,
 		StateDir:       stateDir,
+		LockfilePolicy: opts.LockfilePolicy,
 	})
 	if err != nil {
 		return ResolvedConfig{}, err

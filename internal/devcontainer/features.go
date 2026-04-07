@@ -50,7 +50,10 @@ type FeatureResolveOptions struct {
 	WriteLockFile  bool
 	WriteStateFile bool
 	StateDir       string
+	LockfilePolicy FeatureLockfilePolicy
 }
+
+var githubReleaseBaseURL = "https://github.com"
 
 type featureManifest struct {
 	ID                   string                   `json:"id"`
@@ -103,6 +106,10 @@ func ResolveFeatures(ctx context.Context, configPath string, configDir string, c
 	if len(values) == 0 {
 		return nil, nil
 	}
+	policy, err := ParseFeatureLockfilePolicy(string(opts.LockfilePolicy))
+	if err != nil {
+		return nil, err
+	}
 	lockFile, _, err := ReadFeatureLockFile(configPath)
 	if err != nil {
 		return nil, err
@@ -114,7 +121,10 @@ func ResolveFeatures(ctx context.Context, configPath string, configDir string, c
 		if !enabled {
 			continue
 		}
-		featurePath, kind, resolvedRef, integrity, version, err := resolveFeaturePath(ctx, configDir, cacheDir, source, lockFile[source], opts.AllowNetwork)
+		if err := validateFeatureLockfilePolicy(source, lockFile[source], policy); err != nil {
+			return nil, err
+		}
+		featurePath, kind, resolvedRef, integrity, version, err := resolveFeaturePath(ctx, configDir, cacheDir, source, lockFile[source], opts.AllowNetwork, policy)
 		if err != nil {
 			return nil, err
 		}
@@ -156,7 +166,7 @@ func ResolveFeatures(ctx context.Context, configPath string, configDir string, c
 		byAlias[source] = idx
 		byAlias[manifest.ID] = idx
 	}
-	if opts.WriteLockFile {
+	if opts.WriteLockFile && policy != FeatureLockfilePolicyFrozen {
 		if err := WriteFeatureLockFile(configPath, features); err != nil {
 			return nil, err
 		}
@@ -169,7 +179,7 @@ func ResolveFeatures(ctx context.Context, configPath string, configDir string, c
 	return orderFeatures(features, byAlias)
 }
 
-func resolveFeaturePath(ctx context.Context, configDir string, cacheDir string, source string, lock FeatureLockEntry, allowNetwork bool) (string, string, string, string, string, error) {
+func resolveFeaturePath(ctx context.Context, configDir string, cacheDir string, source string, lock FeatureLockEntry, allowNetwork bool, policy FeatureLockfilePolicy) (string, string, string, string, string, error) {
 	resolved, err := resolveLocalFeaturePath(configDir, source)
 	if err == nil {
 		return resolved, "file-path", source, "", "", nil
@@ -178,6 +188,13 @@ func resolveFeaturePath(ctx context.Context, configDir string, cacheDir string, 
 		return "", "", "", "", "", err
 	}
 	if strings.HasPrefix(source, "https://") || strings.HasPrefix(source, "http://") {
+		if policy == FeatureLockfilePolicyUpdate {
+			if !allowNetwork {
+				return "", "", "", "", "", fmt.Errorf("feature %q requires network access in update lockfile mode", source)
+			}
+			resolved, integrity, err := fetchTarballFeature(ctx, cacheDir, source, lock)
+			return resolved, "direct-tarball", source, integrity, source, err
+		}
 		if !allowNetwork {
 			resolved, integrity, err := cachedTarballFeature(cacheDir, source, lock)
 			return resolved, "direct-tarball", source, integrity, source, err
@@ -185,9 +202,32 @@ func resolveFeaturePath(ctx context.Context, configDir string, cacheDir string, 
 		resolved, integrity, err := fetchTarballFeature(ctx, cacheDir, source, lock)
 		return resolved, "direct-tarball", source, integrity, source, err
 	}
+	if githubRef, err := parseGitHubFeatureReference(source); err == nil {
+		resolvedSource := githubRef.tarballURL()
+		if policy == FeatureLockfilePolicyUpdate {
+			if !allowNetwork {
+				return "", "", "", "", "", fmt.Errorf("feature %q requires network access in update lockfile mode", source)
+			}
+			resolved, integrity, err := fetchTarballFeature(ctx, cacheDir, resolvedSource, lock)
+			return resolved, "github-release", resolvedSource, integrity, githubRef.version(), err
+		}
+		if !allowNetwork {
+			resolved, integrity, err := cachedTarballFeature(cacheDir, resolvedSource, lock)
+			return resolved, "github-release", resolvedSource, integrity, githubRef.version(), err
+		}
+		resolved, integrity, err := fetchTarballFeature(ctx, cacheDir, resolvedSource, lock)
+		return resolved, "github-release", resolvedSource, integrity, githubRef.version(), err
+	}
 	ref, err := parseOCIReference(source)
 	if err != nil {
 		return "", "", "", "", "", fmt.Errorf("feature %q not found locally and is not a valid remote feature source: %w", source, err)
+	}
+	if policy == FeatureLockfilePolicyUpdate {
+		if !allowNetwork {
+			return "", "", "", "", "", fmt.Errorf("feature %q requires network access in update lockfile mode", source)
+		}
+		resolvedPath, resolvedRef, integrity, version, err := fetchOCIFeature(ctx, cacheDir, source, ref, lock)
+		return resolvedPath, "oci", resolvedRef, integrity, version, err
 	}
 	if !allowNetwork {
 		resolvedPath, resolvedRef, integrity, version, err := cachedOCIFeature(cacheDir, source, ref, lock)
@@ -195,6 +235,83 @@ func resolveFeaturePath(ctx context.Context, configDir string, cacheDir string, 
 	}
 	resolvedPath, resolvedRef, integrity, version, err := fetchOCIFeature(ctx, cacheDir, source, ref, lock)
 	return resolvedPath, "oci", resolvedRef, integrity, version, err
+}
+
+type gitHubFeatureReference struct {
+	owner   string
+	repo    string
+	feature string
+	tag     string
+}
+
+func (r gitHubFeatureReference) version() string {
+	if r.tag != "" {
+		return r.tag
+	}
+	return "latest"
+}
+
+func (r gitHubFeatureReference) tarballURL() string {
+	base := strings.TrimRight(githubReleaseBaseURL, "/")
+	if r.tag != "" {
+		return fmt.Sprintf("%s/%s/%s/releases/download/%s/%s.tgz", base, r.owner, r.repo, r.tag, r.feature)
+	}
+	return fmt.Sprintf("%s/%s/%s/releases/latest/download/%s.tgz", base, r.owner, r.repo, r.feature)
+}
+
+func parseGitHubFeatureReference(source string) (gitHubFeatureReference, error) {
+	if strings.Contains(source, "://") || strings.HasPrefix(source, "./") || strings.HasPrefix(source, "../") || strings.HasPrefix(source, "/") {
+		return gitHubFeatureReference{}, fmt.Errorf("expected deprecated github shorthand reference")
+	}
+	version := ""
+	featurePath := source
+	if before, after, ok := strings.Cut(source, "@"); ok {
+		if after == "" || strings.Contains(after, "@") {
+			return gitHubFeatureReference{}, fmt.Errorf("invalid github shorthand version")
+		}
+		featurePath = before
+		version = after
+	}
+	parts := strings.Split(featurePath, "/")
+	if len(parts) != 3 {
+		return gitHubFeatureReference{}, fmt.Errorf("expected owner/repo/feature")
+	}
+	if strings.Contains(parts[0], ".") || strings.Contains(parts[0], ":") || parts[0] == "localhost" || strings.Contains(parts[2], ":") {
+		return gitHubFeatureReference{}, fmt.Errorf("expected deprecated github shorthand reference")
+	}
+	for _, part := range parts {
+		if part == "" {
+			return gitHubFeatureReference{}, fmt.Errorf("expected owner/repo/feature")
+		}
+	}
+	if !strings.Contains(featurePath, "/") {
+		return gitHubFeatureReference{}, fmt.Errorf("expected owner/repo/feature")
+	}
+	return gitHubFeatureReference{owner: parts[0], repo: parts[1], feature: parts[2], tag: version}, nil
+}
+
+func validateFeatureLockfilePolicy(source string, lock FeatureLockEntry, policy FeatureLockfilePolicy) error {
+	if policy != FeatureLockfilePolicyFrozen {
+		return nil
+	}
+	if !isRemoteFeatureSource(source) || lock.Integrity != "" {
+		return nil
+	}
+	return fmt.Errorf("feature %q requires a lockfile integrity in frozen lockfile mode", source)
+}
+
+func isRemoteFeatureSource(source string) bool {
+	if strings.HasPrefix(source, "./") || strings.HasPrefix(source, "../") || strings.HasPrefix(source, "/") {
+		return false
+	}
+	if strings.HasPrefix(source, "https://") || strings.HasPrefix(source, "http://") {
+		return true
+	}
+	if _, err := parseGitHubFeatureReference(source); err == nil {
+		return true
+	}
+	_, err := parseOCIReference(source)
+	return err == nil
 }
 
 func cachedOCIFeature(cacheDir string, source string, ref ociReference, lock FeatureLockEntry) (string, string, string, string, error) {
