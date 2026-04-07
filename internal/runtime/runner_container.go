@@ -14,7 +14,7 @@ import (
 
 var errManagedContainerNotFound = errors.New("managed container not found")
 
-func (r *Runner) ensureComposeContainer(ctx context.Context, resolved devcontainer.ResolvedConfig) (string, bool, error) {
+func (r *Runner) ensureComposeContainer(ctx context.Context, resolved devcontainer.ResolvedConfig, overridePath string) (string, bool, error) {
 	containerID, err := r.findComposeContainer(ctx, resolved)
 	if err == nil && containerID != "" {
 		status, statusErr := r.docker.Output(ctx, "inspect", "--format", "{{.State.Status}}", containerID)
@@ -22,7 +22,6 @@ func (r *Runner) ensureComposeContainer(ctx context.Context, resolved devcontain
 			return containerID, false, nil
 		}
 	}
-	overridePath := devcontainer.ComposeOverrideFile(resolved.StateDir)
 	if err := r.docker.Run(ctx, docker.RunOptions{Args: append(r.composeArgs(resolved, overridePath), "up", "--no-build", "-d", resolved.ComposeService), Dir: resolved.ConfigDir, Stdout: os.Stdout, Stderr: os.Stderr}); err != nil {
 		return "", false, err
 	}
@@ -33,9 +32,9 @@ func (r *Runner) ensureComposeContainer(ctx context.Context, resolved devcontain
 	return containerID, true, nil
 }
 
-func (r *Runner) ensureContainer(ctx context.Context, resolved devcontainer.ResolvedConfig, image string, bridgeEnabled bool) (string, bool, error) {
+func (r *Runner) ensureContainer(ctx context.Context, resolved devcontainer.ResolvedConfig, image string, bridgeEnabled bool, overridePath string) (string, bool, error) {
 	if resolved.SourceKind == "compose" {
-		return r.ensureComposeContainer(ctx, resolved)
+		return r.ensureComposeContainer(ctx, resolved, overridePath)
 	}
 	containerID, err := r.findContainer(ctx, resolved)
 	if err == nil && containerID != "" {

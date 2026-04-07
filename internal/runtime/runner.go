@@ -167,13 +167,16 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 	if err != nil {
 		return UpResult{}, err
 	}
+	overridePath := ""
 	if resolved.SourceKind == "compose" {
-		if _, err := writeComposeOverride(resolved, image); err != nil {
+		overridePath, err = writeComposeOverride(resolved, image)
+		if err != nil {
 			return UpResult{}, err
 		}
+		defer os.Remove(overridePath)
 	}
 
-	containerID, created, err := r.ensureContainer(ctx, resolved, image, opts.BridgeEnabled)
+	containerID, created, err := r.ensureContainer(ctx, resolved, image, opts.BridgeEnabled, overridePath)
 	if err != nil {
 		return UpResult{}, err
 	}

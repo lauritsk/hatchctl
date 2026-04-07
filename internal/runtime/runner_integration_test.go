@@ -1000,13 +1000,8 @@ func TestComposeBuildAndUpSingleService(t *testing.T) {
 		t.Fatalf("expected compose override env, got %#v", configResult.ManagedContainer.ContainerEnv)
 	}
 	overridePath := devcontainer.ComposeOverrideFile(configResult.StateDir)
-	overrideData, err := os.ReadFile(overridePath)
-	if err != nil {
-		t.Fatalf("read compose override file: %v", err)
-	}
-	overrideText := string(overrideData)
-	if !strings.Contains(overrideText, "COMPOSE_OVERRIDE_ENV=yes") || !strings.Contains(overrideText, "/extra-workspace") {
-		t.Fatalf("unexpected compose override content %q", overrideText)
+	if _, err := os.Stat(overridePath); !os.IsNotExist(err) {
+		t.Fatalf("expected no persisted compose override file, got %v", err)
 	}
 
 	var stdout bytes.Buffer
