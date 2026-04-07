@@ -2,6 +2,14 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## [v0.1.1](https://github.com/lauritsk/hatchctl/compare/c66c83c88fa8eea82ac7ed74c8ebcee6b9eb7ded..v0.1.1) - 2026-04-07
+#### Bug Fixes
+- repair release workflow authentication - ([c0ee5de](https://github.com/lauritsk/hatchctl/commit/c0ee5de0e38da28f62ba947659587abca725835e)) - Karl Hans Laurits
+#### Miscellaneous Chores
+- add changelog authoring to Cocogitto configuration - ([c66c83c](https://github.com/lauritsk/hatchctl/commit/c66c83c88fa8eea82ac7ed74c8ebcee6b9eb7ded)) - Karl Hans Laurits
+
+- - -
+
 ## [v0.1.0](https://github.com/lauritsk/hatchctl/compare/8d08d1ba8510d10cc98236e0c8fb3b1a684abd22..v0.1.0) - 2026-04-07
 #### Features
 - improve command progress and debug output - ([de50e4b](https://github.com/lauritsk/hatchctl/commit/de50e4b8627ab480cf5821d872446210de69b31b)) - Karl Hans Laurits
