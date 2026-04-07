@@ -1,8 +1,12 @@
 package devcontainer
 
 import (
+	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
+
+	"github.com/tailscale/hujson"
 )
 
 type FeatureLockFile map[string]FeatureLockEntry
@@ -44,15 +48,15 @@ func ReadFeatureLockFile(configPath string) (FeatureLockFile, bool, error) {
 		}
 		return nil, false, err
 	}
-	if len(bytesTrimSpace(data)) == 0 {
+	if len(bytes.TrimSpace(data)) == 0 {
 		return FeatureLockFile{}, true, nil
 	}
-	data, err = standardizeJSONC(data)
+	data, err = hujson.Standardize(data)
 	if err != nil {
 		return nil, true, err
 	}
 	lock := FeatureLockFile{}
-	if err := jsonUnmarshal(data, &lock); err != nil {
+	if err := json.Unmarshal(data, &lock); err != nil {
 		return nil, true, err
 	}
 	return lock, true, nil
@@ -81,7 +85,7 @@ func WriteFeatureLockFile(configPath string, features []ResolvedFeature) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	data, err := jsonMarshalIndent(lock)
+	data, err := json.MarshalIndent(lock, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -115,21 +119,9 @@ func WriteFeatureStateFile(stateDir string, features []ResolvedFeature) error {
 		}
 		state.Features = append(state.Features, entry)
 	}
-	data, err := jsonMarshalIndent(state)
+	data, err := json.MarshalIndent(state, "", "  ")
 	if err != nil {
 		return err
 	}
 	return os.WriteFile(path, data, 0o644)
-}
-
-func bytesTrimSpace(data []byte) []byte {
-	start := 0
-	for start < len(data) && (data[start] == ' ' || data[start] == '\n' || data[start] == '\r' || data[start] == '\t') {
-		start++
-	}
-	end := len(data)
-	for end > start && (data[end-1] == ' ' || data[end-1] == '\n' || data[end-1] == '\r' || data[end-1] == '\t') {
-		end--
-	}
-	return data[start:end]
 }

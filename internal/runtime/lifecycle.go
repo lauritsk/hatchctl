@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"strconv"
-	"strings"
 
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
 )
@@ -44,17 +42,4 @@ func runCommand(ctx context.Context, runner func(context.Context, []string) erro
 	default:
 		return nil
 	}
-}
-
-func parseExitStatus(message string) int {
-	idx := strings.LastIndex(message, "exit status ")
-	if idx == -1 {
-		return 1
-	}
-	value := strings.TrimSpace(message[idx+len("exit status "):])
-	code, err := strconv.Atoi(value)
-	if err != nil {
-		return 1
-	}
-	return code
 }

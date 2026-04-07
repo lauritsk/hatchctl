@@ -14,6 +14,8 @@ import (
 	"testing"
 )
 
+var featureResolveOpts = FeatureResolveOptions{AllowNetwork: true, WriteLockFile: true}
+
 func TestResolveFeaturesOrdersDependenciesAndInstallsAfter(t *testing.T) {
 	configDir := t.TempDir()
 	writeFeatureFixture(t, filepath.Join(configDir, "alpha"), `{
@@ -35,7 +37,7 @@ func TestResolveFeaturesOrdersDependenciesAndInstallsAfter(t *testing.T) {
 		"./gamma": true,
 		"./beta":  true,
 		"./alpha": true,
-	})
+	}, featureResolveOpts)
 	if err != nil {
 		t.Fatalf("resolve features: %v", err)
 	}
@@ -61,7 +63,7 @@ func TestResolveFeaturesMaterializesOptionEnvironment(t *testing.T) {
 	configPath := filepath.Join(configDir, "devcontainer.json")
 	features, err := ResolveFeatures(configPath, configDir, t.TempDir(), map[string]any{
 		"./tool": map[string]any{"other-option": true},
-	})
+	}, featureResolveOpts)
 	if err != nil {
 		t.Fatalf("resolve features: %v", err)
 	}
@@ -94,7 +96,7 @@ func TestResolveFeaturesFetchesOCIRegistryFeature(t *testing.T) {
 
 	features, err := ResolveFeatures(configPath, filepath.Dir(configPath), t.TempDir(), map[string]any{
 		registryHost + "/features/remote-tool:1": true,
-	})
+	}, featureResolveOpts)
 	if err != nil {
 		t.Fatalf("resolve oci feature: %v", err)
 	}
@@ -123,7 +125,7 @@ func TestResolveFeaturesFetchesOCIRegistryFeature(t *testing.T) {
 	}
 	_, err = ResolveFeatures(configPath, filepath.Dir(configPath), t.TempDir(), map[string]any{
 		registryHost + "/features/remote-tool:1": true,
-	})
+	}, featureResolveOpts)
 	if err != nil {
 		t.Fatalf("resolve oci feature with lockfile: %v", err)
 	}
@@ -148,7 +150,7 @@ func TestResolveFeaturesFetchesTarballFeatureAndPinsIntegrity(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), ".devcontainer.json")
 	featureURL := server.URL + "/devcontainer-feature-tarball-tool.tgz"
 
-	features, err := ResolveFeatures(configPath, filepath.Dir(configPath), t.TempDir(), map[string]any{featureURL: true})
+	features, err := ResolveFeatures(configPath, filepath.Dir(configPath), t.TempDir(), map[string]any{featureURL: true}, featureResolveOpts)
 	if err != nil {
 		t.Fatalf("resolve tarball feature: %v", err)
 	}
@@ -166,7 +168,7 @@ func TestResolveFeaturesFetchesTarballFeatureAndPinsIntegrity(t *testing.T) {
 	if err := os.WriteFile(FeatureLockFilePath(configPath), []byte(badIntegrity), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ResolveFeatures(configPath, filepath.Dir(configPath), t.TempDir(), map[string]any{featureURL: true}); err == nil || !strings.Contains(err.Error(), "integrity mismatch") {
+	if _, err := ResolveFeatures(configPath, filepath.Dir(configPath), t.TempDir(), map[string]any{featureURL: true}, featureResolveOpts); err == nil || !strings.Contains(err.Error(), "integrity mismatch") {
 		t.Fatalf("expected tarball integrity mismatch, got %v", err)
 	}
 }

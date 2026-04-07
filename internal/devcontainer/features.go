@@ -15,6 +15,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -32,6 +33,13 @@ type ResolvedFeature struct {
 	DependsOn     []string
 	InstallsAfter []string
 	Metadata      MetadataEntry
+}
+
+type FeatureResolveOptions struct {
+	AllowNetwork   bool
+	WriteLockFile  bool
+	WriteStateFile bool
+	StateDir       string
 }
 
 type featureManifest struct {
@@ -81,7 +89,7 @@ type ociManifest struct {
 	} `json:"layers"`
 }
 
-func ResolveFeatures(configPath string, configDir string, cacheDir string, values map[string]any) ([]ResolvedFeature, error) {
+func ResolveFeatures(configPath string, configDir string, cacheDir string, values map[string]any, opts FeatureResolveOptions) ([]ResolvedFeature, error) {
 	if len(values) == 0 {
 		return nil, nil
 	}
@@ -96,7 +104,7 @@ func ResolveFeatures(configPath string, configDir string, cacheDir string, value
 		if !enabled {
 			continue
 		}
-		featurePath, kind, resolvedRef, integrity, version, err := resolveFeaturePath(configDir, cacheDir, source, lockFile[source])
+		featurePath, kind, resolvedRef, integrity, version, err := resolveFeaturePath(configDir, cacheDir, source, lockFile[source], opts.AllowNetwork)
 		if err != nil {
 			return nil, err
 		}
@@ -116,7 +124,7 @@ func ResolveFeatures(configPath string, configDir string, cacheDir string, value
 			Integrity:     integrity,
 			Options:       materializeFeatureOptions(manifest, options),
 			DependsOn:     sortedKeys(manifest.DependsOn),
-			InstallsAfter: append([]string(nil), manifest.InstallsAfter...),
+			InstallsAfter: slices.Clone(manifest.InstallsAfter),
 			Metadata: MetadataEntry{
 				ID:                   manifest.ID,
 				Init:                 manifest.Init,
@@ -138,13 +146,20 @@ func ResolveFeatures(configPath string, configDir string, cacheDir string, value
 		byAlias[source] = idx
 		byAlias[manifest.ID] = idx
 	}
-	if err := WriteFeatureLockFile(configPath, features); err != nil {
-		return nil, err
+	if opts.WriteLockFile {
+		if err := WriteFeatureLockFile(configPath, features); err != nil {
+			return nil, err
+		}
+	}
+	if opts.WriteStateFile {
+		if err := WriteFeatureStateFile(opts.StateDir, features); err != nil {
+			return nil, err
+		}
 	}
 	return orderFeatures(features, byAlias)
 }
 
-func resolveFeaturePath(configDir string, cacheDir string, source string, lock FeatureLockEntry) (string, string, string, string, string, error) {
+func resolveFeaturePath(configDir string, cacheDir string, source string, lock FeatureLockEntry, allowNetwork bool) (string, string, string, string, string, error) {
 	resolved, err := resolveLocalFeaturePath(configDir, source)
 	if err == nil {
 		return resolved, "file-path", source, "", "", nil
@@ -153,6 +168,10 @@ func resolveFeaturePath(configDir string, cacheDir string, source string, lock F
 		return "", "", "", "", "", err
 	}
 	if strings.HasPrefix(source, "https://") || strings.HasPrefix(source, "http://") {
+		if !allowNetwork {
+			resolved, integrity, err := cachedTarballFeature(cacheDir, source, lock)
+			return resolved, "direct-tarball", source, integrity, source, err
+		}
 		resolved, integrity, err := fetchTarballFeature(cacheDir, source, lock)
 		return resolved, "direct-tarball", source, integrity, source, err
 	}
@@ -160,8 +179,31 @@ func resolveFeaturePath(configDir string, cacheDir string, source string, lock F
 	if err != nil {
 		return "", "", "", "", "", fmt.Errorf("feature %q not found locally and is not a valid remote feature source: %w", source, err)
 	}
+	if !allowNetwork {
+		resolvedPath, resolvedRef, integrity, version, err := cachedOCIFeature(cacheDir, source, ref, lock)
+		return resolvedPath, "oci", resolvedRef, integrity, version, err
+	}
 	resolvedPath, resolvedRef, integrity, version, err := fetchOCIFeature(cacheDir, source, ref, lock)
 	return resolvedPath, "oci", resolvedRef, integrity, version, err
+}
+
+func cachedOCIFeature(cacheDir string, source string, ref ociReference, lock FeatureLockEntry) (string, string, string, string, error) {
+	if lock.Integrity == "" {
+		return "", "", "", "", fmt.Errorf("feature %q requires network access or a lockfile integrity", source)
+	}
+	key := sha256.Sum256([]byte(source))
+	featureDir := filepath.Join(cacheDir, hex.EncodeToString(key[:]), sanitizeFeatureCacheRef(lock.Integrity))
+	if _, err := os.Stat(filepath.Join(featureDir, "devcontainer-feature.json")); err != nil {
+		if os.IsNotExist(err) {
+			return "", "", "", "", fmt.Errorf("feature %q is not cached locally", source)
+		}
+		return "", "", "", "", err
+	}
+	version := lock.Version
+	if version == "" {
+		version = ref.Reference
+	}
+	return featureDir, ref.Registry + "/" + ref.Repository + "@" + lock.Integrity, lock.Integrity, version, nil
 }
 
 func resolveLocalFeaturePath(configDir string, source string) (string, error) {
@@ -287,6 +329,21 @@ func fetchTarballFeature(cacheDir string, source string, lock FeatureLockEntry) 
 		return "", "", fmt.Errorf("tarball feature %q did not contain devcontainer-feature.json", source)
 	}
 	return featureDir, integrity, nil
+}
+
+func cachedTarballFeature(cacheDir string, source string, lock FeatureLockEntry) (string, string, error) {
+	if lock.Integrity == "" {
+		return "", "", fmt.Errorf("feature %q requires network access or a lockfile integrity", source)
+	}
+	key := sha256.Sum256([]byte(source))
+	featureDir := filepath.Join(cacheDir, hex.EncodeToString(key[:]), sanitizeFeatureCacheRef(lock.Integrity))
+	if _, err := os.Stat(filepath.Join(featureDir, "devcontainer-feature.json")); err != nil {
+		if os.IsNotExist(err) {
+			return "", "", fmt.Errorf("feature %q is not cached locally", source)
+		}
+		return "", "", err
+	}
+	return featureDir, lock.Integrity, nil
 }
 
 func fetchTarballBytes(rawURL string) ([]byte, error) {

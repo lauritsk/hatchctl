@@ -406,6 +406,45 @@ func TestResolveWritesFeatureLockFile(t *testing.T) {
 	}
 }
 
+func TestResolveReadOnlyDoesNotPersistFeatureFiles(t *testing.T) {
+	t.Parallel()
+
+	workspace := t.TempDir()
+	configDir := filepath.Join(workspace, ".devcontainer")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	featureDir := filepath.Join(configDir, "feature-a")
+	if err := os.MkdirAll(featureDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(featureDir, "devcontainer-feature.json"), []byte(`{"id":"feature-a"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(configDir, "devcontainer.json")
+	if err := os.WriteFile(configPath, []byte(`{
+		"image": "alpine:3.20",
+		"workspaceFolder": "/workspace",
+		"features": {"./feature-a": true}
+	}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	resolved, err := ResolveReadOnly(workspace, "")
+	if err != nil {
+		t.Fatalf("resolve read only: %v", err)
+	}
+	if len(resolved.Features) != 1 || resolved.Features[0].Metadata.ID != "feature-a" {
+		t.Fatalf("unexpected resolved features %#v", resolved.Features)
+	}
+	if _, err := os.Stat(FeatureLockFilePath(configPath)); !os.IsNotExist(err) {
+		t.Fatalf("expected no config lockfile, got %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(resolved.StateDir, "features-lock.json")); !os.IsNotExist(err) {
+		t.Fatalf("expected no state feature file, got %v", err)
+	}
+}
+
 func TestResolveSupportsBuildDockerfileAndContextFiles(t *testing.T) {
 	t.Parallel()
 

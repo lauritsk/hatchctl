@@ -309,15 +309,11 @@ func (r *Runner) Exec(ctx context.Context, opts ExecOptions) (int, error) {
 	if errors.As(err, &exitErr) {
 		return exitErr.ExitCode(), nil
 	}
-	msg := err.Error()
-	if strings.Contains(msg, "exit status ") {
-		return parseExitStatus(msg), nil
-	}
 	return 0, err
 }
 
 func (r *Runner) ReadConfig(ctx context.Context, opts ReadConfigOptions) (ReadConfigResult, error) {
-	resolved, err := devcontainer.Resolve(opts.Workspace, opts.ConfigPath)
+	resolved, err := devcontainer.ResolveReadOnly(opts.Workspace, opts.ConfigPath)
 	if err != nil {
 		return ReadConfigResult{}, err
 	}
@@ -337,14 +333,9 @@ func (r *Runner) ReadConfig(ctx context.Context, opts ReadConfigOptions) (ReadCo
 		return ReadConfigResult{}, err
 	}
 	var bridgeReport *bridge.Report
-	bridgeReport, err = r.applyBridgeConfig(&resolved, state.BridgeEnabled)
+	bridgeReport, err = r.previewBridgeConfig(&resolved, state.BridgeEnabled)
 	if err != nil {
 		return ReadConfigResult{}, err
-	}
-	if resolved.SourceKind == "compose" {
-		if err := r.writeComposeOverride(resolved, image); err != nil {
-			return ReadConfigResult{}, err
-		}
 	}
 	if state.BridgeEnabled {
 		report, err := bridge.Doctor(resolved.StateDir)
@@ -418,7 +409,7 @@ func (r *Runner) RunLifecycle(ctx context.Context, opts RunLifecycleOptions) (Ru
 
 func (r *Runner) BridgeDoctor(ctx context.Context, opts BridgeDoctorOptions) (bridge.Report, error) {
 	_ = ctx
-	resolved, err := devcontainer.Resolve(opts.Workspace, opts.ConfigPath)
+	resolved, err := devcontainer.ResolveReadOnly(opts.Workspace, opts.ConfigPath)
 	if err != nil {
 		return bridge.Report{}, err
 	}
@@ -739,7 +730,7 @@ func (r *Runner) reconcileState(ctx context.Context, resolved devcontainer.Resol
 	if state.ContainerID != "" {
 		if _, err := r.docker.InspectContainer(ctx, state.ContainerID); err == nil {
 			return state, nil
-		} else if !strings.Contains(err.Error(), "No such object") && !strings.Contains(err.Error(), "not found") {
+		} else if !docker.IsNotFound(err) {
 			return devcontainer.State{}, err
 		}
 	}
@@ -764,6 +755,15 @@ func (r *Runner) applyBridgeConfig(resolved *devcontainer.ResolvedConfig, enable
 	return (*bridge.Report)(report), nil
 }
 
+func (r *Runner) previewBridgeConfig(resolved *devcontainer.ResolvedConfig, enabled bool) (*bridge.Report, error) {
+	report, merged, err := bridge.Preview(resolved.StateDir, enabled, resolved.Merged)
+	if err != nil {
+		return nil, err
+	}
+	resolved.Merged = merged
+	return (*bridge.Report)(report), nil
+}
+
 func (r *Runner) effectiveRemoteUser(ctx context.Context, resolved devcontainer.ResolvedConfig, image string, containerID string) (string, error) {
 	if user := firstNonEmpty(resolved.Merged.RemoteUser, resolved.Merged.ContainerUser); user != "" {
 		return user, nil
@@ -781,7 +781,7 @@ func (r *Runner) effectiveRemoteUser(ctx context.Context, resolved devcontainer.
 func (r *Runner) inspectImageUser(ctx context.Context, image string) (string, error) {
 	inspect, err := r.docker.InspectImage(ctx, image)
 	if err != nil {
-		if strings.Contains(err.Error(), "No such image") || strings.Contains(err.Error(), "not found") {
+		if docker.IsNotFound(err) {
 			return "", nil
 		}
 		return "", err
@@ -1016,35 +1016,13 @@ func dockerfileQuotedValue(value string) string {
 }
 
 func copyDir(src string, dst string) error {
-	entries, err := os.ReadDir(src)
-	if err != nil {
+	if err := os.RemoveAll(dst); err != nil {
 		return err
 	}
 	if err := os.MkdirAll(dst, 0o755); err != nil {
 		return err
 	}
-	for _, entry := range entries {
-		srcPath := filepath.Join(src, entry.Name())
-		dstPath := filepath.Join(dst, entry.Name())
-		if entry.IsDir() {
-			if err := copyDir(srcPath, dstPath); err != nil {
-				return err
-			}
-			continue
-		}
-		data, err := os.ReadFile(srcPath)
-		if err != nil {
-			return err
-		}
-		info, err := entry.Info()
-		if err != nil {
-			return err
-		}
-		if err := os.WriteFile(dstPath, data, info.Mode()); err != nil {
-			return err
-		}
-	}
-	return nil
+	return os.CopyFS(dst, os.DirFS(src))
 }
 
 func (r *Runner) composeBaseArgs(resolved devcontainer.ResolvedConfig) []string {

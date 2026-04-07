@@ -3,6 +3,8 @@ package devcontainer
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -352,16 +354,12 @@ func pickLastBool(entries []MetadataEntry, pick func(MetadataEntry) *bool) *bool
 }
 
 func cloneEntries(entries []MetadataEntry) []MetadataEntry {
-	result := make([]MetadataEntry, len(entries))
-	copy(result, entries)
-	return result
+	return slices.Clone(entries)
 }
 
 func reverseEntries(entries []MetadataEntry) []MetadataEntry {
 	result := cloneEntries(entries)
-	for left, right := 0, len(result)-1; left < right; left, right = left+1, right-1 {
-		result[left], result[right] = result[right], result[left]
-	}
+	slices.Reverse(result)
 	return result
 }
 
@@ -369,29 +367,21 @@ func cloneSlice(values []string) []string {
 	if len(values) == 0 {
 		return nil
 	}
-	result := make([]string, len(values))
-	copy(result, values)
-	return result
+	return slices.Clone(values)
 }
 
 func cloneMap(values map[string]string) map[string]string {
 	if len(values) == 0 {
 		return nil
 	}
-	result := make(map[string]string, len(values))
-	for key, value := range values {
-		result[key] = value
-	}
-	return result
+	return maps.Clone(values)
 }
 
 func cloneForwardPorts(values ForwardPorts) ForwardPorts {
 	if len(values) == 0 {
 		return nil
 	}
-	result := make([]string, len(values))
-	copy(result, values)
-	return ForwardPorts(result)
+	return ForwardPorts(slices.Clone(values))
 }
 
 func metadataEntryEmpty(entry MetadataEntry) bool {

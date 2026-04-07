@@ -23,7 +23,7 @@ run = "go test ./..."
 
 [tasks.build]
 description = "Build Go packages"
-run = "go build ./..."
+run = "go build ./... && CGO_ENABLED=0 GOOS=linux GOARCH=$(go env GOARCH) go build -o .dist/bridge-helper/hatchctl-bridge-helper-linux-$(go env GOARCH) ./cmd/hatchctl-bridge-helper"
 
 [tasks.audit]
 tools."go:golang.org/x/vuln/cmd/govulncheck" = "1.1.4"

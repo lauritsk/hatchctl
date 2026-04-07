@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -74,6 +75,7 @@ func TestBuildPersistsMetadataLabel(t *testing.T) {
 }
 
 func TestUpPersistsMergedMetadataAndHonorsMergedRuntimeConfig(t *testing.T) {
+	setBridgeHelperEnv(t)
 	client := dockerClientForTest(t)
 	ctx := context.Background()
 	workspace := t.TempDir()
@@ -686,6 +688,7 @@ func TestUpRecreateRemovesReconciledManagedContainer(t *testing.T) {
 }
 
 func TestUpStartsBridgeOnFirstRunAndReusesSession(t *testing.T) {
+	setBridgeHelperEnv(t)
 	client := dockerClientForTest(t)
 	ctx := context.Background()
 	workspace := t.TempDir()
@@ -773,6 +776,21 @@ func TestUpStartsBridgeOnFirstRunAndReusesSession(t *testing.T) {
 	if !state.BridgeEnabled || state.BridgeSessionID != session.ID {
 		t.Fatalf("unexpected stored bridge state %#v", state)
 	}
+}
+
+func setBridgeHelperEnv(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS != "darwin" {
+		return
+	}
+	path := filepath.Join(t.TempDir(), "hatchctl-bridge-helper")
+	cmd := exec.Command("go", "build", "-o", path, "./cmd/hatchctl-bridge-helper")
+	cmd.Dir = filepath.Join("..", "..")
+	cmd.Env = append(os.Environ(), "CGO_ENABLED=0", "GOOS=linux", "GOARCH="+runtime.GOARCH)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("build bridge helper: %v: %s", err, strings.TrimSpace(string(output)))
+	}
+	t.Setenv("HATCHCTL_BRIDGE_HELPER", path)
 }
 
 func TestBuildConsumesLocalFeaturesFromImageSource(t *testing.T) {
@@ -1018,6 +1036,7 @@ func TestComposeBuildAndUpSingleService(t *testing.T) {
 }
 
 func TestComposeUpStartsBridgeAndReusesSession(t *testing.T) {
+	setBridgeHelperEnv(t)
 	client := dockerClientForTest(t)
 	ctx := context.Background()
 	workspace := t.TempDir()

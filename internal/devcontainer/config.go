@@ -205,7 +205,25 @@ type ResolvedConfig struct {
 	Labels          map[string]string
 }
 
+type ResolveOptions struct {
+	AllowNetwork      bool
+	WriteFeatureLock  bool
+	WriteFeatureState bool
+}
+
 func Resolve(workspaceArg string, configArg string) (ResolvedConfig, error) {
+	return resolve(workspaceArg, configArg, ResolveOptions{
+		AllowNetwork:      true,
+		WriteFeatureLock:  true,
+		WriteFeatureState: true,
+	})
+}
+
+func ResolveReadOnly(workspaceArg string, configArg string) (ResolvedConfig, error) {
+	return resolve(workspaceArg, configArg, ResolveOptions{})
+}
+
+func resolve(workspaceArg string, configArg string, opts ResolveOptions) (ResolvedConfig, error) {
 	workspace, err := resolveWorkspace(workspaceArg)
 	if err != nil {
 		return ResolvedConfig{}, err
@@ -266,11 +284,13 @@ func Resolve(workspaceArg string, configArg string) (ResolvedConfig, error) {
 		ManagedByLabel:  ManagedByValue,
 	}
 
-	features, err := ResolveFeatures(configPath, configDir, filepath.Join(stateDir, "features-cache"), config.Features)
+	features, err := ResolveFeatures(configPath, configDir, filepath.Join(stateDir, "features-cache"), config.Features, FeatureResolveOptions{
+		AllowNetwork:   opts.AllowNetwork,
+		WriteLockFile:  opts.WriteFeatureLock,
+		WriteStateFile: opts.WriteFeatureState,
+		StateDir:       stateDir,
+	})
 	if err != nil {
-		return ResolvedConfig{}, err
-	}
-	if err := WriteFeatureStateFile(stateDir, features); err != nil {
 		return ResolvedConfig{}, err
 	}
 	metadata := make([]MetadataEntry, 0, len(features))

@@ -4,13 +4,12 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"syscall"
 
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
@@ -34,7 +33,10 @@ type Session struct {
 
 type Report = Session
 
-const containerBridgeMountPath = "/var/run/hatchctl/bridge"
+const (
+	containerBridgeMountPath = "/var/run/hatchctl/bridge"
+	helperBinaryEnvVar       = "HATCHCTL_BRIDGE_HELPER"
+)
 
 func Prepare(stateDir string, enabled bool) (*Session, error) {
 	bridgeDir := filepath.Join(stateDir, "bridge")
@@ -56,7 +58,7 @@ func Prepare(stateDir string, enabled bool) (*Session, error) {
 	if err := os.WriteFile(filepath.Join(binPath, "xdg-open"), []byte(xdgOpenShim()), 0o755); err != nil {
 		return nil, err
 	}
-	if err := ensureHelperBinary(binPath); err != nil {
+	if err := installHelperBinary(binPath); err != nil {
 		return nil, err
 	}
 	session.Enabled = enabled
@@ -102,24 +104,22 @@ func Apply(stateDir string, enabled bool, merged devcontainer.MergedConfig) (*Se
 	if session == nil {
 		return session, merged, nil
 	}
-	containerEnv := cloneEnv(merged.ContainerEnv)
-	containerEnv["BROWSER"] = filepath.ToSlash(filepath.Join(session.BinPath, "devcontainer-open"))
-	containerEnv["DEVCONTAINER_BRIDGE_ENABLED"] = "true"
-	containerEnv["PATH"] = prependPath(session.BinPath, containerEnv["PATH"])
-	if session.Host != "" {
-		containerEnv["DEVCONTAINER_BRIDGE_HOST"] = session.Host
-	}
-	if session.Port != 0 {
-		containerEnv["DEVCONTAINER_BRIDGE_PORT"] = fmt.Sprintf("%d", session.Port)
-	}
-	if session.Token != "" {
-		containerEnv["DEVCONTAINER_BRIDGE_TOKEN"] = session.Token
-	}
+	return session, applySession(session, merged), nil
+}
 
-	mount := fmt.Sprintf("type=bind,source=%s,target=%s", session.StatePath, session.MountPath)
-	merged.ContainerEnv = containerEnv
-	merged.Mounts = appendMount(merged.Mounts, mount)
-	return session, merged, nil
+func Preview(stateDir string, enabled bool, merged devcontainer.MergedConfig) (*Session, devcontainer.MergedConfig, error) {
+	if !enabled {
+		return nil, merged, nil
+	}
+	bridgeDir := filepath.Join(stateDir, "bridge")
+	session, err := readSession(bridgeDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, merged, nil
+		}
+		return nil, devcontainer.MergedConfig{}, err
+	}
+	return session, applySession(session, merged), nil
 }
 
 func Doctor(stateDir string) (Report, error) {
@@ -199,21 +199,60 @@ func xdgOpenShim() string {
 	return "#!/bin/sh\nexec /var/run/hatchctl/bridge/bin/devcontainer-open \"$@\"\n"
 }
 
-func ensureHelperBinary(binPath string) error {
+func installHelperBinary(binPath string) error {
 	helperPath := filepath.Join(binPath, "hatchctl-bridge-helper")
-	if _, err := os.Stat(helperPath); err == nil {
-		return nil
-	} else if !os.IsNotExist(err) {
+	sourcePath, err := packagedHelperBinary()
+	if err != nil {
 		return err
 	}
-	cmd := exec.Command("go", "build", "-o", helperPath, "./cmd/hatchctl-bridge-helper")
-	cmd.Dir = repoRoot()
-	cmd.Env = append(os.Environ(), "CGO_ENABLED=0", "GOOS=linux", "GOARCH="+runtime.GOARCH)
-	output, err := cmd.CombinedOutput()
+	data, err := os.ReadFile(sourcePath)
 	if err != nil {
-		return fmt.Errorf("build bridge helper: %w: %s", err, strings.TrimSpace(string(output)))
+		return err
+	}
+	if err := os.WriteFile(helperPath, data, 0o755); err != nil {
+		return err
 	}
 	return os.Chmod(helperPath, 0o755)
+}
+
+func packagedHelperBinary() (string, error) {
+	if configured := os.Getenv(helperBinaryEnvVar); configured != "" {
+		if _, err := os.Stat(configured); err != nil {
+			return "", fmt.Errorf("bridge helper %s=%q: %w", helperBinaryEnvVar, configured, err)
+		}
+		return configured, nil
+	}
+
+	for _, candidate := range helperBinaryCandidates() {
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate, nil
+		} else if !os.IsNotExist(err) {
+			return "", err
+		}
+	}
+	return "", errors.New("packaged bridge helper not found; set HATCHCTL_BRIDGE_HELPER or install a release artifact that includes hatchctl-bridge-helper")
+}
+
+func helperBinaryCandidates() []string {
+	base := helperArtifactName()
+	var candidates []string
+	if exe, err := os.Executable(); err == nil {
+		exeDir := filepath.Dir(exe)
+		candidates = append(candidates,
+			filepath.Join(exeDir, base),
+			filepath.Join(exeDir, "libexec", base),
+		)
+	}
+	repo := repoRoot()
+	candidates = append(candidates,
+		filepath.Join(repo, ".dist", "bridge-helper", base),
+		filepath.Join(repo, ".dist", "bridge-helper", runtime.GOARCH, "hatchctl-bridge-helper"),
+	)
+	return candidates
+}
+
+func helperArtifactName() string {
+	return fmt.Sprintf("hatchctl-bridge-helper-linux-%s", runtime.GOARCH)
 }
 
 func repoRoot() string {
@@ -222,6 +261,26 @@ func repoRoot() string {
 		return "."
 	}
 	return filepath.Clean(filepath.Join(filepath.Dir(file), "..", ".."))
+}
+
+func applySession(session *Session, merged devcontainer.MergedConfig) devcontainer.MergedConfig {
+	containerEnv := cloneEnv(merged.ContainerEnv)
+	containerEnv["BROWSER"] = filepath.ToSlash(filepath.Join(session.BinPath, "devcontainer-open"))
+	containerEnv["DEVCONTAINER_BRIDGE_ENABLED"] = "true"
+	containerEnv["PATH"] = prependPath(session.BinPath, containerEnv["PATH"])
+	if session.Host != "" {
+		containerEnv["DEVCONTAINER_BRIDGE_HOST"] = session.Host
+	}
+	if session.Port != 0 {
+		containerEnv["DEVCONTAINER_BRIDGE_PORT"] = fmt.Sprintf("%d", session.Port)
+	}
+	if session.Token != "" {
+		containerEnv["DEVCONTAINER_BRIDGE_TOKEN"] = session.Token
+	}
+	mount := fmt.Sprintf("type=bind,source=%s,target=%s", session.StatePath, session.MountPath)
+	merged.ContainerEnv = containerEnv
+	merged.Mounts = appendMount(merged.Mounts, mount)
+	return merged
 }
 
 func loadOrCreateSession(bridgeDir string, enabled bool) (*Session, error) {

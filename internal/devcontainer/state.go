@@ -3,6 +3,7 @@ package devcontainer
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -48,7 +49,7 @@ func ReadState(stateDir string) (State, error) {
 		return State{}, err
 	}
 	var state State
-	if err := jsonUnmarshal(data, &state); err != nil {
+	if err := json.Unmarshal(data, &state); err != nil {
 		return State{}, err
 	}
 	return state, nil
@@ -59,7 +60,7 @@ func WriteState(stateDir string, state State) error {
 		return err
 	}
 	path := filepath.Join(stateDir, "state.json")
-	data, err := jsonMarshalIndent(state)
+	data, err := json.MarshalIndent(state, "", "  ")
 	if err != nil {
 		return err
 	}
