@@ -4,7 +4,7 @@
 
 Do not open a public GitHub issue for security-sensitive reports.
 
-Report vulnerabilities by emailing `security@laurits.dev` with:
+Report vulnerabilities by emailing `security@solisec.org` with:
 
 - a description of the issue
 - affected versions or commits

@@ -4,6 +4,12 @@ builds:
   - id: hatchctl-main
     main: ./cmd/hatchctl
     binary: hatchctl
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
     ldflags:
       - -s -w -X github.com/lauritsk/hatchctl/internal/version.Version={{ .Version }}
   - id: hatchctl-bridge-helper
@@ -11,6 +17,9 @@ builds:
     binary: hatchctl-bridge-helper-linux-{{ .Arch }}
     goos:
       - linux
+    goarch:
+      - amd64
+      - arm64
     ldflags:
       - -s -w
 

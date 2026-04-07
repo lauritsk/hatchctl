@@ -31,7 +31,7 @@
 - [x] add more real-file regression fixtures for config discovery, compose override arrays/precedence, Dockerfile/Containerfile/context edge cases, and remote feature lockfile reuse behavior
 - [x] document supported compatibility surface and known gaps
 - [x] document the latest `devcontainer-cli` version/revision this project was synced against so future sync passes can review only newer upstream changes
-- decide first public release scope and cut `v0.1.0` only when single-container runtime, bridge, and feature consumption are solid enough for real use
+- [x] decide first public release scope and cut `v0.1.0` only when single-container runtime, bridge, and feature consumption are solid enough for real use
 
 - [x] verify container signature with cosign by default (if possible)
 - [x] consider more security improvements / secure-by-default things that could be implemented in this project
