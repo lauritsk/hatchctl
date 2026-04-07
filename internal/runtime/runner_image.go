@@ -10,6 +10,7 @@ import (
 
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	"github.com/lauritsk/hatchctl/internal/docker"
+	"github.com/lauritsk/hatchctl/internal/security"
 )
 
 func (r *Runner) enrichMergedConfig(ctx context.Context, resolved *devcontainer.ResolvedConfig, image string) error {
@@ -42,6 +43,9 @@ func (r *Runner) ensureImage(ctx context.Context, resolved devcontainer.Resolved
 		return r.ensureImageWithFeatures(ctx, resolved)
 	}
 	if resolved.Config.Image != "" {
+		if err := security.VerifyImage(ctx, resolved.Config.Image); err != nil {
+			return "", err
+		}
 		return resolved.Config.Image, nil
 	}
 	return resolved.ImageName, r.buildDockerfileImage(ctx, resolved, resolved.ImageName)
@@ -84,6 +88,8 @@ func (r *Runner) ensureImageWithFeatures(ctx context.Context, resolved devcontai
 		if err := r.buildDockerfileImage(ctx, resolved, baseImage); err != nil {
 			return "", err
 		}
+	} else if err := security.VerifyImage(ctx, baseImage); err != nil {
+		return "", err
 	}
 	return r.ensureFeaturesImageFromBase(ctx, resolved, baseImage)
 }
@@ -142,6 +148,11 @@ func (r *Runner) ensureComposeImage(ctx context.Context, resolved devcontainer.R
 		}
 		if baseImage == "" {
 			baseImage = resolved.ComposeProject + "-" + resolved.ComposeService
+		}
+	}
+	if baseImage != "" && !service.Build.Enabled() {
+		if err := security.VerifyImage(ctx, baseImage); err != nil {
+			return "", err
 		}
 	}
 	if len(resolved.Features) > 0 {

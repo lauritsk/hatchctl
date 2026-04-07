@@ -21,6 +21,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lauritsk/hatchctl/internal/security"
 	"github.com/tailscale/hujson"
 )
 
@@ -283,6 +284,9 @@ func fetchOCIFeature(ctx context.Context, cacheDir string, source string, ref oc
 	}
 	if digest == "" {
 		digest = manifestRef.Reference
+	}
+	if err := security.VerifyImage(ctx, ref.Registry+"/"+ref.Repository+"@"+digest); err != nil {
+		return "", "", "", "", err
 	}
 	featureDir := filepath.Join(baseDir, sanitizeFeatureCacheRef(digest))
 	if _, err := os.Stat(filepath.Join(featureDir, "devcontainer-feature.json")); err == nil {
