@@ -20,7 +20,7 @@ import (
 	"time"
 )
 
-const containerHelperBin = "/var/run/hatchctl/bridge/bin/hatchctl-bridge-helper"
+const containerHelperBin = "/var/run/hatchctl/bridge/bin/hatchctl"
 
 type statusFile struct {
 	SessionID   string          `json:"sessionId"`
@@ -394,7 +394,7 @@ func ensureHelperService(session *Session, containerID string) error {
 	_ = os.Remove(session.HelperSock)
 	cmd := exec.Command(
 		"docker", "exec", "-d", containerID,
-		containerHelperBin, "serve",
+		containerHelperBin, "bridge", "helper", "serve",
 		"--socket", filepath.ToSlash(filepath.Join(containerBridgeMountPath, helperSocketName)),
 	)
 	cmd.Stdout = io.Discard

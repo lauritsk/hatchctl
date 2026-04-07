@@ -4,8 +4,8 @@ before:
   hooks:
     - rm -rf internal/bridge/embedded
     - mkdir -p internal/bridge/embedded
-    - CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -o internal/bridge/embedded/hatchctl-bridge-helper-linux-amd64 ./cmd/hatchctl-bridge-helper
-    - CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -o internal/bridge/embedded/hatchctl-bridge-helper-linux-arm64 ./cmd/hatchctl-bridge-helper
+    - CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -tags release -o internal/bridge/embedded/hatchctl-linux-amd64 ./cmd/hatchctl
+    - CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -tags release -o internal/bridge/embedded/hatchctl-linux-arm64 ./cmd/hatchctl
 
 builds:
   - id: hatchctl

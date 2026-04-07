@@ -350,8 +350,37 @@ func (a *App) newBridgeCommand(global *globalOptions) *cobra.Command {
 			return cmd.Help()
 		},
 	}
-	cmd.AddCommand(a.newBridgeDoctorCommand(global), a.newBridgeServeCommand())
+	cmd.AddCommand(a.newBridgeDoctorCommand(global), a.newBridgeServeCommand(), a.newBridgeHelperCommand())
 	return cmd
+}
+
+func (a *App) newBridgeHelperCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:    "helper",
+		Short:  "Bridge helper commands",
+		Hidden: true,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return cmd.Help()
+		},
+	}
+	cmd.AddCommand(
+		a.newBridgeHelperPassthroughCommand("connect"),
+		a.newBridgeHelperPassthroughCommand("open"),
+		a.newBridgeHelperPassthroughCommand("serve"),
+	)
+	return cmd
+}
+
+func (a *App) newBridgeHelperPassthroughCommand(name string) *cobra.Command {
+	return &cobra.Command{
+		Use:                name,
+		Short:              "Internal bridge helper command",
+		Hidden:             true,
+		DisableFlagParsing: true,
+		RunE: func(_ *cobra.Command, args []string) error {
+			return bridge.HelperMain(append([]string{name}, args...))
+		},
+	}
 }
 
 func (a *App) newBridgeDoctorCommand(global *globalOptions) *cobra.Command {

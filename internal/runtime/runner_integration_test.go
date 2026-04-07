@@ -780,8 +780,8 @@ func TestUpStartsBridgeOnFirstRunAndReusesSession(t *testing.T) {
 
 func setBridgeHelperEnv(t *testing.T) {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "hatchctl-bridge-helper")
-	cmd := exec.Command("go", "build", "-o", path, "./cmd/hatchctl-bridge-helper")
+	path := filepath.Join(t.TempDir(), "hatchctl")
+	cmd := exec.Command("go", "build", "-o", path, "./cmd/hatchctl")
 	cmd.Dir = filepath.Join("..", "..")
 	cmd.Env = append(os.Environ(), "CGO_ENABLED=0", "GOOS=linux", "GOARCH="+runtime.GOARCH)
 	if output, err := cmd.CombinedOutput(); err != nil {

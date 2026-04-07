@@ -5,9 +5,9 @@ package bridge
 import _ "embed"
 
 var (
-	//go:embed embedded/hatchctl-bridge-helper-linux-amd64
+	//go:embed embedded/hatchctl-linux-amd64
 	embeddedHelperBinaryLinuxAMD64 []byte
-	//go:embed embedded/hatchctl-bridge-helper-linux-arm64
+	//go:embed embedded/hatchctl-linux-arm64
 	embeddedHelperBinaryLinuxARM64 []byte
 )
 

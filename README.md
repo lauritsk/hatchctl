@@ -24,8 +24,6 @@ tar -xzf hatchctl_<version>_<os>_<arch>.tar.gz
 install ./hatchctl /usr/local/bin/hatchctl
 ```
 
-On macOS, `hatchctl up --bridge` works from the main release binary.
-
 ## Requirements
 
 - Docker with a working `docker` CLI on `PATH`

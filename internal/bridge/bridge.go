@@ -181,7 +181,7 @@ if [ -n "${DEVCONTAINER_BRIDGE_OPEN_COMMAND:-}" ]; then
   DEVCONTAINER_BRIDGE_URL="$url" exec /bin/sh -lc "$DEVCONTAINER_BRIDGE_OPEN_COMMAND"
 fi
 
-exec %s open --socket %s --url "$url"
+	exec %s bridge helper open --socket %s --url "$url"
 `, containerHelperBin, filepath.ToSlash(filepath.Join(containerBridgeMountPath, hostSocketName)))
 }
 
@@ -190,7 +190,7 @@ func xdgOpenShim() string {
 }
 
 func installHelperBinary(binPath string) error {
-	helperPath := filepath.Join(binPath, "hatchctl-bridge-helper")
+	helperPath := filepath.Join(binPath, "hatchctl")
 	data, err := helperBinaryData()
 	if err != nil {
 		return err
@@ -246,7 +246,7 @@ func helperBinaryCandidates() []string {
 }
 
 func helperArtifactName() string {
-	return fmt.Sprintf("hatchctl-bridge-helper-linux-%s", runtime.GOARCH)
+	return fmt.Sprintf("hatchctl-linux-%s", runtime.GOARCH)
 }
 
 func applySession(session *Session, merged devcontainer.MergedConfig) devcontainer.MergedConfig {
