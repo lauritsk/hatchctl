@@ -780,9 +780,6 @@ func TestUpStartsBridgeOnFirstRunAndReusesSession(t *testing.T) {
 
 func setBridgeHelperEnv(t *testing.T) {
 	t.Helper()
-	if runtime.GOOS != "darwin" {
-		return
-	}
 	path := filepath.Join(t.TempDir(), "hatchctl-bridge-helper")
 	cmd := exec.Command("go", "build", "-o", path, "./cmd/hatchctl-bridge-helper")
 	cmd.Dir = filepath.Join("..", "..")
