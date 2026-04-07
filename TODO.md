@@ -41,7 +41,7 @@
 - [x] stream remote feature downloads or enforce size limits instead of buffering full artifacts in memory
 - [x] replace hand-built Compose override YAML with typed marshaling and preserve mount semantics such as read-only/options
 - [x] reduce runtime coupling to global stdio/process spawning by passing runner-level I/O or logging dependencies explicitly
-- consolidate repeated resolve/inspect/enrich flows behind a smaller internal prepared-plan helper
+- [x] consolidate repeated resolve/inspect/enrich flows behind a smaller internal prepared-plan helper
 - [x] remove leftover compile anchors and cleanup artifacts like `var _ = bridge.Report{}` once no longer needed
 - [x] deduplicate map-sorting and other tiny helper utilities where modern stdlib/shared helpers already cover the need
 - consider whether Charm CLI tooling could improve usability, visuals, and simplify parts of the command UX
