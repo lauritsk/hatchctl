@@ -34,7 +34,7 @@
 - decide first public release scope and cut `v0.1.0` only when single-container runtime, bridge, and feature consumption are solid enough for real use
 
 - [x] verify container signature with cosign by default (if possible)
-- consider more security improvements / secure-by-default things that could be implemented in this project
+- [x] consider more security improvements / secure-by-default things that could be implemented in this project
 - [x] harden feature option handling so feature env values are treated as data, not shell code during image builds
 - [x] tighten bridge security by writing token-bearing files with owner-only permissions and narrowing listener exposure where possible
 - [x] thread `context.Context` through config and feature resolution, use `signal.NotifyContext`, and add sane HTTP client timeouts

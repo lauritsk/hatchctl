@@ -142,7 +142,7 @@ func writeComposeOverride(resolved devcontainer.ResolvedConfig, image string) (s
 	if err != nil {
 		return "", err
 	}
-	if err := os.WriteFile(path, []byte(contents), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
 		return "", err
 	}
 	return path, nil

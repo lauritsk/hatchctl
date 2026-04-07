@@ -1,6 +1,8 @@
 package runtime
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
@@ -58,5 +60,30 @@ func TestComposeMountValueSkipsUnsupportedMounts(t *testing.T) {
 	}
 	if _, ok := composeMountValue("type=bind,source=/tmp"); ok {
 		t.Fatal("expected missing target mount to be skipped")
+	}
+}
+
+func TestWriteComposeOverrideUsesOwnerOnlyPermissions(t *testing.T) {
+	resolved := devcontainer.ResolvedConfig{
+		StateDir:       t.TempDir(),
+		ComposeService: "app",
+		WorkspaceMount: "type=bind,source=/workspace,target=/workspaces/demo",
+		Merged:         devcontainer.MergedConfig{},
+		Labels:         map[string]string{},
+	}
+
+	path, err := writeComposeOverride(resolved, "image:latest")
+	if err != nil {
+		t.Fatalf("write compose override: %v", err)
+	}
+	if filepath.Dir(path) != resolved.StateDir {
+		t.Fatalf("unexpected override path %q", path)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat compose override: %v", err)
+	}
+	if got := info.Mode().Perm(); got != 0o600 {
+		t.Fatalf("expected owner-only override file, got %#o", got)
 	}
 }

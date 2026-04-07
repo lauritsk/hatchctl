@@ -196,7 +196,7 @@ func (r *Runner) ensureUpdatedUIDImage(ctx context.Context, resolved devcontaine
 	if err := os.MkdirAll(resolved.StateDir, 0o755); err != nil {
 		return image, err
 	}
-	if err := os.WriteFile(dockerfilePath, []byte(updateUIDDockerfile), 0o644); err != nil {
+	if err := os.WriteFile(dockerfilePath, []byte(updateUIDDockerfile), 0o600); err != nil {
 		return image, err
 	}
 	metadataLabel, err := devcontainer.MetadataLabelValue(resolved.Merged.Metadata)
@@ -258,7 +258,7 @@ func writeFeatureBuildContext(buildDir string, features []devcontainer.ResolvedF
 		"_CONTAINER_USER": containerUser,
 		"_REMOTE_USER":    remoteUser,
 	}
-	if err := os.WriteFile(filepath.Join(buildDir, "devcontainer-features.builtin.env"), []byte(shellEnvScript(builtinEnv)), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(buildDir, "devcontainer-features.builtin.env"), []byte(shellEnvScript(builtinEnv)), 0o600); err != nil {
 		return err
 	}
 	var dockerfile strings.Builder
@@ -272,7 +272,7 @@ func writeFeatureBuildContext(buildDir string, features []devcontainer.ResolvedF
 			return err
 		}
 		if len(feature.Options) > 0 {
-			if err := os.WriteFile(filepath.Join(dst, "devcontainer-features.env"), []byte(shellEnvScript(feature.Options)), 0o644); err != nil {
+			if err := os.WriteFile(filepath.Join(dst, "devcontainer-features.env"), []byte(shellEnvScript(feature.Options)), 0o600); err != nil {
 				return err
 			}
 		}
@@ -287,7 +287,7 @@ func writeFeatureBuildContext(buildDir string, features []devcontainer.ResolvedF
 	if metadataLabel != "" {
 		dockerfile.WriteString("LABEL " + devcontainer.ImageMetadataLabel + "=" + dockerfileQuotedValue(metadataLabel) + "\n")
 	}
-	return os.WriteFile(filepath.Join(buildDir, "Dockerfile"), []byte(dockerfile.String()), 0o644)
+	return os.WriteFile(filepath.Join(buildDir, "Dockerfile"), []byte(dockerfile.String()), 0o600)
 }
 
 func shellEnvScript(values map[string]string) string {
