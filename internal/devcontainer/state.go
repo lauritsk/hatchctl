@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/lauritsk/hatchctl/internal/fileutil"
 	"github.com/tailscale/hujson"
 )
 
@@ -60,15 +61,12 @@ func ReadState(stateDir string) (State, error) {
 }
 
 func WriteState(stateDir string, state State) error {
-	if err := os.MkdirAll(stateDir, 0o755); err != nil {
-		return err
-	}
 	path := filepath.Join(stateDir, "state.json")
 	data, err := json.MarshalIndent(state, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0o644)
+	return fileutil.WriteFileAtomic(path, data, fileutil.WriteOptions{Mode: 0o644, DirMode: 0o755})
 }
 
 func hashKey(input string) string {

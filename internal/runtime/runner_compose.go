@@ -3,12 +3,12 @@ package runtime
 import (
 	"context"
 	"encoding/json"
-	"os"
 	"slices"
 	"strings"
 
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	"github.com/lauritsk/hatchctl/internal/docker"
+	"github.com/lauritsk/hatchctl/internal/fileutil"
 	"go.yaml.in/yaml/v3"
 )
 
@@ -128,15 +128,12 @@ func (r *Runner) findComposeContainer(ctx context.Context, resolved devcontainer
 }
 
 func writeComposeOverride(resolved devcontainer.ResolvedConfig, image string) (string, error) {
-	if err := os.MkdirAll(resolved.StateDir, 0o755); err != nil {
-		return "", err
-	}
 	path := devcontainer.ComposeOverrideFile(resolved.StateDir)
 	contents, err := renderComposeOverride(resolved, image)
 	if err != nil {
 		return "", err
 	}
-	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+	if err := fileutil.WriteFileAtomic(path, []byte(contents), fileutil.WriteOptions{Mode: 0o600, DirMode: 0o755}); err != nil {
 		return "", err
 	}
 	return path, nil

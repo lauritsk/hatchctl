@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+
+	"github.com/lauritsk/hatchctl/internal/fileutil"
 )
 
 type bridgeFileStore interface {
@@ -38,7 +40,7 @@ func (filesystemBridgeStore) SaveSession(bridgeDir string, session *Session) err
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(bridgeDir, "session.json"), data, 0o600)
+	return fileutil.WriteFileAtomic(filepath.Join(bridgeDir, "session.json"), data, fileutil.WriteOptions{Mode: 0o600, DirMode: 0o700})
 }
 
 func (filesystemBridgeStore) ReadPID(pidPath string) (int, error) {
@@ -54,7 +56,7 @@ func (filesystemBridgeStore) ReadPID(pidPath string) (int, error) {
 }
 
 func (filesystemBridgeStore) WritePID(pidPath string, pid int) error {
-	return os.WriteFile(pidPath, []byte(strconv.Itoa(pid)), 0o600)
+	return fileutil.WriteFileAtomic(pidPath, []byte(strconv.Itoa(pid)), fileutil.WriteOptions{Mode: 0o600, DirMode: 0o700})
 }
 
 func (filesystemBridgeStore) WriteConfig(session *Session, containerID string) error {
@@ -70,7 +72,7 @@ func (filesystemBridgeStore) WriteConfig(session *Session, containerID string) e
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(session.ConfigPath, data, 0o600)
+	return fileutil.WriteFileAtomic(session.ConfigPath, data, fileutil.WriteOptions{Mode: 0o600, DirMode: 0o700})
 }
 
 func (filesystemBridgeStore) WriteStatus(session *Session, status statusFile) error {
@@ -78,10 +80,7 @@ func (filesystemBridgeStore) WriteStatus(session *Session, status statusFile) er
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(session.StatusPath), 0o700); err != nil {
-		return err
-	}
-	return os.WriteFile(session.StatusPath, data, 0o600)
+	return fileutil.WriteFileAtomic(session.StatusPath, data, fileutil.WriteOptions{Mode: 0o600, DirMode: 0o700})
 }
 
 func (filesystemBridgeStore) ReadStatus(statusPath string) ([]byte, error) {

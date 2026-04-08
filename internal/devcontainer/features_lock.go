@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/lauritsk/hatchctl/internal/fileutil"
 )
 
 type FeatureLockFile map[string]FeatureLockEntry
@@ -101,14 +103,11 @@ func WriteFeatureLockFile(configPath string, features []ResolvedFeature) error {
 		}
 		return nil
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
 	data, err := json.MarshalIndent(lock, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0o644)
+	return fileutil.WriteFileAtomic(path, data, fileutil.WriteOptions{Mode: 0o644, DirMode: 0o755})
 }
 
 func WriteFeatureStateFile(stateDir string, features []ResolvedFeature) error {
@@ -118,9 +117,6 @@ func WriteFeatureStateFile(stateDir string, features []ResolvedFeature) error {
 			return err
 		}
 		return nil
-	}
-	if err := os.MkdirAll(stateDir, 0o755); err != nil {
-		return err
 	}
 	state := FeatureStateFile{Features: make([]FeatureStateEntry, 0, len(features))}
 	for _, feature := range features {
@@ -142,5 +138,5 @@ func WriteFeatureStateFile(stateDir string, features []ResolvedFeature) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0o644)
+	return fileutil.WriteFileAtomic(path, data, fileutil.WriteOptions{Mode: 0o644, DirMode: 0o755})
 }
