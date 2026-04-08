@@ -2,6 +2,14 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## [v0.1.5](https://github.com/lauritsk/hatchctl/compare/b890004b4bf5c25f6dd916b56e638ef84331b3ca..v0.1.5) - 2026-04-08
+#### Bug Fixes
+- (**release**) generate embedded bridge helpers during release - ([e23dbf8](https://github.com/lauritsk/hatchctl/commit/e23dbf8a66046b544e15cd924342fe5eee2af19f)) - Karl Hans Laurits
+- (**release**) let goreleaser autodetect binaries - ([b890004](https://github.com/lauritsk/hatchctl/commit/b890004b4bf5c25f6dd916b56e638ef84331b3ca)) - Karl Hans Laurits
+- (**runtime**) harden container and feature resolution - ([83b3839](https://github.com/lauritsk/hatchctl/commit/83b38393aa6a3a8a11250afed5341d1a09435d1b)) - Karl Hans Laurits
+
+- - -
+
 ## [v0.1.4](https://github.com/lauritsk/hatchctl/compare/bbd7dd84a3da79180cea9fe191d7f55646dba966..v0.1.4) - 2026-04-08
 #### Bug Fixes
 - (**bridge**) make --bridge work without extra setup - ([d25afa8](https://github.com/lauritsk/hatchctl/commit/d25afa8167c5d345ff0e6032b4f3082bea835fce)) - Karl Hans Laurits
