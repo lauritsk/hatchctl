@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
-	"os"
 	"strings"
 	"sync"
 
@@ -18,35 +16,40 @@ import (
 const CosignStrictEnvVar = "HATCHCTL_COSIGN_STRICT"
 
 var (
-	warningWriter         io.Writer = os.Stderr
-	parseReference                  = name.ParseReference
-	trustedRootFunc                 = cosign.TrustedRoot
-	verifyImageSignatures           = cosign.VerifyImageSignatures
+	parseReference        = name.ParseReference
+	trustedRootFunc       = cosign.TrustedRoot
+	verifyImageSignatures = cosign.VerifyImageSignatures
 
 	trustedRootOnce sync.Once
 	trustedRootVal  root.TrustedMaterial
 	trustedRootErr  error
 )
 
-func VerifyImage(ctx context.Context, ref string) error {
+type VerificationResult struct {
+	Ref      string
+	Verified bool
+	Reason   string
+}
+
+func VerifyImage(ctx context.Context, ref string) VerificationResult {
 	ref = strings.TrimSpace(ref)
 	if ref == "" {
-		return nil
+		return VerificationResult{Verified: true}
 	}
 	parsedRef, err := parseReference(ref)
 	if err != nil {
-		return handleVerifyFailure(ref, fmt.Sprintf("unsupported image reference: %v", err))
+		return VerificationResult{Ref: ref, Reason: fmt.Sprintf("unsupported image reference: %v", err)}
 	}
 	trustedMaterial, err := trustedMaterial()
 	if err != nil {
-		return handleVerifyFailure(ref, fmt.Sprintf("load sigstore trusted root: %v", err))
+		return VerificationResult{Ref: ref, Reason: fmt.Sprintf("load sigstore trusted root: %v", err)}
 	}
 	_, _, err = verifyImageSignatures(ctx, parsedRef, &cosign.CheckOpts{
 		TrustedMaterial: trustedMaterial,
 		ClaimVerifier:   cosign.SimpleClaimVerifier,
 	})
 	if err == nil {
-		return nil
+		return VerificationResult{Ref: ref, Verified: true}
 	}
 	var noSigs *cosign.ErrNoSignaturesFound
 	var noMatch *cosign.ErrNoMatchingSignatures
@@ -55,9 +58,9 @@ func VerifyImage(ctx context.Context, ref string) error {
 		if errors.As(err, &noSigs) {
 			reason = "no signatures found"
 		}
-		return handleVerifyFailure(ref, reason)
+		return VerificationResult{Ref: ref, Reason: reason}
 	}
-	return handleVerifyFailure(ref, fmt.Sprintf("verification failed: %v", err))
+	return VerificationResult{Ref: ref, Reason: fmt.Sprintf("verification failed: %v", err)}
 }
 
 func trustedMaterial() (root.TrustedMaterial, error) {
@@ -67,22 +70,11 @@ func trustedMaterial() (root.TrustedMaterial, error) {
 	return trustedRootVal, trustedRootErr
 }
 
-func handleVerifyFailure(ref string, reason string) error {
-	message := fmt.Sprintf("warning: unable to verify %s: %s", ref, reason)
-	if cosignStrict() {
-		return fmt.Errorf("unable to verify %s: %s", ref, reason)
+func (r VerificationResult) Error() string {
+	if r.Ref == "" {
+		return r.Reason
 	}
-	_, _ = fmt.Fprintln(warningWriter, message)
-	return nil
-}
-
-func cosignStrict() bool {
-	switch strings.ToLower(strings.TrimSpace(os.Getenv(CosignStrictEnvVar))) {
-	case "1", "true", "yes", "on":
-		return true
-	default:
-		return false
-	}
+	return fmt.Sprintf("unable to verify %s: %s", r.Ref, r.Reason)
 }
 
 func resetTrustRootCache() {

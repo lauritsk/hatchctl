@@ -211,6 +211,7 @@ type ResolveOptions struct {
 	WritePlanCache     bool
 	WriteFeatureLock   bool
 	WriteFeatureState  bool
+	VerifyImage        func(context.Context, string) error
 	FeatureHTTPTimeout time.Duration
 	LockfilePolicy     FeatureLockfilePolicy
 }
@@ -322,6 +323,7 @@ func resolve(ctx context.Context, workspaceArg string, configArg string, opts Re
 		StateDir:       stateDir,
 		HTTPTimeout:    opts.FeatureHTTPTimeout,
 		LockfilePolicy: opts.LockfilePolicy,
+		VerifyImage:    opts.VerifyImage,
 	})
 	if err != nil {
 		return ResolvedConfig{}, err

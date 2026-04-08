@@ -1,7 +1,6 @@
 package security
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"strings"
@@ -13,31 +12,29 @@ import (
 	"github.com/sigstore/sigstore-go/pkg/root"
 )
 
-func TestVerifyImageWarnsWhenReferenceCannotBeParsed(t *testing.T) {
+func TestVerifyImageReturnsReasonWhenReferenceCannotBeParsed(t *testing.T) {
 	restore := stubVerifierDeps(t)
 	defer restore()
 
-	var warnings bytes.Buffer
-	warningWriter = &warnings
-
-	if err := VerifyImage(context.Background(), "not a ref%%"); err != nil {
-		t.Fatalf("verify image: %v", err)
+	result := VerifyImage(context.Background(), "not a ref%%")
+	if result.Verified {
+		t.Fatal("expected verification failure")
 	}
-	if got := warnings.String(); !strings.Contains(got, "unsupported image reference") {
-		t.Fatalf("unexpected warning %q", got)
+	if !strings.Contains(result.Reason, "unsupported image reference") {
+		t.Fatalf("unexpected result %#v", result)
 	}
 }
 
-func TestVerifyImageReturnsErrorInStrictMode(t *testing.T) {
+func TestVerifyImageReturnsReasonOnBadReference(t *testing.T) {
 	restore := stubVerifierDeps(t)
 	defer restore()
-	t.Setenv(CosignStrictEnvVar, "1")
 
 	parseReference = func(string, ...name.Option) (name.Reference, error) {
 		return nil, errors.New("bad ref")
 	}
-	if err := VerifyImage(context.Background(), "example.com/app:latest"); err == nil || !strings.Contains(err.Error(), "bad ref") {
-		t.Fatalf("expected strict verification error, got %v", err)
+	result := VerifyImage(context.Background(), "example.com/app:latest")
+	if result.Verified || !strings.Contains(result.Reason, "bad ref") {
+		t.Fatalf("unexpected result %#v", result)
 	}
 }
 
@@ -57,20 +54,19 @@ func TestVerifyImageUsesCosignVerifierWhenAvailable(t *testing.T) {
 		return nil, false, nil
 	}
 
-	if err := VerifyImage(context.Background(), "example.com/demo/app:latest"); err != nil {
-		t.Fatalf("verify image: %v", err)
+	result := VerifyImage(context.Background(), "example.com/demo/app:latest")
+	if !result.Verified {
+		t.Fatalf("unexpected result %#v", result)
 	}
 	if !called {
 		t.Fatal("expected cosign verifier to be called")
 	}
 }
 
-func TestVerifyImageWarnsOnUnsignedImagesByDefault(t *testing.T) {
+func TestVerifyImageReturnsReasonOnUnsignedImage(t *testing.T) {
 	restore := stubVerifierDeps(t)
 	defer restore()
 
-	var warnings bytes.Buffer
-	warningWriter = &warnings
 	parseReference = func(string, ...name.Option) (name.Reference, error) {
 		return name.MustParseReference("example.com/demo/app:latest"), nil
 	}
@@ -81,23 +77,19 @@ func TestVerifyImageWarnsOnUnsignedImagesByDefault(t *testing.T) {
 		return nil, false, &cosign.ErrNoSignaturesFound{}
 	}
 
-	if err := VerifyImage(context.Background(), "example.com/demo/app:latest"); err != nil {
-		t.Fatalf("verify image: %v", err)
-	}
-	if got := warnings.String(); !strings.Contains(got, "no signatures") {
-		t.Fatalf("unexpected warning %q", got)
+	result := VerifyImage(context.Background(), "example.com/demo/app:latest")
+	if result.Verified || !strings.Contains(result.Reason, "no signatures") {
+		t.Fatalf("unexpected result %#v", result)
 	}
 }
 
 func stubVerifierDeps(t *testing.T) func() {
 	t.Helper()
-	origWarningWriter := warningWriter
 	origParse := parseReference
 	origTrustedRoot := trustedRootFunc
 	origVerify := verifyImageSignatures
 	resetTrustRootCache()
 	return func() {
-		warningWriter = origWarningWriter
 		parseReference = origParse
 		trustedRootFunc = origTrustedRoot
 		verifyImageSignatures = origVerify

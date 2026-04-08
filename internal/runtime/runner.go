@@ -22,6 +22,7 @@ type Runner struct {
 	stderr            io.Writer
 	hostCommandRunner hostCommandRunner
 	resolver          workspaceResolver
+	imageVerifier     imageVerificationPolicy
 	planner           *workspacePlanner
 	stateStore        workspaceStateStore
 	bridgeManager     runtimeBridgeManager
@@ -42,6 +43,7 @@ func NewRunnerWithIO(client *docker.Client, stdin io.Reader, stdout io.Writer, s
 		stdout:            stdout,
 		stderr:            stderr,
 		hostCommandRunner: defaultHostCommandRunner,
+		imageVerifier:     newImageVerificationPolicy(stderr),
 		resolver:          devcontainerResolver{},
 		stateStore:        devcontainerStateStore{},
 	}

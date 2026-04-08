@@ -20,8 +20,6 @@ import (
 	"sort"
 	"strings"
 	"time"
-
-	"github.com/lauritsk/hatchctl/internal/security"
 )
 
 var (
@@ -51,6 +49,7 @@ type FeatureResolveOptions struct {
 	StateDir       string
 	HTTPTimeout    time.Duration
 	LockfilePolicy FeatureLockfilePolicy
+	VerifyImage    func(context.Context, string) error
 }
 
 var githubReleaseBaseURL = "https://github.com"
@@ -136,7 +135,7 @@ func resolveFeatures(ctx context.Context, configPath string, configDir string, c
 		if err := validateFeatureLockfilePolicy(source, lockFile[source], policy); err != nil {
 			return nil, err
 		}
-		featurePath, kind, resolvedRef, integrity, version, err := resolveFeaturePath(ctx, configDir, cacheDir, source, lockFile[source], opts.AllowNetwork, policy, opts.HTTPTimeout)
+		featurePath, kind, resolvedRef, integrity, version, err := resolveFeaturePath(ctx, configDir, cacheDir, source, lockFile[source], opts.AllowNetwork, policy, opts.HTTPTimeout, opts.VerifyImage)
 		if err != nil {
 			return nil, err
 		}
@@ -181,7 +180,7 @@ func resolveFeatures(ctx context.Context, configPath string, configDir string, c
 	return orderFeatures(features, byAlias)
 }
 
-func resolveFeaturePath(ctx context.Context, configDir string, cacheDir string, source string, lock FeatureLockEntry, allowNetwork bool, policy FeatureLockfilePolicy, httpTimeout time.Duration) (string, string, string, string, string, error) {
+func resolveFeaturePath(ctx context.Context, configDir string, cacheDir string, source string, lock FeatureLockEntry, allowNetwork bool, policy FeatureLockfilePolicy, httpTimeout time.Duration, verifyImage func(context.Context, string) error) (string, string, string, string, string, error) {
 	httpTimeout = effectiveFeatureHTTPTimeout(httpTimeout)
 	parsed, err := parseFeatureSource(configDir, source)
 	if err != nil {
@@ -226,14 +225,14 @@ func resolveFeaturePath(ctx context.Context, configDir string, cacheDir string, 
 		if !allowNetwork {
 			return "", "", "", "", "", fmt.Errorf("feature %q requires network access in update lockfile mode", source)
 		}
-		resolvedPath, resolvedRef, integrity, version, err := fetchOCIFeature(ctx, cacheDir, source, ref, lock, httpTimeout)
+		resolvedPath, resolvedRef, integrity, version, err := fetchOCIFeature(ctx, cacheDir, source, ref, lock, httpTimeout, verifyImage)
 		return resolvedPath, "oci", resolvedRef, integrity, version, err
 	}
 	if !allowNetwork {
 		resolvedPath, resolvedRef, integrity, version, err := cachedOCIFeature(cacheDir, source, ref, lock)
 		return resolvedPath, "oci", resolvedRef, integrity, version, err
 	}
-	resolvedPath, resolvedRef, integrity, version, err := fetchOCIFeature(ctx, cacheDir, source, ref, lock, httpTimeout)
+	resolvedPath, resolvedRef, integrity, version, err := fetchOCIFeature(ctx, cacheDir, source, ref, lock, httpTimeout, verifyImage)
 	return resolvedPath, "oci", resolvedRef, integrity, version, err
 }
 
@@ -406,7 +405,7 @@ func parseOCIReference(source string) (ociReference, error) {
 	}, nil
 }
 
-func fetchOCIFeature(ctx context.Context, cacheDir string, source string, ref ociReference, lock FeatureLockEntry, httpTimeout time.Duration) (string, string, string, string, error) {
+func fetchOCIFeature(ctx context.Context, cacheDir string, source string, ref ociReference, lock FeatureLockEntry, httpTimeout time.Duration, verifyImage func(context.Context, string) error) (string, string, string, string, error) {
 	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
 		return "", "", "", "", err
 	}
@@ -423,8 +422,10 @@ func fetchOCIFeature(ctx context.Context, cacheDir string, source string, ref oc
 	if digest == "" {
 		digest = manifestRef.Reference
 	}
-	if err := security.VerifyImage(ctx, ref.Registry+"/"+ref.Repository+"@"+digest); err != nil {
-		return "", "", "", "", err
+	if verifyImage != nil {
+		if err := verifyImage(ctx, ref.Registry+"/"+ref.Repository+"@"+digest); err != nil {
+			return "", "", "", "", err
+		}
 	}
 	featureDir := filepath.Join(baseDir, sanitizeFeatureCacheRef(digest))
 	if _, err := os.Stat(filepath.Join(featureDir, "devcontainer-feature.json")); err == nil {
