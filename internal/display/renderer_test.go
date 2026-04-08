@@ -2,6 +2,7 @@ package display
 
 import (
 	"bytes"
+	"os"
 	"strings"
 	"testing"
 
@@ -119,5 +120,24 @@ func TestRendererManagedWriterClearsSpinner(t *testing.T) {
 	}
 	if got := outBuf.String(); got != "command output\n" {
 		t.Fatalf("unexpected managed output %q", got)
+	}
+}
+
+func TestRendererManagedWriterPreservesFileDescriptor(t *testing.T) {
+	t.Parallel()
+
+	file, err := os.CreateTemp(t.TempDir(), "renderer-out")
+	if err != nil {
+		t.Fatalf("create temp file: %v", err)
+	}
+	defer file.Close()
+
+	r := &Renderer{out: file}
+	writer, ok := r.Stdout().(interface{ Fd() uintptr })
+	if !ok {
+		t.Fatal("expected managed writer to expose Fd")
+	}
+	if got, want := writer.Fd(), file.Fd(); got != want {
+		t.Fatalf("unexpected file descriptor %d want %d", got, want)
 	}
 }

@@ -683,18 +683,36 @@ else
 fi`
 
 func shouldAllocateTTY(stdin io.Reader, stdout io.Writer) bool {
-	inFile, ok := stdin.(*os.File)
-	if !ok || !isCharacterDevice(inFile) {
+	if !isTerminalStream(stdin) {
 		return false
 	}
-	outFile, ok := stdout.(*os.File)
-	if !ok || !isCharacterDevice(outFile) {
+	if !isTerminalStream(stdout) {
 		return false
 	}
 	return true
 }
 
-func isCharacterDevice(file *os.File) bool {
+func isTerminalStream(stream any) bool {
+	fd, ok := streamFileDescriptor(stream)
+	if !ok {
+		return false
+	}
+	return isCharacterDevice(fd)
+}
+
+func streamFileDescriptor(stream any) (uintptr, bool) {
+	type fdStream interface {
+		Fd() uintptr
+	}
+	f, ok := stream.(fdStream)
+	if !ok {
+		return 0, false
+	}
+	return f.Fd(), true
+}
+
+func isCharacterDevice(fd uintptr) bool {
+	file := os.NewFile(fd, "")
 	if file == nil {
 		return false
 	}

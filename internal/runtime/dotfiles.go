@@ -155,11 +155,36 @@ func (r *Runner) installDotfiles(ctx context.Context, containerID string, resolv
 	if !opts.Enabled() {
 		return nil
 	}
-	args, err := r.dockerExecArgs(ctx, containerID, resolved, true, false, nil, []string{"/bin/sh", "-s", "--", opts.Repository, opts.TargetPath, opts.InstallCommand})
+	targetPath, err := r.resolveDotfilesTargetPath(ctx, containerID, resolved, opts.TargetPath)
+	if err != nil {
+		return err
+	}
+	args, err := r.dockerExecArgs(ctx, containerID, resolved, true, false, nil, []string{"/bin/sh", "-s", "--", opts.Repository, targetPath, opts.InstallCommand})
 	if err != nil {
 		return err
 	}
 	label := fmt.Sprintf("Installing dotfiles from %s", opts.Repository)
 	r.emitProgress(events, label)
 	return r.backend.Run(ctx, runtimeCommand{Kind: runtimeCommandDocker, Label: label, Args: args, Stdin: strings.NewReader(dotfilesInstallHelper), Stdout: r.stdout, Stderr: r.stderr, Events: events})
+}
+
+func (r *Runner) resolveDotfilesTargetPath(ctx context.Context, containerID string, resolved devcontainer.ResolvedConfig, targetPath string) (string, error) {
+	if !strings.HasPrefix(targetPath, "$HOME") {
+		return targetPath, nil
+	}
+	user, err := r.effectiveExecUser(ctx, containerID, resolved)
+	if err != nil {
+		return "", err
+	}
+	home, err := r.resolveExecHome(ctx, containerID, user)
+	if err != nil {
+		return "", err
+	}
+	if home == "" {
+		return targetPath, nil
+	}
+	if targetPath == "$HOME" {
+		return home, nil
+	}
+	return strings.TrimSuffix(home, "/") + strings.TrimPrefix(targetPath, "$HOME"), nil
 }

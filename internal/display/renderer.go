@@ -52,6 +52,10 @@ type streamWriter struct {
 	target   io.Writer
 }
 
+type fdWriter interface {
+	Fd() uintptr
+}
+
 func (r *Renderer) Events() Sink {
 	if r == nil || r.jsonOut {
 		return nil
@@ -214,6 +218,17 @@ func (w *streamWriter) Write(p []byte) (int, error) {
 	return w.target.Write(p)
 }
 
+func (w *streamWriter) Fd() uintptr {
+	if w == nil || w.target == nil {
+		return 0
+	}
+	f, ok := w.target.(fdWriter)
+	if !ok {
+		return 0
+	}
+	return f.Fd()
+}
+
 func (r *Renderer) styleDebug(message string) string {
 	if !r.errTTY {
 		return message
@@ -236,9 +251,6 @@ func (r *Renderer) styleWarning(message string) string {
 }
 
 func isTerminal(w io.Writer) bool {
-	type fdWriter interface {
-		Fd() uintptr
-	}
 	f, ok := w.(fdWriter)
 	if !ok {
 		return false
