@@ -26,7 +26,7 @@ var cachedIntegrationFixtures struct {
 	plainImage        string
 	plainWithCMDImage string
 	appUserImage      string
-	bridgeHelperPath  string
+	bridgeHelper      []byte
 }
 
 func TestBuildPersistsMetadataLabel(t *testing.T) {
@@ -986,12 +986,8 @@ func TestUpEnablingBridgeRecreatesExistingManagedContainer(t *testing.T) {
 
 func setBridgeHelperEnv(t *testing.T) {
 	t.Helper()
-	source := sharedBridgeHelperPath(t)
 	path := filepath.Join(t.TempDir(), "hatchctl")
-	data, err := os.ReadFile(source)
-	if err != nil {
-		t.Fatalf("read shared bridge helper: %v", err)
-	}
+	data := sharedBridgeHelperBinary(t)
 	if err := os.WriteFile(path, data, 0o755); err != nil {
 		t.Fatalf("write per-test bridge helper: %v", err)
 	}
@@ -1785,26 +1781,27 @@ func sharedDockerBuildContext(t *testing.T, dockerfile string) string {
 	return dir
 }
 
-func sharedBridgeHelperPath(t *testing.T) string {
+func sharedBridgeHelperBinary(t *testing.T) []byte {
 	t.Helper()
 	requireIntegrationCommands(t, "go")
 	cachedIntegrationFixtures.mu.Lock()
-	path := cachedIntegrationFixtures.bridgeHelperPath
-	if path == "" {
-		path = filepath.Join(os.TempDir(), "hatchctl-bridge-helper-"+sanitizeName(runtime.GOARCH))
-		cachedIntegrationFixtures.bridgeHelperPath = path
+	defer cachedIntegrationFixtures.mu.Unlock()
+	if len(cachedIntegrationFixtures.bridgeHelper) > 0 {
+		return append([]byte(nil), cachedIntegrationFixtures.bridgeHelper...)
 	}
-	cachedIntegrationFixtures.mu.Unlock()
-	if _, err := os.Stat(path); err == nil {
-		return path
-	}
+	path := filepath.Join(t.TempDir(), "hatchctl")
 	cmd := exec.Command("go", "build", "-o", path, "./cmd/hatchctl")
 	cmd.Dir = filepath.Join("..", "..")
 	cmd.Env = append(os.Environ(), "CGO_ENABLED=0", "GOOS=linux", "GOARCH="+runtime.GOARCH)
 	if output, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("build bridge helper: %v: %s", err, strings.TrimSpace(string(output)))
 	}
-	return path
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read built bridge helper: %v", err)
+	}
+	cachedIntegrationFixtures.bridgeHelper = data
+	return append([]byte(nil), data...)
 }
 
 func metadataImageTagForKey(key string) string {
