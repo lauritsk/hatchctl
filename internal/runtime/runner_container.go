@@ -7,7 +7,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/lauritsk/hatchctl/internal/bridge"
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	ui "github.com/lauritsk/hatchctl/internal/display"
 	"github.com/lauritsk/hatchctl/internal/docker"
@@ -160,24 +159,6 @@ func (r *Runner) reconcileState(ctx context.Context, resolved devcontainer.Resol
 	state.ContainerID = containerID
 	state.LifecycleReady = false
 	return state, nil
-}
-
-func (r *Runner) applyBridgeConfig(resolved *devcontainer.ResolvedConfig, enabled bool, helperArch string) (*bridge.Report, error) {
-	report, merged, err := bridge.Apply(resolved.StateDir, enabled, helperArch, resolved.Merged)
-	if err != nil {
-		return nil, err
-	}
-	resolved.Merged = merged
-	return (*bridge.Report)(report), nil
-}
-
-func (r *Runner) previewBridgeConfig(resolved *devcontainer.ResolvedConfig, enabled bool) (*bridge.Report, error) {
-	report, merged, err := bridge.Preview(resolved.StateDir, enabled, resolved.Merged)
-	if err != nil {
-		return nil, err
-	}
-	resolved.Merged = merged
-	return (*bridge.Report)(report), nil
 }
 
 func (r *Runner) effectiveRemoteUser(ctx context.Context, prepared preparedWorkspace) (string, error) {
