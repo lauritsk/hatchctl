@@ -227,8 +227,53 @@ func (s *bridgeHostService) rewriteLocalURL(raw string) (string, error) {
 	if err != nil {
 		return raw, nil
 	}
-	if parsed.Hostname() != "localhost" && parsed.Hostname() != "127.0.0.1" {
+	rewritten, changed, err := s.rewriteParsedLocalURL(parsed)
+	if err != nil {
+		return "", err
+	}
+	if changed {
+		return rewritten.String(), nil
+	}
+
+	query := parsed.Query()
+	queryChanged := false
+	for key, values := range query {
+		updated := make([]string, len(values))
+		for i, value := range values {
+			rewrittenValue, changed, err := s.rewriteNestedLocalURL(value)
+			if err != nil {
+				return "", err
+			}
+			updated[i] = rewrittenValue
+			queryChanged = queryChanged || changed
+		}
+		query[key] = updated
+	}
+	if !queryChanged {
 		return raw, nil
+	}
+	parsed.RawQuery = query.Encode()
+	return parsed.String(), nil
+}
+
+func (s *bridgeHostService) rewriteNestedLocalURL(raw string) (string, bool, error) {
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return raw, false, nil
+	}
+	rewritten, changed, err := s.rewriteParsedLocalURL(parsed)
+	if err != nil {
+		return "", false, err
+	}
+	if !changed {
+		return raw, false, nil
+	}
+	return rewritten.String(), true, nil
+}
+
+func (s *bridgeHostService) rewriteParsedLocalURL(parsed *url.URL) (*url.URL, bool, error) {
+	if parsed.Hostname() != "localhost" && parsed.Hostname() != "127.0.0.1" {
+		return parsed, false, nil
 	}
 	portText := parsed.Port()
 	if portText == "" {
@@ -240,14 +285,15 @@ func (s *bridgeHostService) rewriteLocalURL(raw string) (string, error) {
 	}
 	port, err := strconv.Atoi(portText)
 	if err != nil || port <= 0 {
-		return "", fmt.Errorf("invalid localhost port %q", portText)
+		return nil, false, fmt.Errorf("invalid localhost port %q", portText)
 	}
 	hostPort, _, err := s.forwardURL(port)
 	if err != nil {
-		return "", err
+		return nil, false, err
 	}
-	parsed.Host = net.JoinHostPort("127.0.0.1", strconv.Itoa(hostPort))
-	return parsed.String(), nil
+	rewritten := *parsed
+	rewritten.Host = net.JoinHostPort("127.0.0.1", strconv.Itoa(hostPort))
+	return &rewritten, true, nil
 }
 
 func (s *bridgeHostService) ensureForward(port int) (int, bool, error) {

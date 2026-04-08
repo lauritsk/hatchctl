@@ -45,6 +45,39 @@ func TestBridgeHostServiceHandlesOpenRequest(t *testing.T) {
 	}
 }
 
+func TestBridgeHostServiceRewritesEmbeddedLocalhostCallbackURL(t *testing.T) {
+	t.Parallel()
+	session := &Session{ID: "session", StatusPath: filepath.Join(t.TempDir(), "bridge-status.json")}
+	var opened string
+	service := newBridgeHostService(session, "container", func(target string) error {
+		opened = target
+		return nil
+	})
+	service.forwardURL = func(port int) (int, bool, error) {
+		if port != 40443 {
+			t.Fatalf("unexpected container port %d", port)
+		}
+		return 19090, false, nil
+	}
+	client, server := net.Pipe()
+	defer client.Close()
+	go service.handleConn(server)
+	requestURL := "https://github.com/login/oauth/authorize?redirect_uri=http%3A%2F%2F127.0.0.1%3A40443%2Fcallback&state=test"
+	if err := writeBridgeRequest(client, bridgeRequest{Kind: "open", URL: requestURL}); err != nil {
+		t.Fatalf("write request: %v", err)
+	}
+	response, err := readBridgeResponse(client)
+	if err != nil {
+		t.Fatalf("read response: %v", err)
+	}
+	if !response.OK {
+		t.Fatalf("unexpected response %#v", response)
+	}
+	if opened != "https://github.com/login/oauth/authorize?redirect_uri=http%3A%2F%2F127.0.0.1%3A19090%2Fcallback&state=test" {
+		t.Fatalf("unexpected rewritten embedded callback url %q", opened)
+	}
+}
+
 func TestHelperConnectCopiesTraffic(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -386,6 +419,26 @@ func TestRewriteLocalURLDefaultsPortsByScheme(t *testing.T) {
 				t.Fatalf("unexpected rewritten url %q", rewritten)
 			}
 		})
+	}
+}
+
+func TestRewriteLocalURLRewritesEmbeddedLocalhostQueryValues(t *testing.T) {
+	t.Parallel()
+
+	service := &bridgeHostService{}
+	service.forwardURL = func(port int) (int, bool, error) {
+		if port != 40443 {
+			t.Fatalf("unexpected port %d", port)
+		}
+		return 19090, false, nil
+	}
+
+	rewritten, err := service.rewriteLocalURL("https://github.com/login/oauth/authorize?redirect_uri=http%3A%2F%2Flocalhost%3A40443%2Fcallback")
+	if err != nil {
+		t.Fatalf("rewrite url: %v", err)
+	}
+	if rewritten != "https://github.com/login/oauth/authorize?redirect_uri=http%3A%2F%2F127.0.0.1%3A19090%2Fcallback" {
+		t.Fatalf("unexpected rewritten url %q", rewritten)
 	}
 }
 
