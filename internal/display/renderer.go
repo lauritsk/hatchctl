@@ -18,6 +18,7 @@ type EventKind string
 const (
 	EventProgress EventKind = "progress"
 	EventDebug    EventKind = "debug"
+	EventClear    EventKind = "clear"
 )
 
 type Event struct {
@@ -83,22 +84,36 @@ func NewRenderer(out io.Writer, err io.Writer, jsonOut bool) *Renderer {
 }
 
 func (r *Renderer) Emit(event Event) {
-	if r == nil || r.jsonOut || event.Message == "" {
+	if r == nil || r.jsonOut {
 		return
 	}
 	if r.spinner != nil {
 		switch event.Kind {
 		case EventProgress:
+			if event.Message == "" {
+				return
+			}
 			r.spinner.SetMessage(event.Message)
 		case EventDebug:
+			if event.Message == "" {
+				return
+			}
 			r.spinner.WriteLine(r.styleDebug(event.Message))
+		case EventClear:
+			r.spinner.Clear()
 		}
 		return
 	}
 	switch event.Kind {
 	case EventProgress:
+		if event.Message == "" {
+			return
+		}
 		_, _ = fmt.Fprintf(r.err, "==> %s\n", event.Message)
 	case EventDebug:
+		if event.Message == "" {
+			return
+		}
 		_, _ = fmt.Fprintln(r.err, event.Message)
 	}
 }

@@ -354,7 +354,8 @@ func (r *Runner) Exec(ctx context.Context, opts ExecOptions) (int, error) {
 	if opts.Stdin != nil {
 		args = append(args, "-i")
 	}
-	if shouldAllocateTTY(opts.Stdin, opts.Stdout) {
+	interactive := shouldAllocateTTY(opts.Stdin, opts.Stdout)
+	if interactive {
 		args = append(args, "-t")
 	}
 	if user != "" {
@@ -369,7 +370,11 @@ func (r *Runner) Exec(ctx context.Context, opts ExecOptions) (int, error) {
 	}
 	args = append(args, prepared.containerID)
 	args = append(args, opts.Args...)
-	r.emitProgress(opts.Events, fmt.Sprintf("Executing command in %s", prepared.containerID))
+	if interactive {
+		r.clearProgress(opts.Events)
+	} else {
+		r.emitProgress(opts.Events, fmt.Sprintf("Executing command in %s", prepared.containerID))
+	}
 
 	err = r.docker.Run(ctx, docker.RunOptions{
 		Args:   args,
@@ -615,6 +620,13 @@ func (r *Runner) emitProgress(events ui.Sink, message string) {
 		return
 	}
 	events.Emit(ui.Event{Kind: ui.EventProgress, Message: message})
+}
+
+func (r *Runner) clearProgress(events ui.Sink) {
+	if events == nil {
+		return
+	}
+	events.Emit(ui.Event{Kind: ui.EventClear})
 }
 
 func (r *Runner) emitPlan(events ui.Sink, resolved devcontainer.ResolvedConfig) {

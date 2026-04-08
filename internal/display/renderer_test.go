@@ -43,3 +43,16 @@ func TestLineSpinnerUsesVisibleWidthForPadding(t *testing.T) {
 		t.Fatalf("expected redraw to pad to prior visible width, got %q", out)
 	}
 }
+
+func TestRendererClearEventStopsSpinner(t *testing.T) {
+	t.Parallel()
+
+	spinner := &lineSpinner{running: true}
+	r := &Renderer{spinner: spinner}
+
+	r.Emit(Event{Kind: EventClear})
+
+	if spinner.running {
+		t.Fatal("expected clear event to stop spinner")
+	}
+}
