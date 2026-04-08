@@ -13,12 +13,14 @@ import (
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	ui "github.com/lauritsk/hatchctl/internal/display"
 	"github.com/lauritsk/hatchctl/internal/docker"
+	"github.com/lauritsk/hatchctl/internal/hostexec"
 )
 
 type Runner struct {
 	stdin            io.Reader
 	stdout           io.Writer
 	stderr           io.Writer
+	executor         hostexec.Executor
 	backend          runtimeBackend
 	resolver         workspaceResolver
 	imageVerifier    imageVerificationPolicy
@@ -39,15 +41,17 @@ func NewRunnerWithIO(client *docker.Client, stdin io.Reader, stdout io.Writer, s
 		stdin:         stdin,
 		stdout:        stdout,
 		stderr:        stderr,
+		executor:      hostexec.NewLocalWithDocker(client),
 		imageVerifier: newImageVerificationPolicy(stderr),
 		resolver:      devcontainerResolver{},
 		stateStore:    devcontainerStateStore{},
 	}
-	runner.backend = newLocalRuntimeBackend(runner, client)
+	runner.backend = newLocalRuntimeBackend(runner, runner.executor)
 	runner.planner = &workspacePlanner{runner: runner, resolver: runner.resolver}
 	runner.imageManager = &runtimeImageManager{runner: runner}
 	runner.containerManager = &runtimeContainerManager{runner: runner}
 	runner.lifecycleManager = &runtimeLifecycleManager{runner: runner}
+	runner.bridgeManager = runtimeBridgeManager{executor: runner.executor}
 	return runner
 }
 

@@ -19,6 +19,7 @@ import (
 
 	"github.com/lauritsk/hatchctl/internal/command"
 	"github.com/lauritsk/hatchctl/internal/docker"
+	"github.com/lauritsk/hatchctl/internal/hostexec"
 )
 
 const containerHelperBin = "/var/run/hatchctl/bridge/bin/hatchctl"
@@ -27,12 +28,7 @@ const bridgeStartupTimeout = 5 * time.Second
 
 type containerConnectRunner func(string, int, io.Reader, io.Writer) error
 
-var runContainerConnect containerConnectRunner = defaultContainerConnectRunner
-
-var (
-	hostCommandRunner command.Runner = command.Local{}
-	dockerCLI                        = docker.NewClient("docker")
-)
+var localExecutor hostexec.Executor = hostexec.NewLocal("docker")
 
 type statusFile struct {
 	SessionID   string          `json:"sessionId"`
@@ -81,6 +77,10 @@ type bridgeHostService struct {
 }
 
 func Start(stateDir string, enabled bool, helperArch string, containerID string) (*Session, error) {
+	return StartWithExecutor(localExecutor, stateDir, enabled, helperArch, containerID)
+}
+
+func StartWithExecutor(executor hostexec.Executor, stateDir string, enabled bool, helperArch string, containerID string) (*Session, error) {
 	if !enabled {
 		return nil, nil
 	}
@@ -112,8 +112,8 @@ func Start(stateDir string, enabled bool, helperArch string, containerID string)
 		}
 		return session, nil
 	}
-	proc, err := hostCommandRunner.Start(command.StartOptions{
-		Command: command.Command{
+	proc, err := executor.StartHost(hostexec.StartOptions{
+		Command: hostexec.Command{
 			Binary: exe,
 			Args:   []string{"bridge", "serve", "--state-dir", stateDir, "--container-id", containerID},
 			Env:    os.Environ(),
@@ -132,6 +132,10 @@ func Start(stateDir string, enabled bool, helperArch string, containerID string)
 }
 
 func Serve(ctx context.Context, stateDir string, containerID string) error {
+	return ServeWithExecutor(ctx, localExecutor, stateDir, containerID)
+}
+
+func ServeWithExecutor(ctx context.Context, executor hostexec.Executor, stateDir string, containerID string) error {
 	session, err := Prepare(stateDir, true, "")
 	if err != nil {
 		return err
@@ -153,7 +157,7 @@ func Serve(ctx context.Context, stateDir string, containerID string) error {
 		<-ctx.Done()
 		_ = tcpListener.Close()
 	}()
-	service := newBridgeHostService(session, containerID, defaultOpen)
+	service := newBridgeHostServiceWithExecutor(session, containerID, executor, nil)
 	return service.serveListener(ctx, tcpListener)
 }
 
@@ -172,12 +176,24 @@ func (s *bridgeHostService) serveListener(ctx context.Context, listener net.List
 }
 
 func newBridgeHostService(session *Session, containerID string, opener func(string) error) *bridgeHostService {
+	return newBridgeHostServiceWithExecutor(session, containerID, localExecutor, opener)
+}
+
+func newBridgeHostServiceWithExecutor(session *Session, containerID string, executor hostexec.Executor, opener func(string) error) *bridgeHostService {
 	service := &bridgeHostService{
 		session:     session,
 		containerID: containerID,
-		openURL:     opener,
-		connectPort: runContainerConnect,
 		forwarded:   map[int]forwardedPort{},
+	}
+	if opener != nil {
+		service.openURL = opener
+	} else {
+		service.openURL = func(target string) error {
+			return defaultOpen(executor, target)
+		}
+	}
+	service.connectPort = func(containerID string, port int, stdin io.Reader, stdout io.Writer) error {
+		return defaultContainerConnectRunner(executor, containerID, port, stdin, stdout)
 	}
 	service.forwardURL = service.ensureForward
 	return service
@@ -330,11 +346,11 @@ func forwardEvent(containerPort int, hostPort int) string {
 	return fmt.Sprintf("forwarded %d on host port %d", containerPort, hostPort)
 }
 
-func defaultOpen(target string) error {
+func defaultOpen(executor hostexec.Executor, target string) error {
 	if openCommand := os.Getenv("HATCHCTL_BRIDGE_OPEN_COMMAND"); openCommand != "" {
-		return hostCommandRunner.Run(context.Background(), command.Command{Binary: "/bin/sh", Args: []string{"-lc", openCommand}, Env: command.AppendEnv(os.Environ(), "HATCHCTL_BRIDGE_URL="+target)})
+		return executor.RunHost(context.Background(), hostexec.Command{Binary: "/bin/sh", Args: []string{"-lc", openCommand}, Env: command.AppendEnv(os.Environ(), "HATCHCTL_BRIDGE_URL="+target)})
 	}
-	return hostCommandRunner.Run(context.Background(), command.Command{Binary: "open", Args: []string{target}})
+	return executor.RunHost(context.Background(), hostexec.Command{Binary: "open", Args: []string{target}})
 }
 
 func stopExisting(session *Session) error {
@@ -394,9 +410,9 @@ func waitForBridgeTCP(port int, timeout time.Duration) error {
 	return fmt.Errorf("timed out waiting for bridge tcp listener on port %d", port)
 }
 
-func defaultContainerConnectRunner(containerID string, port int, stdin io.Reader, stdout io.Writer) error {
+func defaultContainerConnectRunner(executor hostexec.Executor, containerID string, port int, stdin io.Reader, stdout io.Writer) error {
 	var stderr strings.Builder
-	err := dockerCLI.Run(context.Background(), docker.RunOptions{Args: []string{"exec", "-i", containerID, containerHelperBin, "bridge", "helper", "connect", "--port", strconv.Itoa(port)}, Stdin: stdin, Stdout: stdout, Stderr: &stderr})
+	err := executor.RunDocker(context.Background(), docker.RunOptions{Args: []string{"exec", "-i", containerID, containerHelperBin, "bridge", "helper", "connect", "--port", strconv.Itoa(port)}, Stdin: stdin, Stdout: stdout, Stderr: &stderr})
 	if err != nil {
 		message := strings.TrimSpace(stderr.String())
 		if message == "" {

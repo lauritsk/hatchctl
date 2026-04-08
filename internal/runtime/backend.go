@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/lauritsk/hatchctl/internal/command"
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	ui "github.com/lauritsk/hatchctl/internal/display"
 	"github.com/lauritsk/hatchctl/internal/docker"
+	"github.com/lauritsk/hatchctl/internal/hostexec"
 )
 
 type runtimeBackend interface {
@@ -28,39 +28,38 @@ type runtimeBackend interface {
 }
 
 type localRuntimeBackend struct {
-	runner      *Runner
-	docker      *docker.Client
-	hostCommand command.Runner
+	runner   *Runner
+	executor hostexec.Executor
 }
 
-func newLocalRuntimeBackend(runner *Runner, dockerClient *docker.Client) runtimeBackend {
-	return &localRuntimeBackend{runner: runner, docker: dockerClient, hostCommand: command.Local{}}
+func newLocalRuntimeBackend(runner *Runner, executor hostexec.Executor) runtimeBackend {
+	return &localRuntimeBackend{runner: runner, executor: executor}
 }
 
 func (b *localRuntimeBackend) RunDocker(ctx context.Context, label string, opts docker.RunOptions, events ui.Sink) error {
-	return b.docker.Run(ctx, b.runner.progressDockerRunOptions(events, label, opts))
+	return b.executor.RunDocker(ctx, b.runner.progressDockerRunOptions(events, label, opts))
 }
 
 func (b *localRuntimeBackend) DockerOutput(ctx context.Context, opts docker.RunOptions) (string, error) {
 	if len(opts.Args) == 0 {
 		return "", nil
 	}
-	return b.docker.OutputOptions(ctx, opts)
+	return b.executor.DockerOutput(ctx, opts)
 }
 
 func (b *localRuntimeBackend) InspectImage(ctx context.Context, image string) (docker.ImageInspect, error) {
-	return b.docker.InspectImage(ctx, image)
+	return b.executor.InspectImage(ctx, image)
 }
 
 func (b *localRuntimeBackend) InspectContainer(ctx context.Context, containerID string) (docker.ContainerInspect, error) {
-	return b.docker.InspectContainer(ctx, containerID)
+	return b.executor.InspectContainer(ctx, containerID)
 }
 
 func (b *localRuntimeBackend) RunHost(ctx context.Context, cwd string, args []string, streams commandIO) error {
 	if len(args) == 0 {
 		return nil
 	}
-	return b.hostCommand.Run(ctx, command.Command{Binary: args[0], Args: args[1:], Dir: cwd, Stdin: streams.Stdin, Stdout: streams.Stdout, Stderr: streams.Stderr})
+	return b.executor.RunHost(ctx, hostexec.Command{Binary: args[0], Args: args[1:], Dir: cwd, Stdin: streams.Stdin, Stdout: streams.Stdout, Stderr: streams.Stderr})
 }
 
 func (b *localRuntimeBackend) BuildImage(ctx context.Context, label string, dir string, args []string, events ui.Sink) error {
@@ -76,11 +75,11 @@ func (b *localRuntimeBackend) RemoveContainer(ctx context.Context, containerID s
 }
 
 func (b *localRuntimeBackend) ContainerStatus(ctx context.Context, containerID string) (string, error) {
-	return b.docker.Output(ctx, "inspect", "--format", "{{.State.Status}}", containerID)
+	return b.executor.DockerOutput(ctx, docker.RunOptions{Args: []string{"inspect", "--format", "{{.State.Status}}", containerID}})
 }
 
 func (b *localRuntimeBackend) RunContainer(ctx context.Context, args []string) (string, error) {
-	return b.docker.Output(ctx, args...)
+	return b.executor.DockerOutput(ctx, docker.RunOptions{Args: args})
 }
 
 func (b *localRuntimeBackend) ComposeUp(ctx context.Context, resolved devcontainer.ResolvedConfig, overridePath string, events ui.Sink) error {
