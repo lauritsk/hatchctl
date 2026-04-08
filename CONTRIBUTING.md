@@ -9,7 +9,7 @@ Common tasks:
 - `mise run format`
 - `mise run check`
 - `mise run release:check`
-- `go run ./cmd/hatchctl`
+- `mise run hatchctl -- <args>`
 
 ## Commits
 

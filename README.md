@@ -91,8 +91,8 @@ Common commands:
 - `mise run format`
 - `mise run test`
 - `mise run build`
-- `go run ./cmd/hatchctl help`
-- `go run ./cmd/hatchctl up`
+- `mise run hatchctl -- help`
+- `mise run hatchctl -- up`
 
 ## Verifying Releases
 
