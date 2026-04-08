@@ -7,7 +7,6 @@ import (
 	"io"
 	"net"
 	"os"
-	"path/filepath"
 	"strconv"
 )
 
@@ -47,7 +46,6 @@ func helperConnect(args []string, stdin io.Reader, stdout io.Writer) error {
 func helperOpen(args []string) error {
 	fs := flag.NewFlagSet("open", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
-	socket := fs.String("socket", "", "host bridge socket")
 	host := fs.String("host", "", "host bridge address")
 	port := fs.Int("port", 0, "host bridge port")
 	token := fs.String("token", "", "host bridge token")
@@ -58,7 +56,10 @@ func helperOpen(args []string) error {
 	if *url == "" {
 		return errors.New("open requires --url")
 	}
-	conn, err := dialHelperOpen(*socket, *host, *port)
+	if *host == "" || *port <= 0 {
+		return errors.New("open requires --host and --port")
+	}
+	conn, err := net.Dial("tcp", net.JoinHostPort(*host, strconv.Itoa(*port)))
 	if err != nil {
 		return err
 	}
@@ -74,16 +75,6 @@ func helperOpen(args []string) error {
 		return errors.New(response.Error)
 	}
 	return nil
-}
-
-func dialHelperOpen(socket string, host string, port int) (net.Conn, error) {
-	if host != "" && port > 0 {
-		return net.Dial("tcp", net.JoinHostPort(host, strconv.Itoa(port)))
-	}
-	if socket == "" {
-		socket = filepath.ToSlash(filepath.Join(containerBridgeMountPath, hostSocketName))
-	}
-	return net.Dial("unix", socket)
 }
 
 func copyStreams(target net.Conn, stdin io.Reader, stdout io.Writer) {

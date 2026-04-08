@@ -22,9 +22,7 @@ import (
 
 const containerHelperBin = "/var/run/hatchctl/bridge/bin/hatchctl"
 
-const (
-	bridgeSocketStartupTimeout = 5 * time.Second
-)
+const bridgeStartupTimeout = 5 * time.Second
 
 type containerConnectRunner func(string, int, io.Reader, io.Writer) error
 
@@ -117,7 +115,7 @@ func Start(stateDir string, enabled bool, helperArch string, containerID string)
 		return nil, err
 	}
 	_ = cmd.Process.Release()
-	if err := waitForSocket(session.SocketPath, bridgeSocketStartupTimeout); err != nil {
+	if err := waitForBridgeTCP(session.Port, bridgeStartupTimeout); err != nil {
 		return nil, err
 	}
 	session.Status = "running"
@@ -129,20 +127,12 @@ func Serve(ctx context.Context, stateDir string, containerID string) error {
 	if err != nil {
 		return err
 	}
-	listener, err := listenUnixSocket(session.SocketPath)
-	if err != nil {
-		return err
-	}
 	tcpListener, err := listenBridgeTCP(session.Port)
 	if err != nil {
-		_ = listener.Close()
-		_ = os.Remove(session.SocketPath)
 		return err
 	}
 	defer func() {
-		_ = listener.Close()
 		_ = tcpListener.Close()
-		_ = os.Remove(session.SocketPath)
 	}()
 	if err := os.WriteFile(session.PIDPath, []byte(strconv.Itoa(os.Getpid())), 0o600); err != nil {
 		return err
@@ -152,12 +142,10 @@ func Serve(ctx context.Context, stateDir string, containerID string) error {
 	}
 	go func() {
 		<-ctx.Done()
-		_ = listener.Close()
 		_ = tcpListener.Close()
 	}()
 	service := newBridgeHostService(session, containerID, defaultOpen)
-	go service.serveListener(ctx, tcpListener)
-	return service.serveListener(ctx, listener)
+	return service.serveListener(ctx, tcpListener)
 }
 
 func (s *bridgeHostService) serveListener(ctx context.Context, listener net.Listener) error {
@@ -361,7 +349,6 @@ func stopExisting(session *Session) error {
 	_ = process.Signal(syscall.SIGTERM)
 	for range 20 {
 		if !isPIDRunning(pid) {
-			_ = os.Remove(session.SocketPath)
 			return nil
 		}
 		time.Sleep(100 * time.Millisecond)
@@ -388,34 +375,17 @@ func isPIDRunning(pid int) bool {
 	return process.Signal(syscall.Signal(0)) == nil
 }
 
-func waitForSocket(path string, timeout time.Duration) error {
+func waitForBridgeTCP(port int, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		if err := pingSocket(path); err == nil {
+		conn, err := net.DialTimeout("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)), 200*time.Millisecond)
+		if err == nil {
+			_ = conn.Close()
 			return nil
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	return fmt.Errorf("timed out waiting for bridge socket %s", path)
-}
-
-func pingSocket(path string) error {
-	conn, err := net.DialTimeout("unix", path, 200*time.Millisecond)
-	if err != nil {
-		return err
-	}
-	defer conn.Close()
-	if err := writeBridgeRequest(conn, bridgeRequest{Kind: "ping"}); err != nil {
-		return err
-	}
-	response, err := readBridgeResponse(conn)
-	if err != nil {
-		return err
-	}
-	if !response.OK {
-		return errors.New(response.Error)
-	}
-	return nil
+	return fmt.Errorf("timed out waiting for bridge tcp listener on port %d", port)
 }
 
 func defaultContainerConnectRunner(containerID string, port int, stdin io.Reader, stdout io.Writer) error {
@@ -442,30 +412,12 @@ func listenBridgeTCP(port int) (net.Listener, error) {
 	return net.Listen("tcp", net.JoinHostPort("0.0.0.0", strconv.Itoa(port)))
 }
 
-func listenUnixSocket(path string) (net.Listener, error) {
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return nil, err
-	}
-	_ = os.Remove(path)
-	listener, err := net.Listen("unix", path)
-	if err != nil {
-		return nil, err
-	}
-	if err := os.Chmod(path, 0o600); err != nil {
-		_ = listener.Close()
-		_ = os.Remove(path)
-		return nil, err
-	}
-	return listener, nil
-}
-
 func writeBridgeConfig(session *Session, containerID string) error {
 	config := map[string]any{
 		"sessionId":   session.ID,
 		"containerId": containerID,
 		"host":        session.Host,
 		"port":        session.Port,
-		"socketPath":  session.SocketPath,
 		"statusPath":  session.StatusPath,
 		"pidPath":     session.PIDPath,
 	}

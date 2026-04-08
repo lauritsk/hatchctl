@@ -103,9 +103,11 @@ func TestUpInstallsDotfilesOnceAndReportsStatus(t *testing.T) {
 	initGitRepoForTest(t, dotfilesRepo, map[string]string{
 		"install": "#!/bin/sh\nset -eu\nmkdir -p \"$HOME/.config/hatchctl-dotfiles\"\necho run >> \"$HOME/.config/hatchctl-dotfiles/count\"\n",
 	})
+	dotfilesBareRepo := filepath.Join(workspace, "dotfiles-repo.git")
+	cloneGitRepoBareForTest(t, dotfilesRepo, dotfilesBareRepo)
 
 	runner := NewRunner(client)
-	dotfiles := DotfilesOptions{Repository: "file:///workspaces/demo/dotfiles-repo"}
+	dotfiles := DotfilesOptions{Repository: "file:///workspaces/demo/dotfiles-repo.git"}
 	upResult, err := runner.Up(ctx, UpOptions{Workspace: workspace, Recreate: true, Dotfiles: dotfiles})
 	if err != nil {
 		t.Fatalf("up with dotfiles: %v", err)
@@ -137,7 +139,7 @@ func TestUpInstallsDotfilesOnceAndReportsStatus(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read state: %v", err)
 	}
-	if !state.DotfilesReady || state.DotfilesRepo != "file:///workspaces/demo/dotfiles-repo" || state.DotfilesTarget != "$HOME/.dotfiles" {
+	if !state.DotfilesReady || state.DotfilesRepo != "file:///workspaces/demo/dotfiles-repo.git" || state.DotfilesTarget != "$HOME/.dotfiles" {
 		t.Fatalf("unexpected dotfiles state %#v", state)
 	}
 }
@@ -270,9 +272,6 @@ func TestUpPersistsMergedMetadataAndHonorsMergedRuntimeConfig(t *testing.T) {
 	if got := configResult.ManagedContainer.ContainerEnv["BROWSER"]; got != "/var/run/hatchctl/bridge/bin/devcontainer-open" {
 		t.Fatalf("unexpected managed container env %#v", configResult.ManagedContainer.ContainerEnv)
 	}
-	if _, ok := configResult.ManagedContainer.ContainerEnv["DEVCONTAINER_BRIDGE_SOCKET"]; ok {
-		t.Fatalf("unexpected legacy bridge socket env %#v", configResult.ManagedContainer.ContainerEnv)
-	}
 	if _, ok := configResult.ManagedContainer.ContainerEnv["DEVCONTAINER_BRIDGE_HELPER_SOCKET"]; ok {
 		t.Fatalf("unexpected legacy helper socket env %#v", configResult.ManagedContainer.ContainerEnv)
 	}
@@ -340,7 +339,7 @@ func TestUpPersistsMergedMetadataAndHonorsMergedRuntimeConfig(t *testing.T) {
 	stderr.Reset()
 	exitCode, err = runner.Exec(ctx, ExecOptions{
 		Workspace: workspace,
-		Args:      []string{"sh", "-lc", `printf '%s|%s|%s|%s' "$BROWSER" "$DEVCONTAINER_BRIDGE_ENABLED" "${DEVCONTAINER_BRIDGE_SOCKET:-}" "${DEVCONTAINER_BRIDGE_HELPER_SOCKET:-}"`},
+		Args:      []string{"sh", "-lc", `printf '%s|%s|%s' "$BROWSER" "$DEVCONTAINER_BRIDGE_ENABLED" "${DEVCONTAINER_BRIDGE_HELPER_SOCKET:-}"`},
 		Stdout:    &stdout,
 		Stderr:    &stderr,
 	})
@@ -350,7 +349,7 @@ func TestUpPersistsMergedMetadataAndHonorsMergedRuntimeConfig(t *testing.T) {
 	if exitCode != 0 {
 		t.Fatalf("unexpected bridge env exit code %d (stderr: %s)", exitCode, stderr.String())
 	}
-	if got := strings.TrimSpace(stdout.String()); got != "/var/run/hatchctl/bridge/bin/devcontainer-open|true||" {
+	if got := strings.TrimSpace(stdout.String()); got != "/var/run/hatchctl/bridge/bin/devcontainer-open|true|" {
 		t.Fatalf("unexpected bridge env output %q", got)
 	}
 
@@ -1756,6 +1755,15 @@ func initGitRepoForTest(t *testing.T, dir string, files map[string]string) {
 	runGit("init")
 	runGit("add", ".")
 	runGit("-c", "user.name=Test User", "-c", "user.email=test@example.com", "commit", "-m", "init")
+}
+
+func cloneGitRepoBareForTest(t *testing.T, src string, dst string) {
+	t.Helper()
+	cmd := exec.Command("git", "clone", "--bare", src, dst)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git clone --bare: %v\n%s", err, string(output))
+	}
 }
 
 func sanitizeName(value string) string {

@@ -142,39 +142,6 @@ func TestBridgeHostServiceReportsForwardError(t *testing.T) {
 	}
 }
 
-func TestHelperOpenUsesBridgeSocket(t *testing.T) {
-	t.Parallel()
-	path := testSocketPath(t, "bridge.sock")
-	listener, err := listenUnixSocket(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		_ = listener.Close()
-		_ = os.Remove(path)
-	}()
-	requests := make(chan bridgeRequest, 1)
-	go func() {
-		conn, err := listener.Accept()
-		if err != nil {
-			return
-		}
-		defer conn.Close()
-		var req bridgeRequest
-		if err := readBridgeRequest(conn, &req); err == nil {
-			requests <- req
-			_ = writeBridgeResponse(conn, bridgeResponse{OK: true})
-		}
-	}()
-	if err := helperOpen([]string{"--socket", path, "--url", "https://example.com"}); err != nil {
-		t.Fatalf("helper open: %v", err)
-	}
-	req := <-requests
-	if req.Kind != "open" || req.URL != "https://example.com" {
-		t.Fatalf("unexpected request %#v", req)
-	}
-}
-
 func TestHelperOpenUsesTCPBridge(t *testing.T) {
 	t.Parallel()
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -202,6 +169,14 @@ func TestHelperOpenUsesTCPBridge(t *testing.T) {
 	req := <-requests
 	if req.Kind != "open" || req.URL != "https://example.com/tcp" || req.Token != "secret" {
 		t.Fatalf("unexpected request %#v", req)
+	}
+}
+
+func TestHelperOpenRequiresHostAndPort(t *testing.T) {
+	t.Parallel()
+	err := helperOpen([]string{"--url", "https://example.com"})
+	if err == nil || err.Error() != "open requires --host and --port" {
+		t.Fatalf("unexpected error %v", err)
 	}
 }
 
@@ -261,7 +236,6 @@ func TestPrepareAndRuntimeFilesUseOwnerOnlyPermissions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("prepare bridge session: %v", err)
 	}
-	session.SocketPath = testSocketPath(t, "bridge.sock")
 	if err := writeBridgeConfig(session, "container"); err != nil {
 		t.Fatalf("write bridge config: %v", err)
 	}
@@ -285,21 +259,11 @@ func TestPrepareAndRuntimeFilesUseOwnerOnlyPermissions(t *testing.T) {
 	assertMode(session.ConfigPath, 0o600)
 	assertMode(session.StatusPath, 0o600)
 
-	listener, err := listenUnixSocket(session.SocketPath)
-	if err != nil {
-		t.Fatalf("listen bridge socket: %v", err)
-	}
-	defer func() {
-		_ = listener.Close()
-		_ = os.Remove(session.SocketPath)
-	}()
-	assertMode(session.SocketPath, 0o600)
-
 	if err := os.WriteFile(session.PIDPath, []byte("123"), 0o600); err != nil {
 		t.Fatalf("write pid file: %v", err)
 	}
 	assertMode(session.PIDPath, 0o600)
-	if session.SocketPath == "" {
+	if session.Host == "" || session.Port <= 0 || session.Token == "" {
 		t.Fatalf("expected socket paths in session %#v", session)
 	}
 }
@@ -440,26 +404,15 @@ func TestListenForwardPortFallsBackWhenExactPortBusy(t *testing.T) {
 	}
 }
 
-func TestWaitForSocketTimesOut(t *testing.T) {
+func TestWaitForBridgeTCPTimesOut(t *testing.T) {
 	t.Parallel()
 
-	path := testSocketPath(t, "missing.sock")
-	err := waitForSocket(path, 150*time.Millisecond)
-	if err == nil || !strings.Contains(err.Error(), "timed out waiting for bridge socket") {
+	err := waitForBridgeTCP(1, 150*time.Millisecond)
+	if err == nil || !strings.Contains(err.Error(), "timed out waiting for bridge tcp listener") {
 		t.Fatalf("unexpected error %v", err)
 	}
 }
 
 func readBridgeRequest(r io.Reader, request *bridgeRequest) error {
 	return json.NewDecoder(r).Decode(request)
-}
-
-func testSocketPath(t *testing.T, name string) string {
-	t.Helper()
-	dir, err := os.MkdirTemp("/tmp", "hct-bridge-")
-	if err != nil {
-		t.Fatalf("create temp dir: %v", err)
-	}
-	t.Cleanup(func() { _ = os.RemoveAll(dir) })
-	return filepath.Join(dir, name)
 }

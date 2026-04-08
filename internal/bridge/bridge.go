@@ -24,7 +24,6 @@ type Session struct {
 	Host       string `json:"host,omitempty"`
 	Port       int    `json:"port,omitempty"`
 	Token      string `json:"token,omitempty"`
-	SocketPath string `json:"socketPath,omitempty"`
 	StatePath  string `json:"statePath"`
 	ConfigPath string `json:"configPath,omitempty"`
 	PIDPath    string `json:"pidPath,omitempty"`
@@ -40,7 +39,6 @@ type Report = Session
 const (
 	containerBridgeMountPath = "/var/run/hatchctl/bridge"
 	helperBinaryEnvVar       = "HATCHCTL_BRIDGE_HELPER"
-	hostSocketName           = "bridge.sock"
 	containerBridgeHost      = "host.docker.internal"
 )
 
@@ -86,9 +84,6 @@ func Prepare(stateDir string, enabled bool, helperArch string) (*Session, error)
 	}
 	session.Enabled = enabled
 	session.HelperArch = resolvedHelperArch
-	if session.SocketPath == "" {
-		session.SocketPath = filepath.Join(bridgeDir, hostSocketName)
-	}
 	session.StatePath = bridgeDir
 	session.HelperPath = helperPath
 	session.MountPath = containerBridgeMountPath
@@ -265,7 +260,6 @@ func loadOrCreateSession(bridgeDir string, enabled bool) (*Session, error) {
 	}
 	session = &Session{
 		ID:         randomToken(12),
-		SocketPath: filepath.Join(bridgeDir, hostSocketName),
 		StatePath:  bridgeDir,
 		ConfigPath: filepath.Join(bridgeDir, "bridge-config.json"),
 		PIDPath:    filepath.Join(bridgeDir, "bridge.pid"),
