@@ -377,6 +377,67 @@ func TestRunExecReturnsExitErrorForNonZeroCode(t *testing.T) {
 	}
 }
 
+func TestExecWritersUsesRawTerminalStreamsForInteractiveExec(t *testing.T) {
+	t.Parallel()
+
+	renderer := ui.NewRenderer(&bytes.Buffer{}, &bytes.Buffer{}, false)
+	stdout, stderr := execWriters(renderer, true)
+
+	if stdout != os.Stdout {
+		t.Fatalf("expected interactive stdout to use raw os.Stdout, got %T", stdout)
+	}
+	if stderr != os.Stderr {
+		t.Fatalf("expected interactive stderr to use raw os.Stderr, got %T", stderr)
+	}
+}
+
+func TestExecWritersKeepsManagedStreamsForNonInteractiveExec(t *testing.T) {
+	t.Parallel()
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	renderer := ui.NewRenderer(&out, &errOut, false)
+	stdout, stderr := execWriters(renderer, false)
+
+	if stdout == os.Stdout {
+		t.Fatal("expected non-interactive stdout to stay managed")
+	}
+	if stderr == os.Stderr {
+		t.Fatal("expected non-interactive stderr to stay managed")
+	}
+	if _, err := stdout.Write([]byte("command output\n")); err != nil {
+		t.Fatalf("write managed stdout: %v", err)
+	}
+	if _, err := stderr.Write([]byte("command error\n")); err != nil {
+		t.Fatalf("write managed stderr: %v", err)
+	}
+	if got := out.String(); got != "command output\n" {
+		t.Fatalf("unexpected managed stdout %q", got)
+	}
+	if got := errOut.String(); got != "command error\n" {
+		t.Fatalf("unexpected managed stderr %q", got)
+	}
+}
+
+func TestShouldUseRawExecStreamsRejectsNonTerminalFiles(t *testing.T) {
+	t.Parallel()
+
+	stdin, err := os.CreateTemp(t.TempDir(), "stdin")
+	if err != nil {
+		t.Fatalf("create temp stdin: %v", err)
+	}
+	defer stdin.Close()
+	stdout, err := os.CreateTemp(t.TempDir(), "stdout")
+	if err != nil {
+		t.Fatalf("create temp stdout: %v", err)
+	}
+	defer stdout.Close()
+
+	if shouldUseRawExecStreams(stdin, stdout) {
+		t.Fatal("expected raw exec streams to require real terminals")
+	}
+}
+
 func TestRunConfigUsesFrozenLockfilePolicy(t *testing.T) {
 	isolateConfigHome(t)
 

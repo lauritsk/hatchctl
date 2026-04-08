@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 
 	"github.com/lauritsk/hatchctl/internal/appconfig"
 	"github.com/lauritsk/hatchctl/internal/bridge"
@@ -248,13 +249,14 @@ func (a *App) newExecCommand(global *globalOptions) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			stdout := renderer.Stdout()
-			stderr := renderer.Stderr()
+			stdout, stderr := execWriters(renderer, false)
 			var stdoutBuffer strings.Builder
 			var stderrBuffer strings.Builder
 			if jsonOut {
 				stdout = &stdoutBuffer
 				stderr = &stderrBuffer
+			} else if shouldUseRawExecStreams(os.Stdin, os.Stdout) {
+				stdout, stderr = execWriters(renderer, true)
 			}
 			code, err := a.runner.Exec(cmd.Context(), runtime.ExecOptions{
 				Workspace:      defaults.Workspace,
@@ -298,6 +300,24 @@ func (a *App) newExecCommand(global *globalOptions) *cobra.Command {
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "emit machine-readable JSON")
 	cmd.Flags().StringArrayVar(&remoteEnv, "env", nil, "set container environment variables as KEY=VALUE; repeat as needed")
 	return cmd
+}
+
+func shouldUseRawExecStreams(stdin *os.File, stdout *os.File) bool {
+	return isTerminalFile(stdin) && isTerminalFile(stdout)
+}
+
+func execWriters(renderer *ui.Renderer, interactive bool) (io.Writer, io.Writer) {
+	if interactive {
+		return os.Stdout, os.Stderr
+	}
+	return renderer.Stdout(), renderer.Stderr()
+}
+
+func isTerminalFile(file *os.File) bool {
+	if file == nil {
+		return false
+	}
+	return term.IsTerminal(int(file.Fd()))
 }
 
 func (a *App) newConfigCommand(global *globalOptions) *cobra.Command {
