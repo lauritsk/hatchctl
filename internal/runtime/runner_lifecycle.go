@@ -101,20 +101,10 @@ func (r *Runner) runContainerLifecycle(ctx context.Context, containerID string, 
 		return nil
 	}
 	return runCommand(ctx, func(ctx context.Context, args []string) error {
-		dockerArgs := []string{"exec", "-i"}
-		user := resolved.Merged.RemoteUser
-		if user == "" {
-			user = resolved.Merged.ContainerUser
+		dockerArgs, err := r.dockerExecArgs(ctx, containerID, resolved, true, false, nil, args)
+		if err != nil {
+			return err
 		}
-		if user != "" {
-			dockerArgs = append(dockerArgs, "-u", user)
-		}
-		for _, key := range devcontainer.SortedMapKeys(resolved.Merged.RemoteEnv) {
-			value := resolved.Merged.RemoteEnv[key]
-			dockerArgs = append(dockerArgs, "-e", key+"="+value)
-		}
-		dockerArgs = append(dockerArgs, containerID)
-		dockerArgs = append(dockerArgs, args...)
 		return r.docker.Run(ctx, r.progressDockerRunOptions(events, label, docker.RunOptions{Args: dockerArgs, Stdout: r.stdout, Stderr: r.stderr}))
 	}, command)
 }

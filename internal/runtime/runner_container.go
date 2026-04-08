@@ -181,18 +181,15 @@ func (r *Runner) previewBridgeConfig(resolved *devcontainer.ResolvedConfig, enab
 }
 
 func (r *Runner) effectiveRemoteUser(ctx context.Context, prepared preparedWorkspace) (string, error) {
-	if user := firstNonEmpty(prepared.resolved.Merged.RemoteUser, prepared.resolved.Merged.ContainerUser); user != "" {
+	if user := effectiveRemoteUserFromContainerInspect(prepared.containerInspect, prepared.resolved); user != "" {
 		return user, nil
-	}
-	if prepared.containerInspect != nil {
-		return prepared.containerInspect.Config.User, nil
 	}
 	if prepared.containerID != "" {
 		inspect, err := r.docker.InspectContainer(ctx, prepared.containerID)
 		if err != nil {
 			return "", err
 		}
-		return inspect.Config.User, nil
+		return effectiveRemoteUserFromContainerInspect(&inspect, prepared.resolved), nil
 	}
 	return r.inspectImageUser(ctx, prepared.image)
 }

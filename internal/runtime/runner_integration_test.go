@@ -456,6 +456,73 @@ func TestReadConfigAndExecFallBackToImageUser(t *testing.T) {
 	}
 }
 
+func TestLifecycleAndExecUseResolvedHomeForImageUser(t *testing.T) {
+	client := dockerClientForTest(t)
+	ctx := context.Background()
+	workspace := t.TempDir()
+	configDir := filepath.Join(workspace, ".devcontainer")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	baseImage := "hatchctl-home-test-" + sanitizeName(filepath.Base(workspace))
+	baseDockerfileDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(baseDockerfileDir, "Dockerfile"), []byte("FROM alpine:3.20\nRUN adduser -D -u 1000 app\nUSER app\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.Run(ctx, docker.RunOptions{Args: []string{"build", "-t", baseImage, baseDockerfileDir}}); err != nil {
+		t.Fatalf("build base image: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rmi", "-f", baseImage}})
+	})
+
+	config := `{
+		"name": "home-fallback-test",
+		"image": "` + baseImage + `",
+		"workspaceFolder": "/workspaces/demo",
+		"postCreateCommand": "printf %s \"$HOME\" > /workspaces/demo/post-create-home"
+	}`
+	if err := os.WriteFile(filepath.Join(configDir, "devcontainer.json"), []byte(config), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	runner := NewRunner(client)
+	upResult, err := runner.Up(ctx, UpOptions{Workspace: workspace, Recreate: true})
+	if err != nil {
+		t.Fatalf("up container: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rm", "-f", upResult.ContainerID}})
+	})
+
+	data, err := os.ReadFile(filepath.Join(workspace, "post-create-home"))
+	if err != nil {
+		t.Fatalf("read post-create HOME: %v", err)
+	}
+	if got := strings.TrimSpace(string(data)); got != "/home/app" {
+		t.Fatalf("unexpected postCreate HOME %q", got)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode, err := runner.Exec(ctx, ExecOptions{
+		Workspace: workspace,
+		Args:      []string{"sh", "-lc", "printf %s \"$HOME\""},
+		Stdout:    &stdout,
+		Stderr:    &stderr,
+	})
+	if err != nil {
+		t.Fatalf("exec HOME check: %v (stderr: %s)", err, stderr.String())
+	}
+	if exitCode != 0 {
+		t.Fatalf("unexpected HOME exit code %d (stderr: %s)", exitCode, stderr.String())
+	}
+	if got := strings.TrimSpace(stdout.String()); got != "/home/app" {
+		t.Fatalf("unexpected exec HOME %q", got)
+	}
+}
+
 func TestExecStreamsStdinWithoutTTYAndReturnsExitCode(t *testing.T) {
 	client := dockerClientForTest(t)
 	ctx := context.Background()

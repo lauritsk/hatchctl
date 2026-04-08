@@ -131,15 +131,10 @@ func (r *Runner) installDotfiles(ctx context.Context, containerID string, resolv
 	if !opts.Enabled() {
 		return nil
 	}
-	user := firstNonEmpty(resolved.Merged.RemoteUser, resolved.Merged.ContainerUser)
-	args := []string{"exec", "-i"}
-	if user != "" {
-		args = append(args, "-u", user)
+	args, err := r.dockerExecArgs(ctx, containerID, resolved, true, false, nil, []string{"/bin/sh", "-lc", dotfilesInstallScript(opts)})
+	if err != nil {
+		return err
 	}
-	for _, key := range devcontainer.SortedMapKeys(resolved.Merged.RemoteEnv) {
-		args = append(args, "-e", key+"="+resolved.Merged.RemoteEnv[key])
-	}
-	args = append(args, containerID, "/bin/sh", "-lc", dotfilesInstallScript(opts))
 	label := fmt.Sprintf("Installing dotfiles from %s", opts.Repository)
 	r.emitProgress(events, label)
 	return r.docker.Run(ctx, r.progressDockerRunOptions(events, label, docker.RunOptions{Args: args, Stdout: r.stdout, Stderr: r.stderr}))

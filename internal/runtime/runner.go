@@ -345,31 +345,11 @@ func (r *Runner) Exec(ctx context.Context, opts ExecOptions) (int, error) {
 		return 0, err
 	}
 	resolved := prepared.resolved
-	user, err := r.effectiveRemoteUser(ctx, prepared)
+	interactive := shouldAllocateTTY(opts.Stdin, opts.Stdout)
+	args, err := r.dockerExecArgs(ctx, prepared.containerID, resolved, opts.Stdin != nil, interactive, opts.RemoteEnv, opts.Args)
 	if err != nil {
 		return 0, err
 	}
-
-	args := []string{"exec"}
-	if opts.Stdin != nil {
-		args = append(args, "-i")
-	}
-	interactive := shouldAllocateTTY(opts.Stdin, opts.Stdout)
-	if interactive {
-		args = append(args, "-t")
-	}
-	if user != "" {
-		args = append(args, "-u", user)
-	}
-	for _, key := range devcontainer.SortedMapKeys(resolved.Merged.RemoteEnv) {
-		value := resolved.Merged.RemoteEnv[key]
-		args = append(args, "-e", key+"="+value)
-	}
-	for key, value := range opts.RemoteEnv {
-		args = append(args, "-e", key+"="+value)
-	}
-	args = append(args, prepared.containerID)
-	args = append(args, opts.Args...)
 	if interactive {
 		r.clearProgress(opts.Events)
 	} else {
