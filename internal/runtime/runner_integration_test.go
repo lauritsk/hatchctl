@@ -988,21 +988,12 @@ func setBridgeHelperEnv(t *testing.T) {
 	t.Helper()
 	source := sharedBridgeHelperPath(t)
 	path := filepath.Join(t.TempDir(), "hatchctl")
-	in, err := os.Open(source)
+	data, err := os.ReadFile(source)
 	if err != nil {
-		t.Fatalf("open shared bridge helper: %v", err)
+		t.Fatalf("read shared bridge helper: %v", err)
 	}
-	defer in.Close()
-	out, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o755)
-	if err != nil {
-		t.Fatalf("create per-test bridge helper: %v", err)
-	}
-	if _, err := io.Copy(out, in); err != nil {
-		_ = out.Close()
-		t.Fatalf("copy per-test bridge helper: %v", err)
-	}
-	if err := out.Close(); err != nil {
-		t.Fatalf("close per-test bridge helper: %v", err)
+	if err := os.WriteFile(path, data, 0o755); err != nil {
+		t.Fatalf("write per-test bridge helper: %v", err)
 	}
 	t.Setenv("HATCHCTL_BRIDGE_HELPER", path)
 }
