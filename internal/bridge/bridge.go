@@ -100,30 +100,23 @@ func Prepare(stateDir string, enabled bool, helperArch string) (*Session, error)
 	return session, nil
 }
 
-func Apply(stateDir string, enabled bool, helperArch string, merged devcontainer.MergedConfig) (*Session, devcontainer.MergedConfig, error) {
-	if !enabled {
-		return nil, merged, nil
-	}
-	session, err := Prepare(stateDir, enabled, helperArch)
-	if err != nil {
-		return nil, devcontainer.MergedConfig{}, err
-	}
-	return session, applySession(session, merged), nil
-}
-
-func Preview(stateDir string, enabled bool, merged devcontainer.MergedConfig) (*Session, devcontainer.MergedConfig, error) {
-	if !enabled {
-		return nil, merged, nil
-	}
+func Load(stateDir string) (*Session, error) {
 	bridgeDir := filepath.Join(stateDir, "bridge")
 	session, err := readSession(bridgeDir)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, merged, nil
+			return nil, nil
 		}
-		return nil, devcontainer.MergedConfig{}, err
+		return nil, err
 	}
-	return session, applySession(session, merged), nil
+	return session, nil
+}
+
+func Inject(session *Session, merged devcontainer.MergedConfig) devcontainer.MergedConfig {
+	if session == nil {
+		return merged
+	}
+	return applySession(session, merged)
 }
 
 func Doctor(stateDir string) (Report, error) {

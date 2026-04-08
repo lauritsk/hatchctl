@@ -24,7 +24,7 @@ type Runner struct {
 	imageVerifier    imageVerificationPolicy
 	planner          *workspacePlanner
 	stateStore       workspaceStateStore
-	bridgeManager    runtimeBridgeManager
+	bridge           bridgeSubsystem
 	imageManager     *runtimeImageManager
 	containerManager *runtimeContainerManager
 	lifecycleManager *runtimeLifecycleManager
@@ -42,6 +42,7 @@ func NewRunnerWithIO(client *docker.Client, stdin io.Reader, stdout io.Writer, s
 		imageVerifier: newImageVerificationPolicy(stderr),
 		resolver:      devcontainerResolver{},
 		stateStore:    devcontainerStateStore{},
+		bridge:        newRuntimeBridgeSubsystem(),
 	}
 	runner.backend = newLocalRuntimeBackend(runner, client)
 	runner.planner = &workspacePlanner{runner: runner, resolver: runner.resolver}
@@ -271,7 +272,7 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 	}
 	var bridgeReport *bridge.Report
 	r.emitProgress(opts.Events, "Configuring bridge support")
-	bridgeReport, err = r.bridgeManager.Apply(&resolved, opts.BridgeEnabled, helperArch)
+	bridgeReport, err = r.bridge.Prepare(&resolved, opts.BridgeEnabled, helperArch)
 	if err != nil {
 		return UpResult{}, err
 	}
@@ -296,11 +297,11 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 	}
 	if bridgeReport != nil {
 		r.emitProgress(opts.Events, "Starting bridge session")
-		startedBridge, err := r.bridgeManager.Start(resolved.StateDir, opts.BridgeEnabled, helperArch, containerID)
+		startedBridge, err := r.bridge.Activate(resolved.StateDir, containerID, helperArch, bridgeReport)
 		if err != nil {
 			return UpResult{}, err
 		}
-		bridgeReport = (*bridge.Report)(startedBridge)
+		bridgeReport = startedBridge
 	}
 
 	r.emitProgress(opts.Events, "Running lifecycle commands")
@@ -310,14 +311,11 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 
 	state.ContainerID = containerID
 	state.LifecycleReady = true
-	state.BridgeEnabled = opts.BridgeEnabled
 	state.DotfilesReady = dotfiles.Enabled()
 	state.DotfilesRepo = dotfiles.Repository
 	state.DotfilesInstall = dotfiles.InstallCommand
 	state.DotfilesTarget = dotfiles.TargetPath
-	if bridgeReport != nil {
-		state.BridgeSessionID = bridgeReport.ID
-	}
+	state = r.bridge.Persist(state, opts.BridgeEnabled, bridgeReport)
 	r.emitProgress(opts.Events, "Writing workspace state")
 	if err := r.stateStore.Write(resolved.StateDir, state); err != nil {
 		return UpResult{}, err
@@ -418,12 +416,12 @@ func (r *Runner) ReadConfig(ctx context.Context, opts ReadConfigOptions) (ReadCo
 	image := prepared.image
 	state := prepared.state
 	var bridgeReport *bridge.Report
-	bridgeReport, err = r.bridgeManager.Preview(&resolved, state.BridgeEnabled)
+	bridgeReport, err = r.bridge.Preview(&resolved, state.BridgeEnabled)
 	if err != nil {
 		return ReadConfigResult{}, err
 	}
 	if state.BridgeEnabled {
-		report, err := r.bridgeManager.Doctor(resolved.StateDir)
+		report, err := r.bridge.Doctor(resolved.StateDir)
 		if err != nil {
 			return ReadConfigResult{}, err
 		}
@@ -522,7 +520,7 @@ func (r *Runner) BridgeDoctor(ctx context.Context, opts BridgeDoctorOptions) (br
 	if err != nil {
 		return bridge.Report{}, err
 	}
-	return r.bridgeManager.Doctor(prepared.resolved.StateDir)
+	return r.bridge.Doctor(prepared.resolved.StateDir)
 }
 
 func preparedImage(resolved devcontainer.ResolvedConfig) string {
