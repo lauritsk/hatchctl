@@ -2,8 +2,6 @@
 
 ## Not Done
 
-- split `internal/runtime.Runner` into a small orchestration layer plus focused services such as planner, image manager, container manager, lifecycle runner, bridge manager, and state store so command flows stop accumulating cross-cutting responsibilities in one type
-- make devcontainer resolution side-effect free and move lockfile, feature-state, plan-cache, workspace-state, and bridge-state persistence behind explicit store interfaces so read/inspect paths do not perform hidden writes
 - introduce a narrow container-engine/process-execution abstraction that centralizes Docker/Compose/process calls, logging, env policy, and future backend support instead of mixing `docker.Client`, direct `exec.Command`, and bridge-specific process spawning paths
 - move security verification policy to the CLI/runtime boundary and make `internal/security` return structured verification results instead of reading env vars and printing warnings directly, so trust behavior is explicit, testable, and consistent across image and feature flows
 - make `internal/display` the single presentation layer for progress, warnings, debug logs, and final command output so runtime/security/CLI paths emit structured events through one renderer-controlled surface with consistent spacing, spinner clearing, and styling
@@ -16,6 +14,8 @@
 
 ## Done
 
+- [x] split `internal/runtime.Runner` into a small orchestration layer plus focused services such as planner, image manager, container manager, lifecycle runner, bridge manager, and state store so command flows stop accumulating cross-cutting responsibilities in one type
+- [x] make devcontainer resolution side-effect free and move lockfile, feature-state, plan-cache, workspace-state, and bridge-state persistence behind explicit store interfaces so read/inspect paths do not perform hidden writes
 - [x] add first-class dotfiles personalization support with explicit CLI UX and one-time install tracking
 - [x] move UID/GID reconciliation out of derived image rebuilds and into a runtime-oriented approach where possible
 - [x] redesign bridge transport around a persistent localhost-only control/data channel so browser-open and localhost callback auth flows still work without a detached wide-bind HTTP server or per-connection `docker exec`

@@ -245,6 +245,7 @@ func ResolveReadOnlyWithOptions(ctx context.Context, workspaceArg string, config
 }
 
 func resolve(ctx context.Context, workspaceArg string, configArg string, opts ResolveOptions) (ResolvedConfig, error) {
+	persistence := resolverPersistence{}
 	workspace, err := resolveWorkspace(workspaceArg)
 	if err != nil {
 		return ResolvedConfig{}, err
@@ -275,24 +276,13 @@ func resolve(ctx context.Context, workspaceArg string, configArg string, opts Re
 	if err != nil {
 		return ResolvedConfig{}, err
 	}
-	if opts.ReadPlanCache && opts.LockfilePolicy != FeatureLockfilePolicyUpdate {
-		cached, ok, err := readResolvedPlanCache(stateDir, cacheKey)
-		if err != nil {
+	if cached, ok, err := persistence.ReadPlanCache(stateDir, cacheKey, opts); err != nil {
+		return ResolvedConfig{}, err
+	} else if ok {
+		if err := persistence.WriteCachedArtifacts(configPath, stateDir, cached, opts); err != nil {
 			return ResolvedConfig{}, err
 		}
-		if ok {
-			if opts.WriteFeatureLock && opts.LockfilePolicy != FeatureLockfilePolicyFrozen {
-				if err := WriteFeatureLockFile(configPath, cached.Features); err != nil {
-					return ResolvedConfig{}, err
-				}
-			}
-			if opts.WriteFeatureState {
-				if err := WriteFeatureStateFile(stateDir, cached.Features); err != nil {
-					return ResolvedConfig{}, err
-				}
-			}
-			return cached, nil
-		}
+		return cached, nil
 	}
 	if config.Service != "" || len(composeFiles) > 0 {
 		sourceKind = "compose"
@@ -336,15 +326,8 @@ func resolve(ctx context.Context, workspaceArg string, configArg string, opts Re
 	if err != nil {
 		return ResolvedConfig{}, err
 	}
-	if opts.WriteFeatureLock && opts.LockfilePolicy != FeatureLockfilePolicyFrozen {
-		if err := WriteFeatureLockFile(configPath, features); err != nil {
-			return ResolvedConfig{}, err
-		}
-	}
-	if opts.WriteFeatureState {
-		if err := WriteFeatureStateFile(stateDir, features); err != nil {
-			return ResolvedConfig{}, err
-		}
+	if err := persistence.WriteResolvedArtifacts(configPath, stateDir, features, opts); err != nil {
+		return ResolvedConfig{}, err
 	}
 	metadata := make([]MetadataEntry, 0, len(features))
 	for _, feature := range features {
@@ -373,10 +356,8 @@ func resolve(ctx context.Context, workspaceArg string, configArg string, opts Re
 	if err != nil {
 		return ResolvedConfig{}, err
 	}
-	if opts.WritePlanCache {
-		if err := writeResolvedPlanCache(stateDir, cacheKey, resolved); err != nil {
-			return ResolvedConfig{}, err
-		}
+	if err := persistence.WritePlanCache(stateDir, cacheKey, resolved, opts); err != nil {
+		return ResolvedConfig{}, err
 	}
 	return resolved, nil
 }
