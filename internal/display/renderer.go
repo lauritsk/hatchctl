@@ -168,12 +168,13 @@ type lineSpinner struct {
 	w      io.Writer
 	styles styles
 
-	mu       sync.Mutex
-	message  string
-	running  bool
-	stopped  bool
-	lastSize int
-	done     chan struct{}
+	mu           sync.Mutex
+	message      string
+	running      bool
+	stopped      bool
+	cursorHidden bool
+	lastSize     int
+	done         chan struct{}
 }
 
 func newLineSpinner(w io.Writer, styles styles) *lineSpinner {
@@ -186,6 +187,11 @@ func (s *lineSpinner) SetMessage(message string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.message = message
+	if message == "" {
+		s.clearLocked()
+		s.running = false
+		return
+	}
 	s.running = true
 }
 
@@ -246,18 +252,37 @@ func (s *lineSpinner) run() {
 }
 
 func (s *lineSpinner) renderLocked(line string) {
+	s.hideCursorLocked()
 	padding := ""
-	if extra := s.lastSize - len(line); extra > 0 {
+	lineWidth := lipgloss.Width(line)
+	if extra := s.lastSize - lineWidth; extra > 0 {
 		padding = strings.Repeat(" ", extra)
 	}
 	_, _ = fmt.Fprintf(s.w, "\r%s%s", line, padding)
-	s.lastSize = len(line)
+	s.lastSize = lineWidth
 }
 
 func (s *lineSpinner) clearLocked() {
+	s.showCursorLocked()
 	if s.lastSize == 0 {
 		return
 	}
 	_, _ = fmt.Fprintf(s.w, "\r%s\r", strings.Repeat(" ", s.lastSize))
 	s.lastSize = 0
+}
+
+func (s *lineSpinner) hideCursorLocked() {
+	if s.cursorHidden {
+		return
+	}
+	_, _ = fmt.Fprint(s.w, "\x1b[?25l")
+	s.cursorHidden = true
+}
+
+func (s *lineSpinner) showCursorLocked() {
+	if !s.cursorHidden {
+		return
+	}
+	_, _ = fmt.Fprint(s.w, "\x1b[?25h")
+	s.cursorHidden = false
 }
