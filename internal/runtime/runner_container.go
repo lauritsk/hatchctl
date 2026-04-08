@@ -16,9 +16,20 @@ var errManagedContainerNotFound = errors.New("managed container not found")
 func (r *Runner) ensureComposeContainer(ctx context.Context, resolved devcontainer.ResolvedConfig, overridePath string) (string, bool, error) {
 	containerID, err := r.findComposeContainer(ctx, resolved)
 	if err == nil && containerID != "" {
-		status, statusErr := r.docker.Output(ctx, "inspect", "--format", "{{.State.Status}}", containerID)
-		if statusErr == nil && status == "running" {
-			return containerID, false, nil
+		matches, matchErr := r.containerBridgeModeMatches(ctx, containerID, resolved.Merged.ContainerEnv["DEVCONTAINER_BRIDGE_ENABLED"] == "true")
+		if matchErr != nil {
+			return "", false, matchErr
+		}
+		if !matches {
+			if err := r.removeContainer(ctx, containerID); err != nil {
+				return "", false, err
+			}
+			containerID = ""
+		} else {
+			status, statusErr := r.docker.Output(ctx, "inspect", "--format", "{{.State.Status}}", containerID)
+			if statusErr == nil && status == "running" {
+				return containerID, false, nil
+			}
 		}
 	}
 	if err := r.docker.Run(ctx, docker.RunOptions{Args: append(r.composeArgs(resolved, overridePath), "up", "--no-build", "-d", resolved.ComposeService), Dir: resolved.ConfigDir, Stdout: r.stdout, Stderr: r.stderr}); err != nil {
@@ -37,13 +48,23 @@ func (r *Runner) ensureContainer(ctx context.Context, resolved devcontainer.Reso
 	}
 	containerID, err := r.findContainer(ctx, resolved)
 	if err == nil && containerID != "" {
-		status, statusErr := r.docker.Output(ctx, "inspect", "--format", "{{.State.Status}}", containerID)
-		if statusErr == nil && status != "running" {
-			if err := r.docker.Run(ctx, docker.RunOptions{Args: []string{"start", containerID}, Stdout: r.stdout, Stderr: r.stderr}); err != nil {
+		matches, matchErr := r.containerBridgeModeMatches(ctx, containerID, bridgeEnabled)
+		if matchErr != nil {
+			return "", false, matchErr
+		}
+		if !matches {
+			if err := r.removeContainer(ctx, containerID); err != nil {
 				return "", false, err
 			}
+		} else {
+			status, statusErr := r.docker.Output(ctx, "inspect", "--format", "{{.State.Status}}", containerID)
+			if statusErr == nil && status != "running" {
+				if err := r.docker.Run(ctx, docker.RunOptions{Args: []string{"start", containerID}, Stdout: r.stdout, Stderr: r.stderr}); err != nil {
+					return "", false, err
+				}
+			}
+			return containerID, false, nil
 		}
-		return containerID, false, nil
 	}
 
 	stateMount := fmt.Sprintf("type=bind,source=%s,target=%s", resolved.StateDir, "/var/run/hatchctl")
@@ -92,6 +113,14 @@ func (r *Runner) ensureContainer(ctx context.Context, resolved devcontainer.Reso
 	return containerID, true, nil
 }
 
+func (r *Runner) containerBridgeModeMatches(ctx context.Context, containerID string, bridgeEnabled bool) (bool, error) {
+	inspect, err := r.docker.InspectContainer(ctx, containerID)
+	if err != nil {
+		return false, err
+	}
+	return (inspect.Config.Labels[devcontainer.BridgeEnabledLabel] == "true") == bridgeEnabled, nil
+}
+
 func (r *Runner) findContainer(ctx context.Context, resolved devcontainer.ResolvedConfig) (string, error) {
 	if resolved.SourceKind == "compose" {
 		return r.findComposeContainer(ctx, resolved)
@@ -137,8 +166,8 @@ func (r *Runner) reconcileState(ctx context.Context, resolved devcontainer.Resol
 	return state, nil
 }
 
-func (r *Runner) applyBridgeConfig(resolved *devcontainer.ResolvedConfig, enabled bool) (*bridge.Report, error) {
-	report, merged, err := bridge.Apply(resolved.StateDir, enabled, resolved.Merged)
+func (r *Runner) applyBridgeConfig(resolved *devcontainer.ResolvedConfig, enabled bool, helperArch string) (*bridge.Report, error) {
+	report, merged, err := bridge.Apply(resolved.StateDir, enabled, helperArch, resolved.Merged)
 	if err != nil {
 		return nil, err
 	}

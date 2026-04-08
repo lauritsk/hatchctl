@@ -5,8 +5,12 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
+	"runtime"
+	"slices"
+	"strings"
 	"syscall"
 
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
@@ -15,6 +19,7 @@ import (
 type Session struct {
 	ID         string `json:"id"`
 	Enabled    bool   `json:"enabled"`
+	HelperArch string `json:"helperArch,omitempty"`
 	Host       string `json:"host,omitempty"`
 	Port       int    `json:"port,omitempty"`
 	Token      string `json:"token,omitempty"`
@@ -39,7 +44,7 @@ const (
 	helperSocketName         = "helper.sock"
 )
 
-func Prepare(stateDir string, enabled bool) (*Session, error) {
+func Prepare(stateDir string, enabled bool, helperArch string) (*Session, error) {
 	bridgeDir := filepath.Join(stateDir, "bridge")
 	if err := os.MkdirAll(bridgeDir, 0o700); err != nil {
 		return nil, err
@@ -59,10 +64,15 @@ func Prepare(stateDir string, enabled bool) (*Session, error) {
 	if err := os.WriteFile(filepath.Join(binPath, "xdg-open"), []byte(xdgOpenShim()), 0o755); err != nil {
 		return nil, err
 	}
-	if err := installHelperBinary(binPath); err != nil {
+	resolvedHelperArch := normalizeHelperArch(helperArch)
+	if session.HelperArch != "" {
+		resolvedHelperArch = normalizeHelperArch(session.HelperArch)
+	}
+	if err := installHelperBinary(binPath, resolvedHelperArch); err != nil {
 		return nil, err
 	}
 	session.Enabled = enabled
+	session.HelperArch = resolvedHelperArch
 	if session.SocketPath == "" {
 		session.SocketPath = filepath.Join(bridgeDir, hostSocketName)
 	}
@@ -85,11 +95,11 @@ func Prepare(stateDir string, enabled bool) (*Session, error) {
 	return session, nil
 }
 
-func Apply(stateDir string, enabled bool, merged devcontainer.MergedConfig) (*Session, devcontainer.MergedConfig, error) {
+func Apply(stateDir string, enabled bool, helperArch string, merged devcontainer.MergedConfig) (*Session, devcontainer.MergedConfig, error) {
 	if !enabled {
 		return nil, merged, nil
 	}
-	session, err := Prepare(stateDir, enabled)
+	session, err := Prepare(stateDir, enabled, helperArch)
 	if err != nil {
 		return nil, devcontainer.MergedConfig{}, err
 	}
@@ -184,9 +194,9 @@ func xdgOpenShim() string {
 	return "#!/bin/sh\nexec /var/run/hatchctl/bridge/bin/devcontainer-open \"$@\"\n"
 }
 
-func installHelperBinary(binPath string) error {
+func installHelperBinary(binPath string, helperArch string) error {
 	helperPath := filepath.Join(binPath, "hatchctl")
-	data, err := helperBinaryData()
+	data, err := helperBinaryData(helperArch)
 	if err != nil {
 		return err
 	}
@@ -196,7 +206,7 @@ func installHelperBinary(binPath string) error {
 	return os.Chmod(helperPath, 0o755)
 }
 
-func helperBinaryData() ([]byte, error) {
+func helperBinaryData(helperArch string) ([]byte, error) {
 	if configured := os.Getenv(helperBinaryEnvVar); configured != "" {
 		data, err := os.ReadFile(configured)
 		if err != nil {
@@ -204,7 +214,24 @@ func helperBinaryData() ([]byte, error) {
 		}
 		return data, nil
 	}
-	return nil, fmt.Errorf("bridge helper not available; set %s to a linux hatchctl binary", helperBinaryEnvVar)
+	helperArch = normalizeHelperArch(helperArch)
+	data := embeddedHelpers[helperArch]
+	if len(data) > 0 {
+		return data, nil
+	}
+	supported := slices.Sorted(maps.Keys(embeddedHelpers))
+	if helperArch == "" {
+		return nil, fmt.Errorf("bridge helper not embedded in this build; use a release binary or set %s", helperBinaryEnvVar)
+	}
+	return nil, fmt.Errorf("bridge helper arch %q not embedded in this build; supported=%v; use a release binary or set %s", helperArch, supported, helperBinaryEnvVar)
+}
+
+func normalizeHelperArch(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return runtime.GOARCH
+	}
+	return value
 }
 
 func applySession(session *Session, merged devcontainer.MergedConfig) devcontainer.MergedConfig {

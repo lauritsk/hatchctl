@@ -230,9 +230,13 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 	if err := r.enrichMergedConfig(ctx, &resolved, image); err != nil {
 		return UpResult{}, err
 	}
+	helperArch, err := r.inspectImageArchitecture(ctx, image)
+	if err != nil {
+		return UpResult{}, err
+	}
 	var bridgeReport *bridge.Report
 	r.emitProgress(opts.Events, "Configuring bridge support")
-	bridgeReport, err = r.applyBridgeConfig(&resolved, opts.BridgeEnabled)
+	bridgeReport, err = r.applyBridgeConfig(&resolved, opts.BridgeEnabled, helperArch)
 	if err != nil {
 		return UpResult{}, err
 	}
@@ -257,7 +261,7 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 	}
 	if bridgeReport != nil {
 		r.emitProgress(opts.Events, "Starting bridge session")
-		startedBridge, err := bridge.Start(resolved.StateDir, opts.BridgeEnabled, containerID)
+		startedBridge, err := bridge.Start(resolved.StateDir, opts.BridgeEnabled, helperArch, containerID)
 		if err != nil {
 			return UpResult{}, err
 		}

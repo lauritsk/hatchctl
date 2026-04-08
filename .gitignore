@@ -3,7 +3,8 @@ mise.local.toml
 mise.local.lock
 .dist/
 dist/
-internal/bridge/embedded/
+
+# Bridge helper assets are intentionally committed as embed placeholders.
 
 # Created by https://www.toptal.com/developers/gitignore/api/go
 # Edit at https://www.toptal.com/developers/gitignore?templates=go

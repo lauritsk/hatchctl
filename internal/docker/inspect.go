@@ -13,8 +13,10 @@ type InspectConfig struct {
 }
 
 type ImageInspect struct {
-	ID     string        `json:"Id"`
-	Config InspectConfig `json:"Config"`
+	ID           string        `json:"Id"`
+	Architecture string        `json:"Architecture"`
+	Os           string        `json:"Os"`
+	Config       InspectConfig `json:"Config"`
 }
 
 type ContainerState struct {

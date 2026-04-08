@@ -66,11 +66,11 @@ type bridgeHostService struct {
 	forwarded   map[int]forwardedPort
 }
 
-func Start(stateDir string, enabled bool, containerID string) (*Session, error) {
+func Start(stateDir string, enabled bool, helperArch string, containerID string) (*Session, error) {
 	if !enabled {
 		return nil, nil
 	}
-	session, err := Prepare(stateDir, enabled)
+	session, err := Prepare(stateDir, enabled, helperArch)
 	if err != nil {
 		return nil, err
 	}
@@ -121,7 +121,7 @@ func Start(stateDir string, enabled bool, containerID string) (*Session, error) 
 }
 
 func Serve(ctx context.Context, stateDir string, containerID string) error {
-	session, err := Prepare(stateDir, true)
+	session, err := Prepare(stateDir, true, "")
 	if err != nil {
 		return err
 	}
@@ -369,7 +369,7 @@ func stopExisting(session *Session) error {
 }
 
 func Stop(stateDir string) error {
-	session, err := Prepare(stateDir, true)
+	session, err := Prepare(stateDir, true, "")
 	if err != nil {
 		return err
 	}

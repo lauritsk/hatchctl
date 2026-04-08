@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
@@ -213,6 +214,20 @@ func (r *Runner) inspectImageUser(ctx context.Context, image string) (string, er
 		return "", err
 	}
 	return inspect.Config.User, nil
+}
+
+func (r *Runner) inspectImageArchitecture(ctx context.Context, image string) (string, error) {
+	inspect, err := r.docker.InspectImage(ctx, image)
+	if err != nil {
+		if docker.IsNotFound(err) {
+			return runtime.GOARCH, nil
+		}
+		return "", err
+	}
+	if inspect.Architecture != "" {
+		return inspect.Architecture, nil
+	}
+	return runtime.GOARCH, nil
 }
 
 func featureMetadata(features []devcontainer.ResolvedFeature) []devcontainer.MetadataEntry {

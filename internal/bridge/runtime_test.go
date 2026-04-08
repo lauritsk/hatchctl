@@ -175,12 +175,40 @@ func TestHelperBinaryDataUsesConfiguredPath(t *testing.T) {
 	}
 	t.Setenv(helperBinaryEnvVar, helperPath)
 
-	got, err := helperBinaryData()
+	got, err := helperBinaryData("amd64")
 	if err != nil {
 		t.Fatalf("helper binary data: %v", err)
 	}
 	if string(got) != "helper" {
 		t.Fatalf("unexpected helper data %q", string(got))
+	}
+}
+
+func TestHelperBinaryDataUsesEmbeddedHelper(t *testing.T) {
+	original := embeddedHelpers
+	embeddedHelpers = map[string][]byte{"amd64": []byte("embedded-helper")}
+	t.Cleanup(func() { embeddedHelpers = original })
+
+	got, err := helperBinaryData("amd64")
+	if err != nil {
+		t.Fatalf("helper binary data: %v", err)
+	}
+	if string(got) != "embedded-helper" {
+		t.Fatalf("unexpected helper data %q", string(got))
+	}
+}
+
+func TestHelperBinaryDataFailsWithoutEmbeddedHelperOrOverride(t *testing.T) {
+	original := embeddedHelpers
+	embeddedHelpers = map[string][]byte{}
+	t.Cleanup(func() { embeddedHelpers = original })
+
+	_, err := helperBinaryData("amd64")
+	if err == nil {
+		t.Fatal("expected helper binary lookup to fail")
+	}
+	if got := err.Error(); got != "bridge helper arch \"amd64\" not embedded in this build; supported=[]; use a release binary or set HATCHCTL_BRIDGE_HELPER" {
+		t.Fatalf("unexpected error %q", got)
 	}
 }
 
@@ -192,7 +220,7 @@ func TestPrepareAndRuntimeFilesUseOwnerOnlyPermissions(t *testing.T) {
 	t.Setenv(helperBinaryEnvVar, helperPath)
 
 	stateDir := t.TempDir()
-	session, err := Prepare(stateDir, true)
+	session, err := Prepare(stateDir, true, "amd64")
 	if err != nil {
 		t.Fatalf("prepare bridge session: %v", err)
 	}

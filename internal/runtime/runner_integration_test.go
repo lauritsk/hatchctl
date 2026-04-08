@@ -777,6 +777,73 @@ func TestUpStartsBridgeOnFirstRunAndReusesSession(t *testing.T) {
 	}
 }
 
+func TestUpEnablingBridgeRecreatesExistingManagedContainer(t *testing.T) {
+	setBridgeHelperEnv(t)
+	client := dockerClientForTest(t)
+	ctx := context.Background()
+	workspace := t.TempDir()
+	configDir := filepath.Join(workspace, ".devcontainer")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	baseImage := "hatchctl-bridge-toggle-test-" + sanitizeName(filepath.Base(workspace))
+	baseDockerfileDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(baseDockerfileDir, "Dockerfile"), []byte("FROM alpine:3.20\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.Run(ctx, docker.RunOptions{Args: []string{"build", "-t", baseImage, baseDockerfileDir}}); err != nil {
+		t.Fatalf("build base image: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rmi", "-f", baseImage}})
+	})
+	configPath := filepath.Join(configDir, "devcontainer.json")
+	if err := os.WriteFile(configPath, []byte(`{"image":"`+baseImage+`","workspaceFolder":"/workspaces/demo"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	runner := NewRunner(client)
+	first, err := runner.Up(ctx, UpOptions{Workspace: workspace, Recreate: true})
+	if err != nil {
+		t.Fatalf("first up: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rm", "-f", first.ContainerID}})
+	})
+
+	second, err := runner.Up(ctx, UpOptions{Workspace: workspace, BridgeEnabled: true})
+	if err != nil {
+		t.Fatalf("second up with bridge: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rm", "-f", second.ContainerID}})
+		_ = bridge.Stop(second.StateDir)
+	})
+	if second.ContainerID == first.ContainerID {
+		t.Fatalf("expected bridge enablement to recreate container, reused %q", second.ContainerID)
+	}
+	if _, err := client.InspectContainer(ctx, first.ContainerID); err == nil {
+		t.Fatalf("expected old container %q to be removed", first.ContainerID)
+	}
+	inspect, err := client.InspectContainer(ctx, second.ContainerID)
+	if err != nil {
+		t.Fatalf("inspect recreated container: %v", err)
+	}
+	if inspect.Config.Labels[devcontainer.BridgeEnabledLabel] != "true" {
+		t.Fatalf("expected bridge label on recreated container %#v", inspect.Config.Labels)
+	}
+	if got := envMap(inspect.Config.Env)["BROWSER"]; got != "/var/run/hatchctl/bridge/bin/devcontainer-open" {
+		t.Fatalf("expected bridge env on recreated container %#v", inspect.Config.Env)
+	}
+	state, err := devcontainer.ReadState(second.StateDir)
+	if err != nil {
+		t.Fatalf("read state: %v", err)
+	}
+	if !state.BridgeEnabled || state.BridgeSessionID == "" {
+		t.Fatalf("unexpected stored bridge state %#v", state)
+	}
+}
+
 func setBridgeHelperEnv(t *testing.T) {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "hatchctl")
@@ -1156,6 +1223,69 @@ func TestComposeUpStartsBridgeAndReusesSession(t *testing.T) {
 	}
 	if second.Bridge == nil || second.Bridge.ID != state.BridgeSessionID {
 		t.Fatalf("expected compose bridge session reuse %#v state=%#v", second.Bridge, state)
+	}
+}
+
+func TestComposeUpEnablingBridgeRecreatesExistingManagedContainer(t *testing.T) {
+	setBridgeHelperEnv(t)
+	client := dockerClientForTest(t)
+	ctx := context.Background()
+	workspace := t.TempDir()
+	configDir := filepath.Join(workspace, ".devcontainer")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	baseImage := "hatchctl-compose-bridge-toggle-test-" + sanitizeName(filepath.Base(workspace))
+	baseDockerfileDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(baseDockerfileDir, "Dockerfile"), []byte("FROM alpine:3.20\nCMD [\"/bin/sh\",\"-lc\",\"trap 'exit 0' TERM INT; while sleep 1000; do :; done\"]\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.Run(ctx, docker.RunOptions{Args: []string{"build", "-t", baseImage, baseDockerfileDir}}); err != nil {
+		t.Fatalf("build base image: %v", err)
+	}
+	composePath := filepath.Join(configDir, "docker-compose.yml")
+	composeYAML := "services:\n  app:\n    image: " + baseImage + "\n    working_dir: /workspaces/demo\n    volumes:\n      - ..:/workspaces/demo\n"
+	if err := os.WriteFile(composePath, []byte(composeYAML), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(configDir, "devcontainer.json")
+	if err := os.WriteFile(configPath, []byte(`{"dockerComposeFile":"docker-compose.yml","service":"app","workspaceFolder":"/workspaces/demo"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	runner := NewRunner(client)
+	first, err := runner.Up(ctx, UpOptions{Workspace: workspace, Recreate: true})
+	if err != nil {
+		t.Fatalf("first compose up: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rm", "-f", first.ContainerID}})
+		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rmi", "-f", baseImage}})
+	})
+
+	second, err := runner.Up(ctx, UpOptions{Workspace: workspace, BridgeEnabled: true})
+	if err != nil {
+		t.Fatalf("second compose up with bridge: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rm", "-f", second.ContainerID}})
+		_ = bridge.Stop(second.StateDir)
+	})
+	if second.ContainerID == first.ContainerID {
+		t.Fatalf("expected compose bridge enablement to recreate container, reused %q", second.ContainerID)
+	}
+	if _, err := client.InspectContainer(ctx, first.ContainerID); err == nil {
+		t.Fatalf("expected old compose container %q to be removed", first.ContainerID)
+	}
+	inspect, err := client.InspectContainer(ctx, second.ContainerID)
+	if err != nil {
+		t.Fatalf("inspect recreated compose container: %v", err)
+	}
+	if inspect.Config.Labels[devcontainer.BridgeEnabledLabel] != "true" {
+		t.Fatalf("expected bridge label on recreated compose container %#v", inspect.Config.Labels)
+	}
+	if got := envMap(inspect.Config.Env)["BROWSER"]; got != "/var/run/hatchctl/bridge/bin/devcontainer-open" {
+		t.Fatalf("expected bridge env on recreated compose container %#v", inspect.Config.Env)
 	}
 }
 

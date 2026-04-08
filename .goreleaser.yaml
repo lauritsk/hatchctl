@@ -3,10 +3,14 @@
 
 version: 2
 
+env:
+  - BRIDGE_HELPERS_DIR=internal/bridge/assets
+
 before:
   hooks:
     - go mod tidy
     - go generate ./...
+    - ./scripts/build-bridge-helpers.sh
 
 builds:
   - main: ./...
