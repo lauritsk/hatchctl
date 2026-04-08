@@ -2,15 +2,15 @@
 
 ## Not Done
 
-- make `internal/display` the single presentation layer for progress, warnings, debug logs, and final command output so runtime/security paths stop writing directly to stderr and emit renderer-controlled events instead
-- centralize atomic file writes and recovery semantics for stateful artifacts such as workspace state, resolved plan cache, bridge session/config/status files, and helper shims so partial writes or interruptions cannot leave corrupted control files behind
-- extend the current runtime backend/engine seams so Docker, Compose, and other host process execution share one narrow boundary for logging, env policy, and lifecycle behavior instead of scattering command orchestration across runtime and bridge paths
-- isolate bridge support behind a narrower subsystem contract that separates planning, config injection, state persistence, and daemon/runtime behavior so optional macOS-specific behavior stops leaking through core runtime orchestration
-- replace hatchctl-owned shell-script assembly for UID/GID reconciliation, dotfiles installation, exec-home discovery, and feature build wiring with typed operations or fixed helper artifacts where possible to reduce quoting, portability, and injection risk
 - add first-class `config.toml` support with XDG/Linux and macOS-compliant config discovery plus a clear merge/override hierarchy across user, workspace, and CLI options; ensure cache/state/artifact outputs also follow platform best practices
 
 ## Done
 
+- [x] make `internal/display` the single presentation layer for progress, warnings, debug logs, and final command output so runtime/security paths stop writing directly to stderr and emit renderer-controlled events instead
+- [x] centralize atomic file writes and recovery semantics for stateful artifacts such as workspace state, resolved plan cache, bridge session/config/status files, and helper shims so partial writes or interruptions cannot leave corrupted control files behind
+- [x] extend the current runtime backend/engine seams so Docker, Compose, and other host process execution share one narrow boundary for logging, env policy, and lifecycle behavior instead of scattering command orchestration across runtime and bridge paths
+- [x] isolate bridge support behind a narrower subsystem contract that separates planning, config injection, state persistence, and daemon/runtime behavior so optional macOS-specific behavior stops leaking through core runtime orchestration
+- [x] replace hatchctl-owned shell-script assembly for UID/GID reconciliation, dotfiles installation, exec-home discovery, and feature build wiring with typed operations or fixed helper artifacts where possible to reduce quoting, portability, and injection risk
 - [x] move image verification policy to the CLI/runtime boundary and keep `internal/security` limited to structured verification results so trust behavior is explicit, testable, and consistent across image and feature flows
 - [x] split `internal/runtime.Runner` into a small orchestration layer plus focused services such as planner, image manager, container manager, lifecycle runner, bridge manager, and state store so command flows stop accumulating cross-cutting responsibilities in one type
 - [x] make devcontainer resolution side-effect free and move lockfile, feature-state, plan-cache, workspace-state, and bridge-state persistence behind explicit store interfaces so read/inspect paths do not perform hidden writes
