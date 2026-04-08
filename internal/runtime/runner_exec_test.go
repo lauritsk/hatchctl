@@ -36,7 +36,7 @@ func TestDockerExecArgsFallsBackToContainerUserAndInjectsHome(t *testing.T) {
 	if !strings.Contains(gotLog, "inspect|container-123") {
 		t.Fatalf("expected inspect fallback, got log %q", gotLog)
 	}
-	if !strings.Contains(gotLog, "exec|-u|app|container-123|sh|-lc|"+resolveHomeCommand) {
+	if !strings.Contains(gotLog, "exec|-u|app|container-123|cat|"+passwdFilePath) {
 		t.Fatalf("expected home resolution exec, got log %q", gotLog)
 	}
 	if strings.Contains(gotLog, "|-e|HOME=") {
@@ -65,7 +65,7 @@ func TestDockerExecArgsPreservesExplicitHome(t *testing.T) {
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("read fake docker log: %v", err)
 	}
-	if gotLog := string(data); strings.Contains(gotLog, "sh|-lc|"+resolveHomeCommand) {
+	if gotLog := string(data); strings.Contains(gotLog, "cat|"+passwdFilePath) {
 		t.Fatalf("did not expect home resolution lookup, got log %q", gotLog)
 	}
 }
@@ -85,14 +85,11 @@ func TestInstallDotfilesUsesResolvedHome(t *testing.T) {
 		t.Fatalf("read fake docker log: %v", err)
 	}
 	gotLog := string(data)
-	if !strings.Contains(gotLog, "exec|-u|app|container-123|sh|-lc|"+resolveHomeCommand) {
+	if !strings.Contains(gotLog, "exec|-u|app|container-123|cat|"+passwdFilePath) {
 		t.Fatalf("expected home resolution lookup, got log %q", gotLog)
 	}
-	if !strings.Contains(gotLog, "exec|-i|-u|app|-e|HOME=/home/app|container-123|/bin/sh|-lc|") {
+	if !strings.Contains(gotLog, "exec|-i|-u|app|-e|HOME=/home/app|container-123|/bin/sh|-s|--|https://github.com/example/dotfiles.git|$HOME/.dotfiles|") {
 		t.Fatalf("expected dotfiles exec to inject HOME, got log %q", gotLog)
-	}
-	if !strings.Contains(gotLog, "git clone --depth 1") || !strings.Contains(gotLog, "ln -snf \"$file\" \"$HOME/$base\"") {
-		t.Fatalf("expected dotfiles install script in log, got %q", gotLog)
 	}
 }
 
@@ -116,7 +113,7 @@ func fakeDockerBinary(t *testing.T, logPath string) string {
 		"    printf '[{\"Id\":\"container-123\",\"Name\":\"/container-123\",\"Image\":\"img\",\"Config\":{\"User\":\"app\",\"Env\":[\"HOME=/root\"]},\"State\":{\"Status\":\"running\",\"Running\":true}}]'\n" +
 		"    ;;\n" +
 		"  exec)\n" +
-		"    printf '/home/app'\n" +
+		"    printf 'root:x:0:0:root:/root:/bin/sh\napp:x:1000:1000::/home/app:/bin/sh\n'\n" +
 		"    ;;\n" +
 		"esac\n"
 	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {

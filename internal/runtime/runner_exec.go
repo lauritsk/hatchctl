@@ -3,12 +3,13 @@ package runtime
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	"github.com/lauritsk/hatchctl/internal/docker"
 )
 
-const resolveHomeCommand = `uid=$(id -u 2>/dev/null || true); if [ -n "$uid" ]; then awk -F: -v uid="$uid" '$3 == uid { print $6; exit }' /etc/passwd; fi`
+const passwdFilePath = "/etc/passwd"
 
 func (r *Runner) dockerExecArgs(ctx context.Context, containerID string, resolved devcontainer.ResolvedConfig, stdin bool, tty bool, extraEnv map[string]string, command []string) ([]string, error) {
 	user, err := r.effectiveExecUser(ctx, containerID, resolved)
@@ -77,12 +78,45 @@ func (r *Runner) resolveExecHome(ctx context.Context, containerID string, user s
 	if user != "" {
 		args = append(args, "-u", user)
 	}
-	args = append(args, containerID, "sh", "-lc", resolveHomeCommand)
-	home, err := r.backend.Output(ctx, runtimeCommand{Kind: runtimeCommandDocker, Args: args})
+	args = append(args, containerID, "cat", passwdFilePath)
+	passwd, err := r.backend.Output(ctx, runtimeCommand{Kind: runtimeCommandDocker, Args: args})
 	if err != nil {
 		return "", fmt.Errorf("resolve home for container user %q: %w", firstNonEmpty(user, "default"), err)
 	}
+	home, _ := homeFromPasswd(passwd, user)
 	return home, nil
+}
+
+func homeFromPasswd(passwd string, user string) (string, bool) {
+	lookupName, lookupUID := passwdLookup(user)
+	for _, line := range strings.Split(passwd, "\n") {
+		fields := strings.Split(line, ":")
+		if len(fields) < 7 {
+			continue
+		}
+		if lookupUID != "" {
+			if fields[2] == lookupUID {
+				return fields[5], true
+			}
+			continue
+		}
+		if fields[0] == lookupName {
+			return fields[5], true
+		}
+	}
+	return "", false
+}
+
+func passwdLookup(user string) (string, string) {
+	name := user
+	if before, _, ok := strings.Cut(user, ":"); ok {
+		name = before
+	}
+	name = firstNonEmpty(name, "root")
+	if isNumericUser(name) {
+		return "", name
+	}
+	return name, ""
 }
 
 func effectiveRemoteUserFromContainerInspect(inspect *docker.ContainerInspect, resolved devcontainer.ResolvedConfig) string {

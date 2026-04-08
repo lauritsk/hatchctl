@@ -10,7 +10,26 @@ import (
 
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	"github.com/lauritsk/hatchctl/internal/docker"
+	"github.com/lauritsk/hatchctl/internal/fileutil"
 )
+
+const featureInstallHelper = `#!/bin/sh
+set -eu
+feature_dir=$1
+builtin_env=$2
+options_env=$3
+
+set -a
+. "$builtin_env"
+if [ -f "$options_env" ]; then
+  . "$options_env"
+fi
+set +a
+
+cd "$feature_dir"
+chmod +x ./install.sh
+exec ./install.sh
+`
 
 func (r *Runner) enrichMergedConfig(ctx context.Context, resolved *devcontainer.ResolvedConfig, image string) error {
 	inspect, err := r.backend.InspectImage(ctx, image)
@@ -83,13 +102,17 @@ func writeFeatureBuildContext(buildDir string, baseImage string, features []devc
 		"_CONTAINER_USER": containerUser,
 		"_REMOTE_USER":    remoteUser,
 	}
-	if err := os.WriteFile(filepath.Join(buildDir, "devcontainer-features.builtin.env"), []byte(shellEnvScript(builtinEnv)), 0o600); err != nil {
+	if err := fileutil.WriteFile(filepath.Join(buildDir, "devcontainer-features.builtin.env"), []byte(shellEnvFile(builtinEnv)), 0o600); err != nil {
+		return err
+	}
+	if err := fileutil.WriteFile(filepath.Join(buildDir, "devcontainer-features-install.sh"), []byte(featureInstallHelper), 0o755); err != nil {
 		return err
 	}
 	var dockerfile strings.Builder
 	dockerfile.WriteString("FROM " + baseImage + "\nUSER root\n")
 	dockerfile.WriteString("RUN mkdir -p /tmp/dev-container-features\n")
 	dockerfile.WriteString("COPY devcontainer-features.builtin.env /tmp/dev-container-features/devcontainer-features.builtin.env\n")
+	dockerfile.WriteString("COPY devcontainer-features-install.sh /tmp/dev-container-features/devcontainer-features-install.sh\n")
 	for i, feature := range features {
 		rel := fmt.Sprintf("feature-%02d", i)
 		dst := filepath.Join(buildDir, rel)
@@ -97,7 +120,7 @@ func writeFeatureBuildContext(buildDir string, baseImage string, features []devc
 			return err
 		}
 		if len(feature.Options) > 0 {
-			if err := os.WriteFile(filepath.Join(dst, "devcontainer-features.env"), []byte(shellEnvScript(feature.Options)), 0o600); err != nil {
+			if err := fileutil.WriteFile(filepath.Join(dst, "devcontainer-features.env"), []byte(shellEnvFile(feature.Options)), 0o600); err != nil {
 				return err
 			}
 		}
@@ -107,27 +130,23 @@ func writeFeatureBuildContext(buildDir string, baseImage string, features []devc
 				dockerfile.WriteString("ENV " + key + "=" + dockerfileQuotedValue(feature.Metadata.ContainerEnv[key]) + "\n")
 			}
 		}
-		dockerfile.WriteString("RUN if [ -f /tmp/hatchctl-features/" + rel + "/install.sh ]; then cd /tmp/hatchctl-features/" + rel + " && chmod +x ./install.sh && . /tmp/dev-container-features/devcontainer-features.builtin.env && if [ -f ./devcontainer-features.env ]; then . ./devcontainer-features.env; fi && ./install.sh; fi\n")
+		dockerfile.WriteString("RUN if [ -f /tmp/hatchctl-features/" + rel + "/install.sh ]; then /tmp/dev-container-features/devcontainer-features-install.sh /tmp/hatchctl-features/" + rel + " /tmp/dev-container-features/devcontainer-features.builtin.env /tmp/hatchctl-features/" + rel + "/devcontainer-features.env; fi\n")
 	}
 	if metadataLabel != "" {
 		dockerfile.WriteString("LABEL " + devcontainer.ImageMetadataLabel + "=" + dockerfileQuotedValue(metadataLabel) + "\n")
 	}
-	return os.WriteFile(filepath.Join(buildDir, "Dockerfile"), []byte(dockerfile.String()), 0o600)
+	return fileutil.WriteFile(filepath.Join(buildDir, "Dockerfile"), []byte(dockerfile.String()), 0o600)
 }
 
-func shellEnvScript(values map[string]string) string {
+func shellEnvFile(values map[string]string) string {
 	if len(values) == 0 {
 		return ""
 	}
 	var lines []string
-	for _, key := range sortedFeatureOptionKeys(values) {
-		lines = append(lines, "export "+key+"="+devcontainer.ShellQuote(values[key]))
+	for _, key := range devcontainer.SortedMapKeys(values) {
+		lines = append(lines, key+"="+devcontainer.ShellQuote(values[key]))
 	}
 	return strings.Join(lines, "\n") + "\n"
-}
-
-func sortedFeatureOptionKeys(values map[string]string) []string {
-	return devcontainer.SortedMapKeys(values)
 }
 
 func dockerfileQuotedValue(value string) string {

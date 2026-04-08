@@ -10,16 +10,51 @@ import (
 	ui "github.com/lauritsk/hatchctl/internal/display"
 )
 
-var dotfilesInstallCandidates = []string{
-	"install.sh",
-	"install",
-	"bootstrap.sh",
-	"bootstrap",
-	"script/bootstrap",
-	"setup.sh",
-	"setup",
-	"script/setup",
-}
+const dotfilesInstallHelper = `set -eu
+repo=$1
+target=$2
+install_command=${3:-}
+
+command -v git >/dev/null 2>&1 || { echo 'git not found in container PATH' >&2; exit 127; }
+if [ -e "$target/.git" ]; then
+  git -C "$target" pull --ff-only >/dev/null 2>&1 || true
+elif [ -e "$target" ]; then
+  echo "dotfiles target already exists and is not a git checkout: $target" >&2
+  exit 1
+else
+  mkdir -p "$(dirname "$target")"
+  git clone --depth 1 "$repo" "$target"
+fi
+cd "$target"
+if [ -n "$install_command" ]; then
+  if [ -f "./$install_command" ]; then
+    [ -x "./$install_command" ] || chmod +x "./$install_command"
+    exec "./$install_command"
+  fi
+  if [ -f "$install_command" ]; then
+    [ -x "$install_command" ] || chmod +x "$install_command"
+    exec "$install_command"
+  fi
+  exec /bin/sh -lc "$install_command"
+fi
+for candidate in install.sh install bootstrap.sh bootstrap script/bootstrap setup.sh setup script/setup; do
+  if [ -e "$candidate" ]; then
+    [ -x "$candidate" ] || chmod +x "$candidate"
+    exec "./$candidate"
+  fi
+done
+found=0
+for file in "$target"/.[!.]* "$target"/..?*; do
+  [ -e "$file" ] || continue
+  base=$(basename "$file")
+  [ "$base" = .git ] && continue
+  ln -snf "$file" "$HOME/$base"
+  found=1
+done
+if [ "$found" -eq 0 ]; then
+  echo 'No dotfiles install script or top-level dotfiles found.'
+fi
+`
 
 type DotfilesOptions struct {
 	Repository     string `json:"repository,omitempty"`
@@ -98,16 +133,6 @@ func quoteShell(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
 }
 
-func dotfilesTargetAssignment(value string) string {
-	if value == "$HOME" {
-		return `target="$HOME"`
-	}
-	if strings.HasPrefix(value, "$HOME/") {
-		return `target="$HOME"/` + quoteShell(strings.TrimPrefix(value, "$HOME/"))
-	}
-	return "target=" + quoteShell(value)
-}
-
 func dotfilesStateMatches(state devcontainer.State, opts DotfilesOptions) bool {
 	return state.DotfilesReady && state.DotfilesRepo == opts.Repository && state.DotfilesInstall == opts.InstallCommand && state.DotfilesTarget == opts.TargetPath
 }
@@ -130,69 +155,11 @@ func (r *Runner) installDotfiles(ctx context.Context, containerID string, resolv
 	if !opts.Enabled() {
 		return nil
 	}
-	args, err := r.dockerExecArgs(ctx, containerID, resolved, true, false, nil, []string{"/bin/sh", "-lc", dotfilesInstallScript(opts)})
+	args, err := r.dockerExecArgs(ctx, containerID, resolved, true, false, nil, []string{"/bin/sh", "-s", "--", opts.Repository, opts.TargetPath, opts.InstallCommand})
 	if err != nil {
 		return err
 	}
 	label := fmt.Sprintf("Installing dotfiles from %s", opts.Repository)
 	r.emitProgress(events, label)
-	return r.backend.Run(ctx, runtimeCommand{Kind: runtimeCommandDocker, Label: label, Args: args, Stdout: r.stdout, Stderr: r.stderr, Events: events})
-}
-
-func dotfilesInstallScript(opts DotfilesOptions) string {
-	var script strings.Builder
-	script.WriteString("set -eu\n")
-	script.WriteString("repo=" + quoteShell(opts.Repository) + "\n")
-	script.WriteString(dotfilesTargetAssignment(opts.TargetPath) + "\n")
-	script.WriteString("command -v git >/dev/null 2>&1 || { echo 'git not found in container PATH' >&2; exit 127; }\n")
-	script.WriteString("if [ -e \"$target/.git\" ]; then\n")
-	script.WriteString("  git -C \"$target\" pull --ff-only >/dev/null 2>&1 || true\n")
-	script.WriteString("elif [ -e \"$target\" ]; then\n")
-	script.WriteString("  echo \"dotfiles target already exists and is not a git checkout: $target\" >&2\n")
-	script.WriteString("  exit 1\n")
-	script.WriteString("else\n")
-	script.WriteString("  mkdir -p \"$(dirname \"$target\")\"\n")
-	script.WriteString("  git clone --depth 1 \"$repo\" \"$target\"\n")
-	script.WriteString("fi\n")
-	script.WriteString("cd \"$target\"\n")
-	if opts.InstallCommand != "" {
-		script.WriteString("install_command=" + quoteShell(opts.InstallCommand) + "\n")
-		script.WriteString("if [ -f \"./$install_command\" ]; then\n")
-		script.WriteString("  [ -x \"./$install_command\" ] || chmod +x \"./$install_command\"\n")
-		script.WriteString("  exec \"./$install_command\"\n")
-		script.WriteString("fi\n")
-		script.WriteString("if [ -f \"$install_command\" ]; then\n")
-		script.WriteString("  [ -x \"$install_command\" ] || chmod +x \"$install_command\"\n")
-		script.WriteString("  exec \"$install_command\"\n")
-		script.WriteString("fi\n")
-		script.WriteString("exec /bin/sh -lc \"$install_command\"\n")
-		return script.String()
-	}
-	script.WriteString("install_command=\"\"\n")
-	script.WriteString("for candidate in")
-	for _, candidate := range dotfilesInstallCandidates {
-		script.WriteString(" " + quoteShell(candidate))
-	}
-	script.WriteString("; do\n")
-	script.WriteString("  if [ -e \"$candidate\" ]; then\n")
-	script.WriteString("    install_command=$candidate\n")
-	script.WriteString("    break\n")
-	script.WriteString("  fi\n")
-	script.WriteString("done\n")
-	script.WriteString("if [ -n \"$install_command\" ]; then\n")
-	script.WriteString("  [ -x \"$install_command\" ] || chmod +x \"$install_command\"\n")
-	script.WriteString("  exec \"./$install_command\"\n")
-	script.WriteString("fi\n")
-	script.WriteString("found=0\n")
-	script.WriteString("for file in \"$target\"/.[!.]* \"$target\"/..?*; do\n")
-	script.WriteString("  [ -e \"$file\" ] || continue\n")
-	script.WriteString("  base=$(basename \"$file\")\n")
-	script.WriteString("  [ \"$base\" = .git ] && continue\n")
-	script.WriteString("  ln -snf \"$file\" \"$HOME/$base\"\n")
-	script.WriteString("  found=1\n")
-	script.WriteString("done\n")
-	script.WriteString("if [ \"$found\" -eq 0 ]; then\n")
-	script.WriteString("  echo 'No dotfiles install script or top-level dotfiles found.'\n")
-	script.WriteString("fi\n")
-	return script.String()
+	return r.backend.Run(ctx, runtimeCommand{Kind: runtimeCommandDocker, Label: label, Args: args, Stdin: strings.NewReader(dotfilesInstallHelper), Stdout: r.stdout, Stderr: r.stderr, Events: events})
 }

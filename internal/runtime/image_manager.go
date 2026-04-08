@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	ui "github.com/lauritsk/hatchctl/internal/display"
@@ -164,6 +165,6 @@ func (m *runtimeImageManager) EnsureUpdatedUIDContainer(ctx context.Context, res
 	if remoteUser == "" || remoteUser == "root" || isNumericUser(remoteUser) {
 		return nil
 	}
-	args := []string{"exec", "-u", "root", containerID, "sh", "-lc", updateUIDCommand, "sh", remoteUser, fmt.Sprintf("%d", uid), fmt.Sprintf("%d", gid)}
-	return m.runner.backend.Run(ctx, runtimeCommand{Kind: runtimeCommandDocker, Label: "Reconciling container user", Args: args, Stdout: m.runner.stdout, Stderr: m.runner.stderr, Events: events})
+	args := []string{"exec", "-i", "-u", "root", containerID, "sh", "-s", "--", remoteUser, fmt.Sprintf("%d", uid), fmt.Sprintf("%d", gid)}
+	return m.runner.backend.Run(ctx, runtimeCommand{Kind: runtimeCommandDocker, Label: "Reconciling container user", Args: args, Stdin: strings.NewReader(updateUIDScript), Stdout: m.runner.stdout, Stderr: m.runner.stderr, Events: events})
 }
