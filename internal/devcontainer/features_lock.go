@@ -121,7 +121,7 @@ func WriteFeatureStateFile(stateDir string, features []ResolvedFeature) error {
 		}
 		return nil
 	}
-	if err := os.MkdirAll(stateDir, 0o755); err != nil {
+	if err := os.MkdirAll(stateDir, 0o700); err != nil {
 		return err
 	}
 	state := FeatureStateFile{Features: make([]FeatureStateEntry, 0, len(features))}
@@ -144,5 +144,5 @@ func WriteFeatureStateFile(stateDir string, features []ResolvedFeature) error {
 	if err != nil {
 		return err
 	}
-	return fileutil.WriteFile(path, data, 0o644)
+	return fileutil.WriteFile(path, data, 0o600)
 }

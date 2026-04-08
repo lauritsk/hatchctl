@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -25,10 +26,13 @@ import (
 )
 
 var (
-	featureHTTPTimeout             = 90 * time.Second
-	featureArtifactMaxBytes  int64 = 64 << 20
-	featureMetadataMaxBytes  int64 = 2 << 20
-	featureErrorBodyMaxBytes int64 = 64 << 10
+	featureHTTPTimeout                 = 90 * time.Second
+	featureArtifactMaxBytes      int64 = 64 << 20
+	featureMetadataMaxBytes      int64 = 2 << 20
+	featureErrorBodyMaxBytes     int64 = 64 << 10
+	featureExtractedMaxBytes     int64 = 256 << 20
+	featureExtractedMaxFiles           = 4096
+	featureExtractedMaxFileBytes int64 = 64 << 20
 )
 
 type ResolvedFeature struct {
@@ -326,6 +330,9 @@ func parseFeatureSource(configDir string, source string) (parsedFeatureSource, e
 		return parsedFeatureSource{}, err
 	}
 	if strings.HasPrefix(source, "https://") || strings.HasPrefix(source, "http://") {
+		if err := validateTarballURL(source); err != nil {
+			return parsedFeatureSource{}, err
+		}
 		return parsedFeatureSource{Kind: "direct-tarball", Source: source}, nil
 	}
 	if githubRef, err := parseGitHubFeatureReference(source); err == nil {
@@ -429,6 +436,9 @@ func fetchOCIFeature(ctx context.Context, cacheDir string, source string, ref oc
 	verification := security.VerificationResult{}
 	if verifyImage != nil {
 		verification = verifyImage(ctx, ref.Registry+"/"+ref.Repository+"@"+digest)
+		if err := validateOCIFeatureVerification(source, ref, verification); err != nil {
+			return "", "", "", "", verification, err
+		}
 	}
 	featureDir := filepath.Join(baseDir, sanitizeFeatureCacheRef(digest))
 	if _, err := os.Stat(filepath.Join(featureDir, "devcontainer-feature.json")); err == nil {
@@ -706,6 +716,8 @@ func extractFeatureLayer(reader io.Reader, dstDir string) error {
 	if err != nil {
 		return err
 	}
+	var extractedFiles int
+	var extractedBytes int64
 	for {
 		header, err := tarReader.Next()
 		if err == io.EOF {
@@ -724,14 +736,28 @@ func extractFeatureLayer(reader io.Reader, dstDir string) error {
 		}
 		switch header.Typeflag {
 		case tar.TypeDir:
-			if err := os.MkdirAll(target, 0o755); err != nil {
+			if err := os.MkdirAll(target, 0o700); err != nil {
 				return err
 			}
 		case tar.TypeReg, tar.TypeRegA:
-			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			if header.Size < 0 {
+				return fmt.Errorf("feature archive contains invalid file size for %s", header.Name)
+			}
+			if header.Size > featureExtractedMaxFileBytes {
+				return fmt.Errorf("feature archive file %s exceeds %d bytes", header.Name, featureExtractedMaxFileBytes)
+			}
+			extractedFiles++
+			if extractedFiles > featureExtractedMaxFiles {
+				return fmt.Errorf("feature archive exceeds %d files", featureExtractedMaxFiles)
+			}
+			extractedBytes += header.Size
+			if extractedBytes > featureExtractedMaxBytes {
+				return fmt.Errorf("feature archive exceeds %d bytes when extracted", featureExtractedMaxBytes)
+			}
+			if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
 				return err
 			}
-			file, err := os.OpenFile(target, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, os.FileMode(header.Mode))
+			file, err := os.OpenFile(target, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, os.FileMode(header.Mode)&0o755)
 			if err != nil {
 				return err
 			}
@@ -744,6 +770,51 @@ func extractFeatureLayer(reader io.Reader, dstDir string) error {
 			}
 		}
 	}
+}
+
+func validateTarballURL(rawURL string) error {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return err
+	}
+	if strings.EqualFold(u.Scheme, "https") {
+		return nil
+	}
+	if strings.EqualFold(u.Scheme, "http") && isLoopbackHost(u.Hostname()) {
+		return nil
+	}
+	return fmt.Errorf("feature tarball %q must use https or loopback http", rawURL)
+}
+
+func allowInsecureFeatureSources() bool {
+	value, ok := os.LookupEnv(security.AllowInsecureFeaturesEnvVar)
+	if !ok {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
+}
+
+func validateOCIFeatureVerification(source string, ref ociReference, verification security.VerificationResult) error {
+	if verification.Verified || verification.Reason == "" {
+		return nil
+	}
+	if allowInsecureFeatureSources() || ref.Insecure {
+		return nil
+	}
+	return fmt.Errorf("verify OCI feature %q: %s", source, verification.Error())
+}
+
+func isLoopbackHost(host string) bool {
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 func archivePathHasDotDot(name string) bool {

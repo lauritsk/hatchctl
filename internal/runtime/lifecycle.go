@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 
@@ -14,6 +15,8 @@ type commandIO struct {
 	Stdout io.Writer
 	Stderr io.Writer
 }
+
+var errHostLifecycleNotAllowed = errors.New("host lifecycle commands require explicit trust")
 
 func runHostLifecycle(ctx context.Context, cwd string, command devcontainer.LifecycleCommand, streams commandIO, backend runtimeBackend) error {
 	if command.Empty() {
@@ -52,8 +55,11 @@ func lifecycleProgressLabel(name string) string {
 	return fmt.Sprintf("Running %s lifecycle hook", name)
 }
 
-func (r *Runner) runLifecycleForUp(ctx context.Context, resolved devcontainer.ResolvedConfig, containerID string, created bool, state devcontainer.State, dotfiles DotfilesOptions, events ui.Sink) error {
+func (r *Runner) runLifecycleForUp(ctx context.Context, resolved devcontainer.ResolvedConfig, containerID string, created bool, state devcontainer.State, dotfiles DotfilesOptions, allowHostLifecycle bool, events ui.Sink) error {
 	if created || !state.LifecycleReady {
+		if err := ensureHostLifecycleAllowed(resolved.Config.InitializeCommand, allowHostLifecycle); err != nil {
+			return err
+		}
 		if err := runHostLifecycle(ctx, resolved.WorkspaceFolder, resolved.Config.InitializeCommand, r.progressCommandIO(events, lifecycleProgressLabel("initializeCommand"), r.commandIO()), r.backend); err != nil {
 			return err
 		}
@@ -78,9 +84,12 @@ func (r *Runner) runLifecycleForUp(ctx context.Context, resolved devcontainer.Re
 	return r.runContainerLifecycleList(ctx, containerID, resolved, resolved.Merged.PostAttachCommands, events, lifecycleProgressLabel("postAttachCommand"))
 }
 
-func (r *Runner) runLifecyclePhase(ctx context.Context, resolved devcontainer.ResolvedConfig, containerID string, phase string, state devcontainer.State, dotfiles DotfilesOptions, runDotfiles bool, events ui.Sink) error {
+func (r *Runner) runLifecyclePhase(ctx context.Context, resolved devcontainer.ResolvedConfig, containerID string, phase string, state devcontainer.State, dotfiles DotfilesOptions, runDotfiles bool, allowHostLifecycle bool, events ui.Sink) error {
 	switch phase {
 	case "all":
+		if err := ensureHostLifecycleAllowed(resolved.Config.InitializeCommand, allowHostLifecycle); err != nil {
+			return err
+		}
 		if err := runHostLifecycle(ctx, resolved.WorkspaceFolder, resolved.Config.InitializeCommand, r.progressCommandIO(events, lifecycleProgressLabel("initializeCommand"), r.commandIO()), r.backend); err != nil {
 			return err
 		}
@@ -103,6 +112,9 @@ func (r *Runner) runLifecyclePhase(ctx context.Context, resolved devcontainer.Re
 		}
 		return r.runContainerLifecycleList(ctx, containerID, resolved, resolved.Merged.PostAttachCommands, events, lifecycleProgressLabel("postAttachCommand"))
 	case "create":
+		if err := ensureHostLifecycleAllowed(resolved.Config.InitializeCommand, allowHostLifecycle); err != nil {
+			return err
+		}
 		if err := runHostLifecycle(ctx, resolved.WorkspaceFolder, resolved.Config.InitializeCommand, r.progressCommandIO(events, lifecycleProgressLabel("initializeCommand"), r.commandIO()), r.backend); err != nil {
 			return err
 		}
@@ -128,6 +140,13 @@ func (r *Runner) runLifecyclePhase(ctx context.Context, resolved devcontainer.Re
 	default:
 		return fmt.Errorf("invalid lifecycle phase %q; expected all, create, start, or attach", phase)
 	}
+}
+
+func ensureHostLifecycleAllowed(command devcontainer.LifecycleCommand, allow bool) error {
+	if command.Empty() || allow {
+		return nil
+	}
+	return fmt.Errorf("%w; rerun with --allow-host-lifecycle or set HATCHCTL_ALLOW_HOST_LIFECYCLE=1", errHostLifecycleNotAllowed)
 }
 
 func (r *Runner) runContainerLifecycleList(ctx context.Context, containerID string, resolved devcontainer.ResolvedConfig, commands []devcontainer.LifecycleCommand, events ui.Sink, label string) error {

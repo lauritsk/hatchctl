@@ -36,7 +36,11 @@ func (p imageVerificationPolicy) Apply(result security.VerificationResult, event
 }
 
 func envTruthy(name string) bool {
-	switch strings.ToLower(strings.TrimSpace(os.Getenv(name))) {
+	return envTruthyValue(os.Getenv(name))
+}
+
+func envTruthyValue(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
 	case "1", "true", "yes", "on":
 		return true
 	default:

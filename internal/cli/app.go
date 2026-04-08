@@ -115,6 +115,7 @@ func (a *App) newUpCommand(global *globalOptions) *cobra.Command {
 	var featureTimeout time.Duration
 	var recreate bool
 	var bridgeEnabled bool
+	allowHostLifecycle := envTruthy("HATCHCTL_ALLOW_HOST_LIFECYCLE")
 	var jsonOut bool
 	dotfiles := defaultDotfilesOptions()
 	cmd := &cobra.Command{
@@ -132,20 +133,21 @@ func (a *App) newUpCommand(global *globalOptions) *cobra.Command {
 				return err
 			}
 			result, err := a.runner.Up(cmd.Context(), runtime.UpOptions{
-				Workspace:      defaults.Workspace,
-				ConfigPath:     defaults.ConfigPath,
-				StateDir:       defaults.StateDir,
-				CacheDir:       defaults.CacheDir,
-				FeatureTimeout: defaults.FeatureTimeout,
-				LockfilePolicy: policy,
-				Dotfiles:       defaults.Dotfiles.runtime(),
-				Recreate:       recreate,
-				BridgeEnabled:  defaults.BridgeEnabled,
-				Verbose:        global.Verbose || global.Debug,
-				Debug:          global.Debug,
-				Events:         renderer.Events(),
-				Stdout:         renderer.Stdout(),
-				Stderr:         renderer.Stderr(),
+				Workspace:          defaults.Workspace,
+				ConfigPath:         defaults.ConfigPath,
+				StateDir:           defaults.StateDir,
+				CacheDir:           defaults.CacheDir,
+				FeatureTimeout:     defaults.FeatureTimeout,
+				LockfilePolicy:     policy,
+				Dotfiles:           defaults.Dotfiles.runtime(),
+				AllowHostLifecycle: allowHostLifecycle,
+				Recreate:           recreate,
+				BridgeEnabled:      defaults.BridgeEnabled,
+				Verbose:            global.Verbose || global.Debug,
+				Debug:              global.Debug,
+				Events:             renderer.Events(),
+				Stdout:             renderer.Stdout(),
+				Stderr:             renderer.Stderr(),
 			})
 			if err != nil {
 				return err
@@ -165,6 +167,7 @@ func (a *App) newUpCommand(global *globalOptions) *cobra.Command {
 	cmd.Flags().StringVar(&lockfilePolicy, "lockfile-policy", "auto", "feature lockfile policy: auto, frozen, or update")
 	cmd.Flags().BoolVar(&recreate, "recreate", false, "remove and recreate an existing managed container")
 	cmd.Flags().BoolVar(&bridgeEnabled, "bridge", false, "enable macOS browser-open and localhost callback forwarding")
+	cmd.Flags().BoolVar(&allowHostLifecycle, "allow-host-lifecycle", allowHostLifecycle, "trust and run host-side lifecycle commands such as initializeCommand")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "emit machine-readable JSON")
 	addDotfilesFlags(cmd, &dotfiles)
 	return cmd
@@ -356,6 +359,7 @@ func (a *App) newRunCommand(global *globalOptions) *cobra.Command {
 	var lockfilePolicy string
 	var featureTimeout time.Duration
 	var phase string
+	allowHostLifecycle := envTruthy("HATCHCTL_ALLOW_HOST_LIFECYCLE")
 	var jsonOut bool
 	dotfiles := defaultDotfilesOptions()
 	cmd := &cobra.Command{
@@ -373,19 +377,20 @@ func (a *App) newRunCommand(global *globalOptions) *cobra.Command {
 				return err
 			}
 			result, err := a.runner.RunLifecycle(cmd.Context(), runtime.RunLifecycleOptions{
-				Workspace:      defaults.Workspace,
-				ConfigPath:     defaults.ConfigPath,
-				StateDir:       defaults.StateDir,
-				CacheDir:       defaults.CacheDir,
-				FeatureTimeout: defaults.FeatureTimeout,
-				LockfilePolicy: policy,
-				Dotfiles:       defaults.Dotfiles.runtime(),
-				Verbose:        global.Verbose || global.Debug,
-				Debug:          global.Debug,
-				Events:         renderer.Events(),
-				Phase:          phase,
-				Stdout:         renderer.Stdout(),
-				Stderr:         renderer.Stderr(),
+				Workspace:          defaults.Workspace,
+				ConfigPath:         defaults.ConfigPath,
+				StateDir:           defaults.StateDir,
+				CacheDir:           defaults.CacheDir,
+				FeatureTimeout:     defaults.FeatureTimeout,
+				LockfilePolicy:     policy,
+				Dotfiles:           defaults.Dotfiles.runtime(),
+				AllowHostLifecycle: allowHostLifecycle,
+				Verbose:            global.Verbose || global.Debug,
+				Debug:              global.Debug,
+				Events:             renderer.Events(),
+				Phase:              phase,
+				Stdout:             renderer.Stdout(),
+				Stderr:             renderer.Stderr(),
 			})
 			if err != nil {
 				return err
@@ -401,6 +406,7 @@ func (a *App) newRunCommand(global *globalOptions) *cobra.Command {
 	cmd.Flags().DurationVar(&featureTimeout, "feature-timeout", 90*time.Second, "timeout for remote feature HTTP requests")
 	cmd.Flags().StringVar(&lockfilePolicy, "lockfile-policy", "auto", "feature lockfile policy: auto, frozen, or update")
 	cmd.Flags().StringVar(&phase, "phase", "all", "lifecycle phase to run: all, create, start, or attach")
+	cmd.Flags().BoolVar(&allowHostLifecycle, "allow-host-lifecycle", allowHostLifecycle, "trust and run host-side lifecycle commands such as initializeCommand")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "emit machine-readable JSON")
 	addDotfilesFlags(cmd, &dotfiles)
 	return cmd
@@ -646,6 +652,19 @@ func multiValueMap(values []string) map[string]string {
 		result[parts[0]] = parts[1]
 	}
 	return result
+}
+
+func envTruthy(name string) bool {
+	value, ok := os.LookupEnv(name)
+	if !ok {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
 }
 
 func upResultFields(result runtime.UpResult) []ui.KeyValue {

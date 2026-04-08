@@ -7,32 +7,21 @@ import (
 )
 
 func ReadFile(path string) ([]byte, error) {
-	data, err := os.ReadFile(path)
-	if err == nil {
-		return data, nil
-	}
-	if !os.IsNotExist(err) {
-		return nil, err
-	}
-	tmpPath := tempPath(path)
-	if renameErr := os.Rename(tmpPath, path); renameErr == nil {
-		return os.ReadFile(path)
-	} else if !os.IsNotExist(renameErr) {
-		data, readErr := os.ReadFile(tmpPath)
-		if readErr == nil {
-			return data, nil
-		}
-		if !os.IsNotExist(readErr) {
-			return nil, readErr
-		}
-	}
-	return nil, err
+	return os.ReadFile(path)
 }
 
 func WriteFile(path string, data []byte, perm os.FileMode) error {
-	tmpPath := tempPath(path)
-	file, err := os.OpenFile(tmpPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, perm)
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	file, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".tmp-*")
 	if err != nil {
+		return err
+	}
+	tmpPath := file.Name()
+	if err := file.Chmod(perm); err != nil {
+		_ = file.Close()
+		_ = os.Remove(tmpPath)
 		return err
 	}
 	if _, err := file.Write(data); err != nil {
@@ -61,15 +50,7 @@ func RemoveFile(path string) error {
 	if err != nil && !os.IsNotExist(err) {
 		return err
 	}
-	tmpPath := tempPath(path)
-	if err := os.Remove(tmpPath); err != nil && !os.IsNotExist(err) {
-		return err
-	}
 	return nil
-}
-
-func tempPath(path string) string {
-	return path + ".tmp"
 }
 
 func syncDir(path string) error {

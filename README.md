@@ -80,6 +80,7 @@ hatchctl up --json
 ```sh
 hatchctl up
 hatchctl up --dotfiles lauritsk/dotfiles
+hatchctl up --allow-host-lifecycle
 hatchctl up --feature-timeout 2m
 hatchctl build
 hatchctl exec -- go test ./...
@@ -103,6 +104,8 @@ Dotfiles are configured outside `devcontainer.json`, matching how editor tooling
 
 Remote feature downloads default to a `90s` HTTP timeout. Override that per command with `--feature-timeout`, for example `hatchctl up --feature-timeout 2m`.
 
+Host-side lifecycle commands are gated by default. If a workspace uses `initializeCommand`, rerun with `--allow-host-lifecycle` or set `HATCHCTL_ALLOW_HOST_LIFECYCLE=1` once you trust that repository.
+
 `--lockfile-policy` controls how remote features are resolved:
 
 - `auto`: use the lockfile when available and refresh it when needed
@@ -113,6 +116,16 @@ Remote feature downloads default to a `90s` HTTP timeout. Override that per comm
 
 Use `--bridge` on macOS when the container needs host-side browser open or localhost callback forwarding during auth flows.
 
+## Security Defaults
+
+- `initializeCommand` does not run on the host unless you explicitly opt in with `--allow-host-lifecycle` or `HATCHCTL_ALLOW_HOST_LIFECYCLE=1`
+- direct tarball features must use `https`, except loopback `http` sources used for local development and tests
+- unsigned remote OCI features fail by default; set `HATCHCTL_ALLOW_INSECURE_FEATURES=1` only when you intentionally want to bypass that check
+- the macOS bridge listener binds to loopback only
+- workspace state and cache files are written with owner-only permissions where possible
+
+These defaults are meant to reduce the risk of opening an untrusted repository or consuming an untrusted remote feature source.
+
 ## Supported Devcontainer Features
 
 - config discovery for `.devcontainer/devcontainer.json` and `.devcontainer.json`
@@ -121,6 +134,7 @@ Use `--bridge` on macOS when the container needs host-side browser open or local
 - single-service Compose workflows
 - local file-path, OCI, direct tarball, and deprecated GitHub shorthand feature references
 - lifecycle execution for `initializeCommand`, `onCreateCommand`, `updateContentCommand`, `postCreateCommand`, `postStartCommand`, and `postAttachCommand`
+`initializeCommand` is host-side and requires explicit trust via `--allow-host-lifecycle` or `HATCHCTL_ALLOW_HOST_LIFECYCLE=1`.
 - workspace-scoped state and container reuse
 - machine-readable JSON output for `up`, `build`, `exec`, `config`, `run`, and `bridge doctor`
 - dotfiles setup through CLI flags or `HATCHCTL_DOTFILES_*` environment variables

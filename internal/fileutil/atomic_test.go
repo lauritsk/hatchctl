@@ -3,6 +3,7 @@ package fileutil
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -28,40 +29,32 @@ func TestWriteFileWritesAtomicallyWithPermissions(t *testing.T) {
 	if got := info.Mode().Perm(); got != 0o600 {
 		t.Fatalf("unexpected file mode %#o", got)
 	}
-	if _, err := os.Stat(path + ".tmp"); !os.IsNotExist(err) {
-		t.Fatalf("expected no temp file, got err=%v", err)
+	entries, err := os.ReadDir(filepath.Dir(path))
+	if err != nil {
+		t.Fatalf("read dir: %v", err)
+	}
+	for _, entry := range entries {
+		if strings.Contains(entry.Name(), ".tmp-") {
+			t.Fatalf("expected no temp files, found %q", entry.Name())
+		}
 	}
 }
 
-func TestReadFileRecoversTempFileWhenPrimaryMissing(t *testing.T) {
+func TestReadFileReturnsNotExistWhenPrimaryMissing(t *testing.T) {
 	t.Parallel()
 
 	path := filepath.Join(t.TempDir(), "bridge-status.json")
-	if err := os.WriteFile(path+".tmp", []byte("recover"), 0o600); err != nil {
-		t.Fatalf("write temp file: %v", err)
-	}
-
-	data, err := ReadFile(path)
-	if err != nil {
-		t.Fatalf("read recovered file: %v", err)
-	}
-	if string(data) != "recover" {
-		t.Fatalf("unexpected recovered contents %q", string(data))
-	}
-	if _, err := os.Stat(path); err != nil {
-		t.Fatalf("expected recovered primary file: %v", err)
+	if _, err := ReadFile(path); !os.IsNotExist(err) {
+		t.Fatalf("expected not-exist error, got %v", err)
 	}
 }
 
-func TestRemoveFileRemovesPrimaryAndTemp(t *testing.T) {
+func TestRemoveFileRemovesPrimary(t *testing.T) {
 	t.Parallel()
 
 	path := filepath.Join(t.TempDir(), "resolved-plan.json")
 	if err := os.WriteFile(path, []byte("main"), 0o600); err != nil {
 		t.Fatalf("write primary file: %v", err)
-	}
-	if err := os.WriteFile(path+".tmp", []byte("tmp"), 0o600); err != nil {
-		t.Fatalf("write temp file: %v", err)
 	}
 
 	if err := RemoveFile(path); err != nil {
@@ -69,8 +62,5 @@ func TestRemoveFileRemovesPrimaryAndTemp(t *testing.T) {
 	}
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		t.Fatalf("expected primary file removed, got err=%v", err)
-	}
-	if _, err := os.Stat(path + ".tmp"); !os.IsNotExist(err) {
-		t.Fatalf("expected temp file removed, got err=%v", err)
 	}
 }

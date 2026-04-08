@@ -406,7 +406,7 @@ func defaultContainerConnectRunner(containerID string, port int, stdin io.Reader
 }
 
 func listenBridgeTCP(port int) (net.Listener, error) {
-	return net.Listen("tcp", net.JoinHostPort("0.0.0.0", strconv.Itoa(port)))
+	return net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)))
 }
 
 func writeBridgeConfig(session *Session, containerID string) error {

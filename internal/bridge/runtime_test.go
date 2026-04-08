@@ -180,6 +180,24 @@ func TestHelperOpenRequiresHostAndPort(t *testing.T) {
 	}
 }
 
+func TestListenBridgeTCPBindsLoopbackOnly(t *testing.T) {
+	t.Parallel()
+
+	listener, err := listenBridgeTCP(0)
+	if err != nil {
+		t.Fatalf("listen bridge tcp: %v", err)
+	}
+	defer listener.Close()
+
+	addr, ok := listener.Addr().(*net.TCPAddr)
+	if !ok {
+		t.Fatalf("unexpected listener addr %#v", listener.Addr())
+	}
+	if got := addr.IP.String(); got != "127.0.0.1" {
+		t.Fatalf("expected loopback listener, got %q", got)
+	}
+}
+
 func TestHelperBinaryDataUsesConfiguredPath(t *testing.T) {
 	helperPath := filepath.Join(t.TempDir(), "hatchctl")
 	if err := os.WriteFile(helperPath, []byte("helper"), 0o755); err != nil {

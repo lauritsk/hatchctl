@@ -161,7 +161,14 @@ func TestResolveFeaturesFetchesOCIRegistryFeature(t *testing.T) {
 	}
 }
 
-func TestResolveFeaturesCarriesOCIVerificationResult(t *testing.T) {
+func TestValidateOCIFeatureVerificationRejectsUnsignedRemoteSourcesByDefault(t *testing.T) {
+	err := validateOCIFeatureVerification("ghcr.io/devcontainers/features/go:1", ociReference{Registry: "ghcr.io", Repository: "devcontainers/features/go"}, security.VerificationResult{Ref: "ghcr.io/devcontainers/features/go@sha256:abc", Reason: "no signatures found"})
+	if err == nil || !strings.Contains(err.Error(), "verify OCI feature") {
+		t.Fatalf("expected OCI verification error, got %v", err)
+	}
+}
+
+func TestResolveFeaturesAllowsUnsignedOCIWhenExplicitlyEnabled(t *testing.T) {
 	layer := buildFeatureLayer(t, map[string]string{
 		"devcontainer-feature.json": `{"id":"remote-tool"}`,
 		"install.sh":                "#!/bin/sh\nexit 0\n",
@@ -173,13 +180,13 @@ func TestResolveFeaturesCarriesOCIVerificationResult(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	var verifiedRef string
+	t.Setenv(security.AllowInsecureFeaturesEnvVar, "1")
+
 	features, err := ResolveFeatures(context.Background(), configPath, filepath.Dir(configPath), t.TempDir(), map[string]any{
 		registryHost + "/features/remote-tool:1": true,
 	}, FeatureResolveOptions{
 		AllowNetwork: true,
 		VerifyImage: func(_ context.Context, ref string) security.VerificationResult {
-			verifiedRef = ref
 			return security.VerificationResult{Ref: ref, Reason: "no signatures found"}
 		},
 	})
@@ -189,17 +196,15 @@ func TestResolveFeaturesCarriesOCIVerificationResult(t *testing.T) {
 	if len(features) != 1 {
 		t.Fatalf("expected one feature, got %d", len(features))
 	}
-	if verifiedRef == "" {
-		t.Fatal("expected image verifier to be called")
-	}
-	if got := features[0].Verification.Ref; got != verifiedRef {
-		t.Fatalf("unexpected verification ref %q", got)
-	}
 	if got := features[0].Verification.Reason; got != "no signatures found" {
 		t.Fatalf("unexpected verification result %#v", features[0].Verification)
 	}
-	if features[0].Verification.Verified {
-		t.Fatalf("expected unresolved verification result %#v", features[0].Verification)
+}
+
+func TestValidateOCIFeatureVerificationAllowsUnsignedLoopbackSources(t *testing.T) {
+	err := validateOCIFeatureVerification("127.0.0.1:5000/features/tool:1", ociReference{Registry: "127.0.0.1:5000", Repository: "features/tool", Insecure: true}, security.VerificationResult{Ref: "127.0.0.1:5000/features/tool@sha256:abc", Reason: "no signatures found"})
+	if err != nil {
+		t.Fatalf("expected loopback registry to be allowed, got %v", err)
 	}
 }
 
@@ -242,6 +247,14 @@ func TestResolveFeaturesFetchesTarballFeatureAndPinsIntegrity(t *testing.T) {
 	}
 	if _, err := ResolveFeatures(context.Background(), configPath, filepath.Dir(configPath), t.TempDir(), map[string]any{featureURL: true}, featureResolveOpts); err == nil || !strings.Contains(err.Error(), "integrity mismatch") {
 		t.Fatalf("expected tarball integrity mismatch, got %v", err)
+	}
+}
+
+func TestResolveFeaturesRejectsNonLoopbackHTTPFeatureTarballs(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), ".devcontainer.json")
+	_, err := ResolveFeatures(context.Background(), configPath, filepath.Dir(configPath), t.TempDir(), map[string]any{"http://example.com/feature.tgz": true}, featureResolveOpts)
+	if err == nil || !strings.Contains(err.Error(), "must use https or loopback http") {
+		t.Fatalf("expected insecure tarball error, got %v", err)
 	}
 }
 
@@ -403,6 +416,30 @@ func TestExtractFeatureLayerSkipsNonLocalAndDotDotArchivePaths(t *testing.T) {
 	}
 	if len(entries) != 1 || entries[0].Name() != "ok.txt" {
 		t.Fatalf("unexpected extracted entries %#v", entries)
+	}
+}
+
+func TestExtractFeatureLayerRejectsArchiveBombs(t *testing.T) {
+	previousFiles := featureExtractedMaxFiles
+	previousFileBytes := featureExtractedMaxFileBytes
+	previousTotalBytes := featureExtractedMaxBytes
+	featureExtractedMaxFiles = 1
+	featureExtractedMaxFileBytes = 8
+	featureExtractedMaxBytes = 8
+	t.Cleanup(func() {
+		featureExtractedMaxFiles = previousFiles
+		featureExtractedMaxFileBytes = previousFileBytes
+		featureExtractedMaxBytes = previousTotalBytes
+	})
+
+	tooManyFiles := buildFeatureLayerEntries(t, []featureLayerEntry{{Name: "one.txt", Contents: "1"}, {Name: "two.txt", Contents: "2"}})
+	if err := extractFeatureLayer(bytes.NewReader(tooManyFiles), t.TempDir()); err == nil || !strings.Contains(err.Error(), "exceeds 1 files") {
+		t.Fatalf("expected file-count limit error, got %v", err)
+	}
+
+	tooLargeFile := buildFeatureLayerEntries(t, []featureLayerEntry{{Name: "big.txt", Contents: "123456789"}})
+	if err := extractFeatureLayer(bytes.NewReader(tooLargeFile), t.TempDir()); err == nil || !strings.Contains(err.Error(), "exceeds 8 bytes") {
+		t.Fatalf("expected file-size limit error, got %v", err)
 	}
 }
 

@@ -3,6 +3,7 @@ package runtime
 import (
 	"bytes"
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
@@ -143,5 +144,25 @@ func TestRunCommandSkipsEmptyArraysAndCommands(t *testing.T) {
 	}
 	if called {
 		t.Fatal("expected runner not to be called")
+	}
+}
+
+func TestEnsureHostLifecycleAllowedRejectsUntrustedCommands(t *testing.T) {
+	t.Parallel()
+
+	err := ensureHostLifecycleAllowed(devcontainer.LifecycleCommand{Kind: "string", Value: "echo init", Exists: true}, false)
+	if err == nil || !errors.Is(err, errHostLifecycleNotAllowed) {
+		t.Fatalf("expected host lifecycle trust error, got %v", err)
+	}
+}
+
+func TestEnsureHostLifecycleAllowedPermitsTrustedOrEmptyCommands(t *testing.T) {
+	t.Parallel()
+
+	if err := ensureHostLifecycleAllowed(devcontainer.LifecycleCommand{}, false); err != nil {
+		t.Fatalf("empty command should be allowed: %v", err)
+	}
+	if err := ensureHostLifecycleAllowed(devcontainer.LifecycleCommand{Kind: "string", Value: "echo init", Exists: true}, true); err != nil {
+		t.Fatalf("trusted command should be allowed: %v", err)
 	}
 }

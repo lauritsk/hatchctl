@@ -13,7 +13,10 @@ import (
 	"github.com/sigstore/sigstore-go/pkg/root"
 )
 
-const CosignStrictEnvVar = "HATCHCTL_COSIGN_STRICT"
+const (
+	CosignStrictEnvVar          = "HATCHCTL_COSIGN_STRICT"
+	AllowInsecureFeaturesEnvVar = "HATCHCTL_ALLOW_INSECURE_FEATURES"
+)
 
 var (
 	parseReference        = name.ParseReference

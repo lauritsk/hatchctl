@@ -109,7 +109,7 @@ func ReadState(stateDir string) (State, error) {
 }
 
 func WriteState(stateDir string, state State) error {
-	if err := os.MkdirAll(stateDir, 0o755); err != nil {
+	if err := os.MkdirAll(stateDir, 0o700); err != nil {
 		return err
 	}
 	path := filepath.Join(stateDir, "state.json")
@@ -117,7 +117,7 @@ func WriteState(stateDir string, state State) error {
 	if err != nil {
 		return err
 	}
-	return fileutil.WriteFile(path, data, 0o644)
+	return fileutil.WriteFile(path, data, 0o600)
 }
 
 func hashKey(input string) string {

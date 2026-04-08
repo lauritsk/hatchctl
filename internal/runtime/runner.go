@@ -41,20 +41,21 @@ func NewRunnerWithIO(client *docker.Client, stdin io.Reader, stdout io.Writer, s
 }
 
 type UpOptions struct {
-	Workspace      string
-	ConfigPath     string
-	StateDir       string
-	CacheDir       string
-	FeatureTimeout time.Duration
-	LockfilePolicy devcontainer.FeatureLockfilePolicy
-	Dotfiles       DotfilesOptions
-	Recreate       bool
-	BridgeEnabled  bool
-	Verbose        bool
-	Debug          bool
-	Events         ui.Sink
-	Stdout         io.Writer
-	Stderr         io.Writer
+	Workspace          string
+	ConfigPath         string
+	StateDir           string
+	CacheDir           string
+	FeatureTimeout     time.Duration
+	LockfilePolicy     devcontainer.FeatureLockfilePolicy
+	Dotfiles           DotfilesOptions
+	AllowHostLifecycle bool
+	Recreate           bool
+	BridgeEnabled      bool
+	Verbose            bool
+	Debug              bool
+	Events             ui.Sink
+	Stdout             io.Writer
+	Stderr             io.Writer
 }
 
 type UpResult struct {
@@ -173,19 +174,20 @@ type ManagedContainer struct {
 }
 
 type RunLifecycleOptions struct {
-	Workspace      string
-	ConfigPath     string
-	StateDir       string
-	CacheDir       string
-	FeatureTimeout time.Duration
-	LockfilePolicy devcontainer.FeatureLockfilePolicy
-	Dotfiles       DotfilesOptions
-	Verbose        bool
-	Debug          bool
-	Events         ui.Sink
-	Phase          string
-	Stdout         io.Writer
-	Stderr         io.Writer
+	Workspace          string
+	ConfigPath         string
+	StateDir           string
+	CacheDir           string
+	FeatureTimeout     time.Duration
+	LockfilePolicy     devcontainer.FeatureLockfilePolicy
+	Dotfiles           DotfilesOptions
+	AllowHostLifecycle bool
+	Verbose            bool
+	Debug              bool
+	Events             ui.Sink
+	Phase              string
+	Stdout             io.Writer
+	Stderr             io.Writer
 }
 
 type RunLifecycleResult struct {
@@ -329,7 +331,7 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 	}
 
 	runner.emitProgress(opts.Events, "Running lifecycle commands")
-	if err := runner.runLifecycleForUp(ctx, resolved, containerID, created, state, dotfiles, opts.Events); err != nil {
+	if err := runner.runLifecycleForUp(ctx, resolved, containerID, created, state, dotfiles, opts.AllowHostLifecycle, opts.Events); err != nil {
 		return UpResult{}, err
 	}
 
@@ -541,7 +543,7 @@ func (r *Runner) RunLifecycle(ctx context.Context, opts RunLifecycleOptions) (Ru
 	}
 	runner.emitProgress(opts.Events, "Running lifecycle commands")
 	runDotfiles := phase == "all" || phase == "create"
-	if err := runner.runLifecyclePhase(ctx, resolved, prepared.containerID, phase, state, dotfiles, runDotfiles, opts.Events); err != nil {
+	if err := runner.runLifecyclePhase(ctx, resolved, prepared.containerID, phase, state, dotfiles, runDotfiles, opts.AllowHostLifecycle, opts.Events); err != nil {
 		return RunLifecycleResult{}, err
 	}
 	if runDotfiles {
