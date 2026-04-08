@@ -14,7 +14,6 @@ before:
 
 builds:
   - main: ./...
-    binary: hatchctl
     env:
       - CGO_ENABLED=0
     ldflags:
