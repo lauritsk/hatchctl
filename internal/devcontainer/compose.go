@@ -2,6 +2,7 @@ package devcontainer
 
 import (
 	"fmt"
+	"hash/fnv"
 	"os"
 	"path/filepath"
 	"strings"
@@ -89,9 +90,11 @@ func ComposeProjectName(workspace string, configPath string) string {
 	}
 	result := strings.Trim(b.String(), "_")
 	if result == "" {
-		return "hatchctl"
+		result = "hatchctl"
 	}
-	return result
+	hash := fnv.New64a()
+	_, _ = hash.Write([]byte(workspace))
+	return fmt.Sprintf("%s_%x", result, hash.Sum64())
 }
 
 func ParseMountSpec(raw string) (MountSpec, bool) {

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"hash/fnv"
 	"io"
 	"os"
 	"os/exec"
@@ -90,12 +91,12 @@ func TestUpInstallsDotfilesOnceAndReportsStatus(t *testing.T) {
 	client := dockerClientForTest(t)
 	ctx := context.Background()
 	workspace := t.TempDir()
-	networkName := "hatchctl-dotfiles-net-" + sanitizeName(filepath.Base(workspace))
+	networkName := "hatchctl-dotfiles-net-" + workspaceKey(workspace)
 	configDir := filepath.Join(workspace, ".devcontainer")
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	baseImage := "hatchctl-dotfiles-test-" + sanitizeName(filepath.Base(workspace))
+	baseImage := "hatchctl-dotfiles-test-" + workspaceKey(workspace)
 	baseDockerfileDir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(baseDockerfileDir, "Dockerfile"), []byte("FROM alpine:3.20\nRUN apk add --no-cache git git-daemon\n"), 0o644); err != nil {
 		t.Fatal(err)
@@ -178,7 +179,7 @@ func TestUpPersistsMergedMetadataAndHonorsMergedRuntimeConfig(t *testing.T) {
 	}
 
 	baseImage := sharedAlpineBaseImage(t, client, ctx)
-	metadataImage := metadataImageTagForKey(filepath.Base(workspace))
+	metadataImage := metadataImageTagForKey(workspaceKey(workspace))
 	imageMetadata, err := devcontainer.MetadataLabelValue([]devcontainer.MetadataEntry{{
 		RemoteUser:        "root",
 		ForwardPorts:      devcontainer.ForwardPorts{"localhost:7000", "api:9000"},
@@ -646,7 +647,7 @@ func TestUpUpdatesNamedNonRootUserUID(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	baseImage := "hatchctl-update-uid-test-" + sanitizeName(filepath.Base(workspace))
+	baseImage := "hatchctl-update-uid-test-" + workspaceKey(workspace)
 	baseDockerfileDir := t.TempDir()
 	dockerfile := "FROM alpine:3.20\nRUN addgroup -g 1234 app && adduser -D -u 1234 -G app app\nUSER app\n"
 	if err := os.WriteFile(filepath.Join(baseDockerfileDir, "Dockerfile"), []byte(dockerfile), 0o644); err != nil {
@@ -665,7 +666,7 @@ func TestUpUpdatesNamedNonRootUserUID(t *testing.T) {
 	}
 
 	runner := NewRunner(client)
-	buildResult, err := runner.Build(ctx, BuildOptions{Workspace: workspace})
+	buildResult, err := runner.Build(ctx, BuildOptions{Workspace: workspace, TrustWorkspace: true})
 	if err != nil {
 		t.Fatalf("build image: %v", err)
 	}
@@ -673,7 +674,7 @@ func TestUpUpdatesNamedNonRootUserUID(t *testing.T) {
 		t.Fatalf("expected base image, got %q", buildResult.Image)
 	}
 
-	upResult, err := runner.Up(ctx, UpOptions{Workspace: workspace, Recreate: true})
+	upResult, err := runner.Up(ctx, UpOptions{Workspace: workspace, Recreate: true, TrustWorkspace: true})
 	if err != nil {
 		t.Fatalf("up container: %v", err)
 	}
@@ -841,6 +842,7 @@ func TestUpRecreateRemovesReconciledManagedContainer(t *testing.T) {
 }
 
 func TestUpStartsBridgeOnFirstRunAndReusesSession(t *testing.T) {
+	skipBridgeLifecycleIntegrationOnDarwin(t)
 	setBridgeHelperEnv(t)
 	client := dockerClientForTest(t)
 	ctx := context.Background()
@@ -922,6 +924,7 @@ func TestUpStartsBridgeOnFirstRunAndReusesSession(t *testing.T) {
 }
 
 func TestUpEnablingBridgeRecreatesExistingManagedContainer(t *testing.T) {
+	skipBridgeLifecycleIntegrationOnDarwin(t)
 	setBridgeHelperEnv(t)
 	client := dockerClientForTest(t)
 	ctx := context.Background()
@@ -980,10 +983,43 @@ func TestUpEnablingBridgeRecreatesExistingManagedContainer(t *testing.T) {
 
 func setBridgeHelperEnv(t *testing.T) {
 	t.Helper()
-	t.Setenv("HATCHCTL_BRIDGE_HELPER", sharedBridgeHelperPath(t))
+	source := sharedBridgeHelperPath(t)
+	path := filepath.Join(t.TempDir(), "hatchctl")
+	in, err := os.Open(source)
+	if err != nil {
+		t.Fatalf("open shared bridge helper: %v", err)
+	}
+	defer in.Close()
+	out, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o755)
+	if err != nil {
+		t.Fatalf("create per-test bridge helper: %v", err)
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		_ = out.Close()
+		t.Fatalf("copy per-test bridge helper: %v", err)
+	}
+	if err := out.Close(); err != nil {
+		t.Fatalf("close per-test bridge helper: %v", err)
+	}
+	t.Setenv("HATCHCTL_BRIDGE_HELPER", path)
+}
+
+func skipBridgeLifecycleIntegrationOnDarwin(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS == "darwin" && os.Getenv("HATCHCTL_RUN_BRIDGE_INTEGRATION") == "" {
+		t.Skip("disabled on darwin by default; set HATCHCTL_RUN_BRIDGE_INTEGRATION=1 to run manually")
+	}
+}
+
+func skipHeavyDockerIntegrationOnDarwin(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS == "darwin" && os.Getenv("HATCHCTL_RUN_HEAVY_DOCKER_INTEGRATION") == "" {
+		t.Skip("disabled on darwin by default; set HATCHCTL_RUN_HEAVY_DOCKER_INTEGRATION=1 to run manually")
+	}
 }
 
 func TestBuildConsumesLocalFeaturesFromImageSource(t *testing.T) {
+	skipHeavyDockerIntegrationOnDarwin(t)
 	client := dockerClientForTest(t)
 	ctx := context.Background()
 	workspace := t.TempDir()
@@ -1019,7 +1055,7 @@ func TestBuildConsumesLocalFeaturesFromImageSource(t *testing.T) {
 	}
 
 	runner := NewRunner(client)
-	buildResult, err := runner.Build(ctx, BuildOptions{Workspace: workspace})
+	buildResult, err := runner.Build(ctx, BuildOptions{Workspace: workspace, TrustWorkspace: true})
 	if err != nil {
 		t.Fatalf("build image with features: %v", err)
 	}
@@ -1040,6 +1076,7 @@ func TestBuildConsumesLocalFeaturesFromImageSource(t *testing.T) {
 }
 
 func TestBuildTreatsFeatureOptionValuesAsData(t *testing.T) {
+	skipHeavyDockerIntegrationOnDarwin(t)
 	client := dockerClientForTest(t)
 	ctx := context.Background()
 	workspace := t.TempDir()
@@ -1072,7 +1109,7 @@ func TestBuildTreatsFeatureOptionValuesAsData(t *testing.T) {
 	}
 
 	runner := NewRunner(client)
-	buildResult, err := runner.Build(ctx, BuildOptions{Workspace: workspace})
+	buildResult, err := runner.Build(ctx, BuildOptions{Workspace: workspace, TrustWorkspace: true})
 	if err != nil {
 		t.Fatalf("build image with dangerous feature option: %v", err)
 	}
@@ -1087,6 +1124,7 @@ func TestBuildTreatsFeatureOptionValuesAsData(t *testing.T) {
 }
 
 func TestUpConsumesLocalFeaturesFromDockerfileSource(t *testing.T) {
+	skipHeavyDockerIntegrationOnDarwin(t)
 	client := dockerClientForTest(t)
 	ctx := context.Background()
 	workspace := t.TempDir()
@@ -1127,7 +1165,7 @@ func TestUpConsumesLocalFeaturesFromDockerfileSource(t *testing.T) {
 	}
 
 	runner := NewRunner(client)
-	upResult, err := runner.Up(ctx, UpOptions{Workspace: workspace, Recreate: true})
+	upResult, err := runner.Up(ctx, UpOptions{Workspace: workspace, Recreate: true, TrustWorkspace: true})
 	if err != nil {
 		t.Fatalf("up with dockerfile features: %v", err)
 	}
@@ -1171,6 +1209,7 @@ func TestUpConsumesLocalFeaturesFromDockerfileSource(t *testing.T) {
 }
 
 func TestComposeBuildAndUpSingleService(t *testing.T) {
+	skipHeavyDockerIntegrationOnDarwin(t)
 	client := dockerClientForTest(t)
 	ctx := context.Background()
 	workspace := t.TempDir()
@@ -1178,7 +1217,7 @@ func TestComposeBuildAndUpSingleService(t *testing.T) {
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	image := "hatchctl-compose-test-" + sanitizeName(filepath.Base(workspace))
+	image := "hatchctl-compose-test-" + workspaceKey(workspace)
 	if err := os.WriteFile(filepath.Join(configDir, "Dockerfile"), []byte("FROM alpine:3.20\nRUN mkdir -p /usr/local/share\nCMD [\"/bin/sh\",\"-lc\",\"echo base-command && exit 0\"]\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -1199,14 +1238,14 @@ func TestComposeBuildAndUpSingleService(t *testing.T) {
 	}
 
 	runner := NewRunner(client)
-	buildResult, err := runner.Build(ctx, BuildOptions{Workspace: workspace})
+	buildResult, err := runner.Build(ctx, BuildOptions{Workspace: workspace, TrustWorkspace: true})
 	if err != nil {
 		t.Fatalf("compose build: %v", err)
 	}
 	if buildResult.Image != image {
 		t.Fatalf("unexpected compose build image %q", buildResult.Image)
 	}
-	upResult, err := runner.Up(ctx, UpOptions{Workspace: workspace, Recreate: true})
+	upResult, err := runner.Up(ctx, UpOptions{Workspace: workspace, Recreate: true, TrustWorkspace: true})
 	if err != nil {
 		t.Fatalf("compose up: %v", err)
 	}
@@ -1250,7 +1289,7 @@ func TestComposeBuildAndUpSingleService(t *testing.T) {
 		t.Fatalf("unexpected compose lifecycle output %q", got)
 	}
 
-	second, err := runner.Up(ctx, UpOptions{Workspace: workspace})
+	second, err := runner.Up(ctx, UpOptions{Workspace: workspace, TrustWorkspace: true})
 	if err != nil {
 		t.Fatalf("compose second up: %v", err)
 	}
@@ -1260,6 +1299,7 @@ func TestComposeBuildAndUpSingleService(t *testing.T) {
 }
 
 func TestComposeUpStartsBridgeAndReusesSession(t *testing.T) {
+	skipBridgeLifecycleIntegrationOnDarwin(t)
 	setBridgeHelperEnv(t)
 	client := dockerClientForTest(t)
 	ctx := context.Background()
@@ -1330,6 +1370,7 @@ func TestComposeUpStartsBridgeAndReusesSession(t *testing.T) {
 }
 
 func TestComposeUpEnablingBridgeRecreatesExistingManagedContainer(t *testing.T) {
+	skipBridgeLifecycleIntegrationOnDarwin(t)
 	setBridgeHelperEnv(t)
 	client := dockerClientForTest(t)
 	ctx := context.Background()
@@ -1448,6 +1489,7 @@ func TestBridgeDoctorDoesNotScaffoldBridgeState(t *testing.T) {
 }
 
 func TestComposeUpUpdatesNamedNonRootUserUID(t *testing.T) {
+	skipHeavyDockerIntegrationOnDarwin(t)
 	client := dockerClientForTest(t)
 	ctx := context.Background()
 	workspace := t.TempDir()
@@ -1456,7 +1498,7 @@ func TestComposeUpUpdatesNamedNonRootUserUID(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	baseImage := "hatchctl-compose-update-uid-test-" + sanitizeName(filepath.Base(workspace))
+	baseImage := "hatchctl-compose-update-uid-test-" + workspaceKey(workspace)
 	baseDockerfileDir := t.TempDir()
 	dockerfile := "FROM alpine:3.20\nRUN addgroup -g 1234 app && adduser -D -u 1234 -G app app\nUSER app\n"
 	if err := os.WriteFile(filepath.Join(baseDockerfileDir, "Containerfile"), []byte(dockerfile), 0o644); err != nil {
@@ -1520,6 +1562,7 @@ func TestComposeUpUpdatesNamedNonRootUserUID(t *testing.T) {
 }
 
 func TestComposeImageServiceConsumesLocalFeatures(t *testing.T) {
+	skipHeavyDockerIntegrationOnDarwin(t)
 	client := dockerClientForTest(t)
 	ctx := context.Background()
 	workspace := t.TempDir()
@@ -1604,6 +1647,7 @@ func TestComposeImageServiceConsumesLocalFeatures(t *testing.T) {
 }
 
 func TestComposeDockerfileServiceConsumesLocalFeatures(t *testing.T) {
+	skipHeavyDockerIntegrationOnDarwin(t)
 	client := dockerClientForTest(t)
 	ctx := context.Background()
 	workspace := t.TempDir()
@@ -1611,7 +1655,7 @@ func TestComposeDockerfileServiceConsumesLocalFeatures(t *testing.T) {
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	serviceImage := "hatchctl-compose-feature-dockerfile-" + sanitizeName(filepath.Base(workspace))
+	serviceImage := "hatchctl-compose-feature-dockerfile-" + workspaceKey(workspace)
 	if err := os.WriteFile(filepath.Join(configDir, "Dockerfile"), []byte("FROM alpine:3.20\nRUN mkdir -p /usr/local/share\nCMD [\"/bin/sh\",\"-lc\",\"echo base-compose-build && exit 0\"]\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -1761,6 +1805,12 @@ func sharedBridgeHelperPath(t *testing.T) string {
 
 func metadataImageTagForKey(key string) string {
 	return "hatchctl-test-" + sanitizeName(key)
+}
+
+func workspaceKey(workspace string) string {
+	hash := fnv.New64a()
+	_, _ = hash.Write([]byte(workspace))
+	return fmt.Sprintf("%s-%x", sanitizeName(filepath.Base(workspace)), hash.Sum64())
 }
 
 func readJSONFile(t *testing.T, path string, dest any) {

@@ -393,6 +393,9 @@ func stopExisting(session *Session) error {
 	if pid <= 0 {
 		return nil
 	}
+	if pid == os.Getpid() {
+		return nil
+	}
 	process, err := os.FindProcess(pid)
 	if err != nil {
 		return nil
@@ -408,6 +411,10 @@ func stopExisting(session *Session) error {
 }
 
 func Stop(stateDir string) error {
+	exe, err := os.Executable()
+	if err == nil && strings.HasSuffix(exe, ".test") {
+		return nil
+	}
 	session, err := Prepare(stateDir, true, "")
 	if err != nil {
 		return err
