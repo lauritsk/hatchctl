@@ -86,9 +86,12 @@ func TestBuildPersistsMetadataLabel(t *testing.T) {
 }
 
 func TestUpInstallsDotfilesOnceAndReportsStatus(t *testing.T) {
-	t.Skip("temporarily disabled due to CI failures in dotfiles integration flow")
+	if os.Getenv("HATCHCTL_RUN_DOTFILES_INTEGRATION") == "" {
+		t.Skip("set HATCHCTL_RUN_DOTFILES_INTEGRATION=1 to run dotfiles integration coverage")
+	}
 
 	client := dockerClientForTest(t)
+	requireIntegrationCommands(t, "git")
 	ctx := context.Background()
 	workspace := t.TempDir()
 	networkName := "hatchctl-dotfiles-net-" + workspaceKey(workspace)
@@ -1728,6 +1731,15 @@ func dockerClientForTest(t *testing.T) *docker.Client {
 	return client
 }
 
+func requireIntegrationCommands(t *testing.T, names ...string) {
+	t.Helper()
+	for _, name := range names {
+		if _, err := exec.LookPath(name); err != nil {
+			t.Skipf("%s unavailable: %v", name, err)
+		}
+	}
+}
+
 func sharedAlpineBaseImage(t *testing.T, client *docker.Client, ctx context.Context) string {
 	t.Helper()
 	return sharedTaggedImage(t, client, ctx, &cachedIntegrationFixtures.plainImage, "base", "FROM alpine:3.20\n")
@@ -1784,6 +1796,7 @@ func sharedDockerBuildContext(t *testing.T, dockerfile string) string {
 
 func sharedBridgeHelperPath(t *testing.T) string {
 	t.Helper()
+	requireIntegrationCommands(t, "go")
 	cachedIntegrationFixtures.mu.Lock()
 	path := cachedIntegrationFixtures.bridgeHelperPath
 	if path == "" {

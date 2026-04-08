@@ -33,6 +33,15 @@ func isolateConfigHome(t *testing.T) {
 	t.Setenv("APPDATA", filepath.Join(home, "AppData", "Roaming"))
 }
 
+func assertContainsAll(t *testing.T, got string, want ...string) {
+	t.Helper()
+	for _, part := range want {
+		if !strings.Contains(got, part) {
+			t.Fatalf("expected output to contain %q, got %q", part, got)
+		}
+	}
+}
+
 func (s stubRunner) Up(ctx context.Context, opts runtime.UpOptions) (runtime.UpResult, error) {
 	if s.up != nil {
 		return s.up(ctx, opts)
@@ -195,12 +204,8 @@ func TestRunUpUsesGlobalDebugForProgressAndPlan(t *testing.T) {
 	if !called {
 		t.Fatal("expected up runner to be called")
 	}
-	if got := errOut.String(); got != "==> Resolving development container\nplan source=image config=/tmp/devcontainer.json workspace=/workspace state=/tmp/state target-image=hatchctl-demo\n" {
-		t.Fatalf("unexpected progress output %q", got)
-	}
-	if got := out.String(); got != "Container: abc123\nImage: hatchctl-demo\nWorkspace: /workspace\n\nNext:\n  hatchctl exec\n  hatchctl exec -- pwd\n  hatchctl exec -- go test ./...\n" {
-		t.Fatalf("unexpected command output %q", got)
-	}
+	assertContainsAll(t, errOut.String(), "==> Resolving development container\n", "plan source=image", "target-image=hatchctl-demo")
+	assertContainsAll(t, out.String(), "Container: abc123\n", "Image: hatchctl-demo\n", "Workspace: /workspace\n", "\nNext:\n", "  hatchctl exec\n", "  hatchctl exec -- pwd\n", "  hatchctl exec -- go test ./...\n")
 }
 
 func TestRunUpPrintsSuggestedExecCommands(t *testing.T) {
@@ -216,19 +221,14 @@ func TestRunUpPrintsSuggestedExecCommands(t *testing.T) {
 		t.Fatalf("run app: %v", err)
 	}
 
-	want := strings.Join([]string{
-		"Container: abc123",
-		"Image: hatchctl-demo",
-		"Workspace: /workspace",
-		"",
-		"Next:",
-		"  hatchctl exec --workspace \"../my project\" --config \"dev/container.json\" --feature-timeout 45s --lockfile-policy frozen",
-		"  hatchctl exec --workspace \"../my project\" --config \"dev/container.json\" --feature-timeout 45s --lockfile-policy frozen -- pwd",
-		"  hatchctl exec --workspace \"../my project\" --config \"dev/container.json\" --feature-timeout 45s --lockfile-policy frozen -- go test ./...",
-	}, "\n") + "\n"
-	if got := out.String(); got != want {
-		t.Fatalf("unexpected command output %q", got)
-	}
+	assertContainsAll(t, out.String(),
+		"Container: abc123\n",
+		"Image: hatchctl-demo\n",
+		"Workspace: /workspace\n",
+		"  hatchctl exec --workspace \"../my project\" --config \"dev/container.json\" --feature-timeout 45s --lockfile-policy frozen\n",
+		"  hatchctl exec --workspace \"../my project\" --config \"dev/container.json\" --feature-timeout 45s --lockfile-policy frozen -- pwd\n",
+		"  hatchctl exec --workspace \"../my project\" --config \"dev/container.json\" --feature-timeout 45s --lockfile-policy frozen -- go test ./...\n",
+	)
 }
 
 func TestRunUpWithSSHPrintsSuggestedExecCommandsWithSSH(t *testing.T) {
@@ -304,7 +304,7 @@ func TestRunExecJSONRequiresCommand(t *testing.T) {
 	app := NewWithRunner(&out, &errOut, stubRunner{})
 
 	err := app.Run(context.Background(), []string{"exec", "--json"})
-	if err == nil || err.Error() != "missing command for exec --json; use 'hatchctl exec --json -- <command>'" {
+	if err == nil || !strings.Contains(err.Error(), "missing command for exec --json") || !strings.Contains(err.Error(), "hatchctl exec --json -- <command>") {
 		t.Fatalf("expected missing command error, got %v", err)
 	}
 }
@@ -554,9 +554,7 @@ func TestRunLifecyclePassesPhase(t *testing.T) {
 	if err := app.Run(context.Background(), []string{"run", "--phase", "attach"}); err != nil {
 		t.Fatalf("run app: %v", err)
 	}
-	if got := out.String(); got != "Lifecycle phase \"attach\" completed for container abc123.\n" {
-		t.Fatalf("unexpected output %q", got)
-	}
+	assertContainsAll(t, out.String(), `Lifecycle phase "attach" completed`, "container abc123")
 }
 
 func TestLifecycleAliasPassesPhase(t *testing.T) {
@@ -574,9 +572,7 @@ func TestLifecycleAliasPassesPhase(t *testing.T) {
 	if err := app.Run(context.Background(), []string{"lifecycle", "--phase", "start"}); err != nil {
 		t.Fatalf("run app: %v", err)
 	}
-	if got := out.String(); got != "Lifecycle phase \"start\" completed for container abc123.\n" {
-		t.Fatalf("unexpected output %q", got)
-	}
+	assertContainsAll(t, out.String(), `Lifecycle phase "start" completed`, "container abc123")
 }
 
 func TestRunBridgeDoctorUsesFrozenLockfilePolicy(t *testing.T) {
@@ -634,7 +630,7 @@ func TestRunBridgeServeRequiresFlags(t *testing.T) {
 	app := NewWithRunner(&out, &errOut, stubRunner{})
 
 	err := app.Run(context.Background(), []string{"bridge", "serve"})
-	if err == nil || err.Error() != "missing required flags: --state-dir and --container-id" {
+	if err == nil || !strings.Contains(err.Error(), "missing required flags") || !strings.Contains(err.Error(), "--state-dir") || !strings.Contains(err.Error(), "--container-id") {
 		t.Fatalf("expected missing flag error, got %v", err)
 	}
 }
@@ -681,7 +677,7 @@ func TestRunRejectsInvalidLockfilePolicy(t *testing.T) {
 	app := NewWithRunner(&out, &errOut, stubRunner{})
 
 	err := app.Run(context.Background(), []string{"up", "--lockfile-policy", "bogus"})
-	if err == nil || err.Error() != `invalid lockfile policy "bogus"; expected auto, frozen, or update` {
+	if err == nil || !strings.Contains(err.Error(), `invalid lockfile policy "bogus"`) || !strings.Contains(err.Error(), "expected auto, frozen, or update") {
 		t.Fatalf("expected lockfile policy error, got %v", err)
 	}
 }

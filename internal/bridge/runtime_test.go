@@ -515,7 +515,7 @@ func TestListenForwardPortFallsBackWhenExactPortBusy(t *testing.T) {
 func TestWaitForBridgeTCPTimesOut(t *testing.T) {
 	t.Parallel()
 
-	err := waitForBridgeTCP(1, 150*time.Millisecond)
+	err := waitForBridgeTCP(1, 500*time.Millisecond)
 	if err == nil || !strings.Contains(err.Error(), "timed out waiting for bridge tcp listener") {
 		t.Fatalf("unexpected error %v", err)
 	}

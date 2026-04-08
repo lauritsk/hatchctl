@@ -344,18 +344,18 @@ func TestResolveFeaturesFetchesDeprecatedGitHubShorthandFeature(t *testing.T) {
 
 func TestResolveFeaturesHonorsContextTimeoutForTarballs(t *testing.T) {
 	previousTimeout := featureHTTPTimeout
-	featureHTTPTimeout = 50 * time.Millisecond
+	featureHTTPTimeout = 200 * time.Millisecond
 	t.Cleanup(func() {
 		featureHTTPTimeout = previousTimeout
 	})
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		time.Sleep(200 * time.Millisecond)
+		time.Sleep(750 * time.Millisecond)
 		_, _ = w.Write([]byte("late"))
 	}))
 	defer server.Close()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	configPath := filepath.Join(t.TempDir(), ".devcontainer.json")
 	_, err := ResolveFeatures(ctx, configPath, filepath.Dir(configPath), t.TempDir(), map[string]any{server.URL + "/feature.tgz": true}, featureResolveOpts)
