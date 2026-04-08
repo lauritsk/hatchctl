@@ -1,6 +1,5 @@
 [tools]
 go = "1.26.2"
-gofumpt = "0.9.2"
 
 [hooks]
 enter = { task = "setup" }
@@ -10,10 +9,12 @@ description = "Sync Go module dependencies"
 run = "go mod download"
 
 [tasks.format]
+tools.gofumpt = "0.9.2"
 description = "Format Go source files"
 run = "gofumpt -w $(git ls-files '*.go')"
 
 [tasks.lint]
+tools.gofumpt = "0.9.2"
 description = "Check Go formatting and vet packages"
 run = "test -z \"$(gofumpt -l $(git ls-files '*.go'))\" && go vet ./..."
 
