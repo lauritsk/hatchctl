@@ -2,6 +2,14 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## [v0.3.1](https://github.com/lauritsk/hatchctl/compare/1018af8270ac713d298bb28f472b42d04cf7e322..v0.3.1) - 2026-04-08
+#### Bug Fixes
+- (**ci**) isolate config-sensitive cli tests - ([bf1d6c7](https://github.com/lauritsk/hatchctl/commit/bf1d6c77ff96cad69c854dec1a51e2b23d3d419b)) - Karl Hans Laurits
+#### Refactoring
+- (**runtime**) simplify orchestration boundaries - ([1018af8](https://github.com/lauritsk/hatchctl/commit/1018af8270ac713d298bb28f472b42d04cf7e322)) - Karl Hans Laurits
+
+- - -
+
 ## [v0.3.0](https://github.com/lauritsk/hatchctl/compare/83637697ca48684cd6aa7d1d6c53bb0dcfed9107..v0.3.0) - 2026-04-08
 #### Features
 - (**cli**) clarify command UX and runtime copy - ([90caa21](https://github.com/lauritsk/hatchctl/commit/90caa21249de10f766319166572ffb23f3108221)) - Karl Hans Laurits
