@@ -589,7 +589,7 @@ func defaultDotfilesOptions() dotfilesOptions {
 }
 
 func addDotfilesFlags(cmd *cobra.Command, opts *dotfilesOptions) {
-	cmd.PersistentFlags().StringVar(&opts.Repository, "dotfiles", opts.Repository, "dotfiles repository (owner/repo, github.com/owner/repo, or git URL); env HATCHCTL_DOTFILES_REPOSITORY")
+	cmd.PersistentFlags().StringVar(&opts.Repository, "dotfiles", opts.Repository, "dotfiles repository (user, owner/repo, host/user, host/user/repo, or git URL); env HATCHCTL_DOTFILES_REPOSITORY")
 	cmd.PersistentFlags().StringVar(&opts.Repository, "dotfiles-repository", opts.Repository, "same as --dotfiles")
 	cmd.PersistentFlags().StringVar(&opts.InstallCommand, "dotfiles-install-command", opts.InstallCommand, "dotfiles install script or command; env HATCHCTL_DOTFILES_INSTALL_COMMAND")
 	cmd.PersistentFlags().StringVar(&opts.TargetPath, "dotfiles-target-path", opts.TargetPath, "dotfiles checkout path inside the container; env HATCHCTL_DOTFILES_TARGET_PATH")

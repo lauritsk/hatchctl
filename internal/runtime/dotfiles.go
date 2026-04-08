@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"path"
 	"strings"
 
@@ -101,19 +102,49 @@ func normalizeDotfilesRepository(value string) (string, error) {
 	if strings.HasPrefix(value, "./") || strings.HasPrefix(value, "../") || strings.HasPrefix(value, "/") {
 		return "", fmt.Errorf("local dotfiles repository paths are not supported: %q", value)
 	}
-	if strings.HasPrefix(value, "github.com/") {
-		value = "https://" + value
-	}
 	if strings.Contains(value, "://") || strings.HasPrefix(value, "git@") {
-		if strings.HasPrefix(value, "https://github.com/") && !strings.HasSuffix(value, ".git") {
-			value += ".git"
+		if strings.HasPrefix(value, "https://") || strings.HasPrefix(value, "http://") {
+			parsed, err := url.Parse(value)
+			if err != nil {
+				return "", err
+			}
+			if parsed.Host != "" && !strings.HasSuffix(parsed.Path, ".git") {
+				parts := strings.Split(strings.Trim(parsed.Path, "/"), "/")
+				if len(parts) >= 2 {
+					value += ".git"
+				}
+			}
 		}
 		return value, nil
 	}
-	if strings.Count(value, "/") == 1 {
+	parts := strings.Split(value, "/")
+	switch len(parts) {
+	case 1:
+		return "https://github.com/" + parts[0] + "/dotfiles.git", nil
+	case 2:
+		if parts[0] == "github.com" {
+			return guessedDotfilesRepository(parts[0], parts[1], "dotfiles"), nil
+		}
+		if strings.Contains(parts[0], ".") {
+			return guessedDotfilesRepository(parts[0], parts[1], "dotfiles"), nil
+		}
 		return "https://github.com/" + value + ".git", nil
+	case 3:
+		if parts[0] == "github.com" {
+			return guessedDotfilesRepository(parts[0], parts[1], parts[2]), nil
+		}
+		if strings.Contains(parts[0], ".") {
+			return guessedDotfilesRepository(parts[0], parts[1], parts[2]), nil
+		}
 	}
-	return "", fmt.Errorf("invalid dotfiles repository %q; use owner/repo, github.com/owner/repo, or a git URL", value)
+	return "", fmt.Errorf("invalid dotfiles repository %q; use user, owner/repo, host/user, host/user/repo, or a git URL", value)
+}
+
+func guessedDotfilesRepository(host string, owner string, repo string) string {
+	if host == "sr.ht" {
+		host = "git.sr.ht"
+	}
+	return "https://" + host + "/" + owner + "/" + repo + ".git"
 }
 
 func normalizeDotfilesTargetPath(value string) string {
