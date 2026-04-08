@@ -1,19 +1,18 @@
 # hatchctl
 
-A Better CLI for Development Containers
+Run devcontainers from the terminal.
 
 ## Overview
 
-`hatchctl` runs and inspects devcontainer-based environments across single-container and Compose-based setups, with feature installation, lifecycle execution, and bridge support where available.
+`hatchctl` lets you open a devcontainer-backed workspace, inspect the resolved config, and run commands inside the container without depending on editor tooling.
 
-## Supported Workflows
+It is built for people who already use Docker and want a direct CLI for everyday devcontainer tasks like:
 
-- single-container image and Dockerfile devcontainer flows
-- single-service Compose devcontainer flows
-- local, OCI, direct tarball, and deprecated GitHub shorthand feature references
-- lifecycle execution, managed-container reuse, and config inspection
-- machine-readable JSON output for automation-oriented commands
-- macOS bridge support for browser-open forwarding
+- starting a workspace from `devcontainer.json`
+- reusing an existing container instead of rebuilding every time
+- inspecting the merged config and detected runtime state
+- running tests, shells, and one-off commands inside the container
+- automating these flows with JSON output
 
 ## Install
 
@@ -32,25 +31,37 @@ mise use github:lauritsk/hatchctl@latest
 
 `hatchctl` shells out to the Docker CLI.
 
-## Capabilities
+## Quick Start
 
-- config discovery for `.devcontainer/devcontainer.json` and `.devcontainer.json`
-- JSONC parsing for devcontainer files
-- single-container image and Dockerfile flows
-- local file-path feature consumption for single-container image and Dockerfile flows
-- OCI feature consumption for single-container image and Dockerfile flows
-- direct tarball feature consumption for single-container image and Dockerfile flows
-- minimal Compose config discovery, build, up, exec, and reuse for a single service
-- ephemeral Compose override-file generation for mounts, env, labels, and command behavior
-- Compose feature consumption for image-based and Dockerfile-based single-service flows
-- Compose bridge support and Compose UID/GID remap parity for single-service flows
-- config-adjacent feature lockfiles with digest and integrity reuse
-- first-class dotfiles personalization through CLI flags or `HATCHCTL_DOTFILES_*` env vars
-- `up`, `build`, `exec`, `config`, `run`, and `bridge doctor`
-- machine-readable JSON output for `up`, `build`, `exec`, `config`, `run`, and `bridge doctor`
-- lifecycle execution for `initializeCommand`, `onCreateCommand`, `updateContentCommand`, `postCreateCommand`, `postStartCommand`, and `postAttachCommand`
-- workspace-scoped state and managed container reuse
-- browser-open forwarding on macOS bridge sessions
+Start or reuse the devcontainer for the current workspace:
+
+```sh
+hatchctl up
+```
+
+Run a shell inside the container:
+
+```sh
+hatchctl exec -- /bin/sh
+```
+
+Run tests inside the container:
+
+```sh
+hatchctl exec -- go test ./...
+```
+
+Inspect the merged config and detected runtime state:
+
+```sh
+hatchctl config
+```
+
+Use JSON output in scripts:
+
+```sh
+hatchctl up --json
+```
 
 ## Support Matrix
 
@@ -62,7 +73,7 @@ mise use github:lauritsk/hatchctl@latest
 - automation: human-readable terminal output is supported
 - automation: JSON output for selected commands is supported
 - bridge support: browser-open forwarding is macOS only
-- bridge support: localhost callback forwarding is implemented as part of the macOS bridge feature set
+- bridge support: localhost callback forwarding is included with the macOS bridge flow
 
 ## Commands
 
@@ -77,9 +88,42 @@ hatchctl run --phase start
 hatchctl bridge doctor
 ```
 
-Dotfiles are configured outside `devcontainer.json`, matching how editor tooling treats them. Most users only need `--dotfiles <repo>`. `--dotfiles-repository`, `--dotfiles-install-command`, and `--dotfiles-target-path` are available when you need more control, and each has a matching `HATCHCTL_DOTFILES_*` environment variable.
+### Command Guide
+
+- `hatchctl up`: create or reuse the workspace container
+- `hatchctl build`: build the devcontainer image without starting the container
+- `hatchctl exec -- ...`: run a command inside the container
+- `hatchctl config`: show the merged config and detected runtime state
+- `hatchctl run --phase ...`: re-run lifecycle steps in an existing container
+- `hatchctl bridge doctor`: check whether macOS bridge support is available and healthy
+
+Use `--` with `exec` to separate `hatchctl` flags from the command you want to run in the container.
+
+Dotfiles are configured outside `devcontainer.json`, matching how editor tooling treats them. Most users only need `--dotfiles <repo>`. Use `--dotfiles-install-command` or `--dotfiles-target-path` only when the repository needs a custom install step or checkout location. Matching `HATCHCTL_DOTFILES_*` environment variables are also supported.
 
 Remote feature downloads default to a `90s` HTTP timeout. Override that per command with `--feature-timeout`, for example `hatchctl up --feature-timeout 2m`.
+
+`--lockfile-policy` controls how remote features are resolved:
+
+- `auto`: use the lockfile when available and refresh it when needed
+- `frozen`: fail instead of changing lockfile-backed resolution
+- `update`: refresh lockfile-backed resolution
+
+`config` and `bridge doctor` default to `frozen` so inspection commands do not unexpectedly update dependency state.
+
+Use `--bridge` on macOS when the container needs host-side browser open or localhost callback forwarding during auth flows.
+
+## Supported Devcontainer Features
+
+- config discovery for `.devcontainer/devcontainer.json` and `.devcontainer.json`
+- JSONC parsing for devcontainer files
+- single-container image and Dockerfile workflows
+- single-service Compose workflows
+- local file-path, OCI, direct tarball, and deprecated GitHub shorthand feature references
+- lifecycle execution for `initializeCommand`, `onCreateCommand`, `updateContentCommand`, `postCreateCommand`, `postStartCommand`, and `postAttachCommand`
+- workspace-scoped state and container reuse
+- machine-readable JSON output for `up`, `build`, `exec`, `config`, `run`, and `bridge doctor`
+- dotfiles setup through CLI flags or `HATCHCTL_DOTFILES_*` environment variables
 
 ## Development
 

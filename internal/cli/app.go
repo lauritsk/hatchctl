@@ -209,7 +209,7 @@ func (a *App) newBuildCommand(global *globalOptions) *cobra.Command {
 			if jsonOut {
 				return renderer.PrintJSON(result)
 			}
-			return renderer.PrintText(fmt.Sprintf("Built %s", result.Image))
+			return renderer.PrintText(fmt.Sprintf("Devcontainer image ready: %s", result.Image))
 		},
 	}
 	cmd.Flags().StringVar(&workspace, "workspace", "", "workspace folder (defaults to current directory)")
@@ -233,7 +233,7 @@ func (a *App) newExecCommand(global *globalOptions) *cobra.Command {
 		DisableFlagParsing: false,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
-				return errors.New("exec requires a command")
+				return errors.New("missing command for exec; use 'hatchctl exec -- <command>'")
 			}
 			renderer := a.newRenderer(jsonOut)
 			defer renderer.Close()
@@ -277,7 +277,7 @@ func (a *App) newExecCommand(global *globalOptions) *cobra.Command {
 					"exitCode": code,
 					"stdout":   stdoutBuffer.String(),
 					"stderr":   stderrBuffer.String(),
-					"command":  args,
+					"args":     args,
 				}); err != nil {
 					return err
 				}
@@ -390,7 +390,7 @@ func (a *App) newRunCommand(global *globalOptions, dotfiles *dotfilesOptions) *c
 			if jsonOut {
 				return renderer.PrintJSON(result)
 			}
-			return renderer.PrintText(fmt.Sprintf("Ran lifecycle commands for %s (%s).", result.ContainerID, result.Phase))
+			return renderer.PrintText(fmt.Sprintf("Lifecycle phase %q completed for container %s.", result.Phase, result.ContainerID))
 		},
 	}
 	cmd.Flags().StringVar(&workspace, "workspace", "", "workspace folder (defaults to current directory)")
@@ -483,10 +483,10 @@ func (a *App) newBridgeDoctorCommand(global *globalOptions) *cobra.Command {
 			}
 			return renderer.PrintKeyValues([]ui.KeyValue{
 				{Key: "Bridge session", Value: report.ID},
-				{Key: "Enabled", Value: fmt.Sprintf("%t", report.Enabled)},
+				{Key: "Bridge enabled", Value: fmt.Sprintf("%t", report.Enabled)},
+				{Key: "Current status", Value: report.Status},
 				{Key: "State path", Value: report.StatePath},
 				{Key: "Helper path", Value: report.HelperPath},
-				{Key: "Status", Value: report.Status},
 			})
 		},
 	}
@@ -506,7 +506,7 @@ func (a *App) newBridgeServeCommand() *cobra.Command {
 		Short: "Serve bridge callbacks for a managed container",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if stateDir == "" || containerID == "" {
-				return errors.New("bridge serve requires --state-dir and --container-id")
+				return errors.New("missing required flags: --state-dir and --container-id")
 			}
 			return bridge.Serve(cmd.Context(), stateDir, containerID)
 		},
@@ -684,30 +684,50 @@ func shellQuote(value string) string {
 
 func configResultFields(result runtime.ReadConfigResult) []ui.KeyValue {
 	fields := []ui.KeyValue{
-		{Key: "Config", Value: result.ConfigPath},
-		{Key: "Workspace", Value: result.WorkspaceFolder},
+		{Key: "Config file", Value: result.ConfigPath},
+		{Key: "Workspace folder", Value: result.WorkspaceFolder},
 		{Key: "Workspace mount", Value: result.WorkspaceMount},
-		{Key: "Source", Value: result.SourceKind},
-		{Key: "State dir", Value: result.StateDir},
-		{Key: "Lifecycle", Value: fmt.Sprintf("initialize=%t create=%t start=%t attach=%t", result.HasInitializeCommand, result.HasCreateCommand, result.HasStartCommand, result.HasAttachCommand)},
+		{Key: "Devcontainer type", Value: formatSourceKind(result.SourceKind)},
+		{Key: "State directory", Value: result.StateDir},
+		{Key: "Lifecycle hooks", Value: fmt.Sprintf("initialize=%s create=%s start=%s attach=%s", yesNo(result.HasInitializeCommand), yesNo(result.HasCreateCommand), yesNo(result.HasStartCommand), yesNo(result.HasAttachCommand))},
 	}
 	if result.CacheDir != "" {
-		fields = append(fields, ui.KeyValue{Key: "Cache dir", Value: result.CacheDir})
+		fields = append(fields, ui.KeyValue{Key: "Cache directory", Value: result.CacheDir})
 	}
 	if result.ImageUser != "" {
 		fields = append(fields, ui.KeyValue{Key: "Image user", Value: result.ImageUser})
 	}
 	if len(result.ForwardPorts) > 0 {
-		fields = append(fields, ui.KeyValue{Key: "Forward ports", Value: strings.Join(result.ForwardPorts, ", ")})
+		fields = append(fields, ui.KeyValue{Key: "Forwarded ports", Value: strings.Join(result.ForwardPorts, ", ")})
 	}
 	if result.Bridge != nil {
-		fields = append(fields, ui.KeyValue{Key: "Bridge", Value: fmt.Sprintf("enabled=%t mount=%s helper=%s status=%s", result.Bridge.Enabled, result.Bridge.BinPath, result.Bridge.HelperPath, result.Bridge.Status)})
+		fields = append(fields, ui.KeyValue{Key: "Bridge support", Value: fmt.Sprintf("enabled=%t status=%s helper=%s mount=%s", result.Bridge.Enabled, result.Bridge.Status, result.Bridge.HelperPath, result.Bridge.BinPath)})
 	}
 	if result.Dotfiles != nil {
-		fields = append(fields, ui.KeyValue{Key: "Dotfiles", Value: fmt.Sprintf("configured=%t applied=%t pending=%t repo=%s target=%s", result.Dotfiles.Configured, result.Dotfiles.Applied, result.Dotfiles.NeedsInstall, result.Dotfiles.Repository, result.Dotfiles.TargetPath)})
+		fields = append(fields, ui.KeyValue{Key: "Dotfiles", Value: fmt.Sprintf("configured=%t applied=%t needs-install=%t repo=%s target=%s", result.Dotfiles.Configured, result.Dotfiles.Applied, result.Dotfiles.NeedsInstall, result.Dotfiles.Repository, result.Dotfiles.TargetPath)})
 	}
 	if result.ManagedContainer != nil {
-		fields = append(fields, ui.KeyValue{Key: "Managed container", Value: fmt.Sprintf("id=%s status=%s running=%t user=%s metadata=%d", result.ManagedContainer.ID, result.ManagedContainer.Status, result.ManagedContainer.Running, result.ManagedContainer.RemoteUser, result.ManagedContainer.MetadataCount)})
+		fields = append(fields, ui.KeyValue{Key: "Managed container", Value: fmt.Sprintf("id=%s status=%s running=%t remote-user=%s metadata=%d", result.ManagedContainer.ID, result.ManagedContainer.Status, result.ManagedContainer.Running, result.ManagedContainer.RemoteUser, result.ManagedContainer.MetadataCount)})
 	}
 	return fields
+}
+
+func yesNo(value bool) string {
+	if value {
+		return "yes"
+	}
+	return "no"
+}
+
+func formatSourceKind(value string) string {
+	switch value {
+	case "image":
+		return "Image"
+	case "dockerfile":
+		return "Dockerfile"
+	case "compose":
+		return "Compose"
+	default:
+		return value
+	}
 }

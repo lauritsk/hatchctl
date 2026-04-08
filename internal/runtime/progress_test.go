@@ -50,7 +50,7 @@ func TestProgressCommandIODoesNotPrintHeaderWithoutOutput(t *testing.T) {
 	var stderr bytes.Buffer
 	sink := &recordedSink{}
 	runner := &Runner{}
-	streams := runner.progressCommandIO(sink, "Running initializeCommand", commandIO{Stdout: &stdout, Stderr: &stderr})
+	streams := runner.progressCommandIO(sink, "Running initializeCommand lifecycle hook", commandIO{Stdout: &stdout, Stderr: &stderr})
 
 	if streams.Stdout == nil || streams.Stderr == nil {
 		t.Fatal("expected wrapped streams")
@@ -69,7 +69,7 @@ func TestProgressCommandIOFallsBackToStdoutForHeader(t *testing.T) {
 	var stdout bytes.Buffer
 	sink := &recordedSink{}
 	runner := &Runner{}
-	streams := runner.progressCommandIO(sink, "Running initializeCommand", commandIO{Stdout: &stdout})
+	streams := runner.progressCommandIO(sink, "Running initializeCommand lifecycle hook", commandIO{Stdout: &stdout})
 
 	if _, err := streams.Stdout.Write([]byte("output\n")); err != nil {
 		t.Fatalf("write stdout: %v", err)
@@ -78,7 +78,7 @@ func TestProgressCommandIOFallsBackToStdoutForHeader(t *testing.T) {
 	if got := stdout.String(); got != "output\n" {
 		t.Fatalf("unexpected stdout %q", got)
 	}
-	if len(sink.events) != 2 || sink.events[0].Kind != ui.EventClear || sink.events[1].Kind != ui.EventProgressOutput || sink.events[1].Message != "Running initializeCommand" {
+	if len(sink.events) != 2 || sink.events[0].Kind != ui.EventClear || sink.events[1].Kind != ui.EventProgressOutput || sink.events[1].Message != "Running initializeCommand lifecycle hook" {
 		t.Fatalf("unexpected events %#v", sink.events)
 	}
 }

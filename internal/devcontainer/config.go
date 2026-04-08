@@ -293,13 +293,13 @@ func resolve(ctx context.Context, workspaceArg string, configArg string, opts Re
 	if config.Service != "" || len(composeFiles) > 0 {
 		sourceKind = "compose"
 		if config.Service == "" {
-			return ResolvedConfig{}, errors.New("compose-based devcontainers require service")
+			return ResolvedConfig{}, errors.New("compose-based devcontainers must set \"service\"")
 		}
 		if len(composeFiles) == 0 {
-			return ResolvedConfig{}, errors.New("compose-based devcontainers require dockerComposeFile")
+			return ResolvedConfig{}, errors.New("compose-based devcontainers must set \"dockerComposeFile\"")
 		}
 		if remoteWorkspace == "" {
-			return ResolvedConfig{}, errors.New("compose-based devcontainers require workspaceFolder")
+			return ResolvedConfig{}, errors.New("compose-based devcontainers must set \"workspaceFolder\"")
 		}
 	}
 	if remoteWorkspace == "" {
@@ -429,7 +429,7 @@ func resolveConfigPath(workspace string, configArg string) (string, error) {
 			return candidate, nil
 		}
 	}
-	return "", fmt.Errorf("dev container config not found in %s", workspace)
+	return "", fmt.Errorf("no devcontainer config found in %s", workspace)
 }
 
 func EffectiveDockerfile(config Config) string {
@@ -507,7 +507,7 @@ func normalizeForwardPort(value any) (string, error) {
 	case string:
 		v = strings.TrimSpace(v)
 		if v == "" {
-			return "", fmt.Errorf("forward port cannot be empty")
+			return "", fmt.Errorf("forwardPorts entries cannot be empty")
 		}
 		if strings.HasPrefix(v, "localhost:") {
 			if port, ok := parseLocalhostPort(v); ok {
@@ -517,11 +517,11 @@ func normalizeForwardPort(value any) (string, error) {
 		return v, nil
 	case float64:
 		if v != float64(int(v)) {
-			return "", fmt.Errorf("forward port %v must be an integer", v)
+			return "", fmt.Errorf("invalid forward port %v: expected an integer", v)
 		}
 		return fmt.Sprintf("localhost:%d", int(v)), nil
 	default:
-		return "", fmt.Errorf("unsupported forward port type %T", value)
+		return "", fmt.Errorf("invalid forward port value of type %T", value)
 	}
 }
 

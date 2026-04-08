@@ -12,18 +12,22 @@ type runtimeLifecycleManager struct {
 	runner *Runner
 }
 
+func lifecycleProgressLabel(name string) string {
+	return fmt.Sprintf("Running %s lifecycle hook", name)
+}
+
 func (m *runtimeLifecycleManager) RunForUp(ctx context.Context, resolved devcontainer.ResolvedConfig, containerID string, created bool, state devcontainer.State, dotfiles DotfilesOptions, events ui.Sink) error {
 	if created || !state.LifecycleReady {
-		if err := runHostLifecycle(ctx, resolved.WorkspaceFolder, resolved.Config.InitializeCommand, m.runner.progressCommandIO(events, "Running initializeCommand", m.runner.commandIO()), m.runner.backend); err != nil {
+		if err := runHostLifecycle(ctx, resolved.WorkspaceFolder, resolved.Config.InitializeCommand, m.runner.progressCommandIO(events, lifecycleProgressLabel("initializeCommand"), m.runner.commandIO()), m.runner.backend); err != nil {
 			return err
 		}
-		if err := m.runContainerLifecycleList(ctx, containerID, resolved, resolved.Merged.OnCreateCommands, events, "Running onCreateCommand"); err != nil {
+		if err := m.runContainerLifecycleList(ctx, containerID, resolved, resolved.Merged.OnCreateCommands, events, lifecycleProgressLabel("onCreateCommand")); err != nil {
 			return err
 		}
-		if err := m.runContainerLifecycleList(ctx, containerID, resolved, resolved.Merged.UpdateContentCommands, events, "Running updateContentCommand"); err != nil {
+		if err := m.runContainerLifecycleList(ctx, containerID, resolved, resolved.Merged.UpdateContentCommands, events, lifecycleProgressLabel("updateContentCommand")); err != nil {
 			return err
 		}
-		if err := m.runContainerLifecycleList(ctx, containerID, resolved, resolved.Merged.PostCreateCommands, events, "Running postCreateCommand"); err != nil {
+		if err := m.runContainerLifecycleList(ctx, containerID, resolved, resolved.Merged.PostCreateCommands, events, lifecycleProgressLabel("postCreateCommand")); err != nil {
 			return err
 		}
 	}
@@ -32,25 +36,25 @@ func (m *runtimeLifecycleManager) RunForUp(ctx context.Context, resolved devcont
 			return err
 		}
 	}
-	if err := m.runContainerLifecycleList(ctx, containerID, resolved, resolved.Merged.PostStartCommands, events, "Running postStartCommand"); err != nil {
+	if err := m.runContainerLifecycleList(ctx, containerID, resolved, resolved.Merged.PostStartCommands, events, lifecycleProgressLabel("postStartCommand")); err != nil {
 		return err
 	}
-	return m.runContainerLifecycleList(ctx, containerID, resolved, resolved.Merged.PostAttachCommands, events, "Running postAttachCommand")
+	return m.runContainerLifecycleList(ctx, containerID, resolved, resolved.Merged.PostAttachCommands, events, lifecycleProgressLabel("postAttachCommand"))
 }
 
 func (m *runtimeLifecycleManager) RunPhase(ctx context.Context, resolved devcontainer.ResolvedConfig, containerID string, phase string, state devcontainer.State, dotfiles DotfilesOptions, runDotfiles bool, events ui.Sink) error {
 	switch phase {
 	case "all":
-		if err := runHostLifecycle(ctx, resolved.WorkspaceFolder, resolved.Config.InitializeCommand, m.runner.progressCommandIO(events, "Running initializeCommand", m.runner.commandIO()), m.runner.backend); err != nil {
+		if err := runHostLifecycle(ctx, resolved.WorkspaceFolder, resolved.Config.InitializeCommand, m.runner.progressCommandIO(events, lifecycleProgressLabel("initializeCommand"), m.runner.commandIO()), m.runner.backend); err != nil {
 			return err
 		}
-		if err := m.runContainerLifecycleList(ctx, containerID, resolved, resolved.Merged.OnCreateCommands, events, "Running onCreateCommand"); err != nil {
+		if err := m.runContainerLifecycleList(ctx, containerID, resolved, resolved.Merged.OnCreateCommands, events, lifecycleProgressLabel("onCreateCommand")); err != nil {
 			return err
 		}
-		if err := m.runContainerLifecycleList(ctx, containerID, resolved, resolved.Merged.UpdateContentCommands, events, "Running updateContentCommand"); err != nil {
+		if err := m.runContainerLifecycleList(ctx, containerID, resolved, resolved.Merged.UpdateContentCommands, events, lifecycleProgressLabel("updateContentCommand")); err != nil {
 			return err
 		}
-		if err := m.runContainerLifecycleList(ctx, containerID, resolved, resolved.Merged.PostCreateCommands, events, "Running postCreateCommand"); err != nil {
+		if err := m.runContainerLifecycleList(ctx, containerID, resolved, resolved.Merged.PostCreateCommands, events, lifecycleProgressLabel("postCreateCommand")); err != nil {
 			return err
 		}
 		if runDotfiles && dotfiles.Enabled() && !dotfilesStateMatches(state, dotfiles) {
@@ -58,21 +62,21 @@ func (m *runtimeLifecycleManager) RunPhase(ctx context.Context, resolved devcont
 				return err
 			}
 		}
-		if err := m.runContainerLifecycleList(ctx, containerID, resolved, resolved.Merged.PostStartCommands, events, "Running postStartCommand"); err != nil {
+		if err := m.runContainerLifecycleList(ctx, containerID, resolved, resolved.Merged.PostStartCommands, events, lifecycleProgressLabel("postStartCommand")); err != nil {
 			return err
 		}
-		return m.runContainerLifecycleList(ctx, containerID, resolved, resolved.Merged.PostAttachCommands, events, "Running postAttachCommand")
+		return m.runContainerLifecycleList(ctx, containerID, resolved, resolved.Merged.PostAttachCommands, events, lifecycleProgressLabel("postAttachCommand"))
 	case "create":
-		if err := runHostLifecycle(ctx, resolved.WorkspaceFolder, resolved.Config.InitializeCommand, m.runner.progressCommandIO(events, "Running initializeCommand", m.runner.commandIO()), m.runner.backend); err != nil {
+		if err := runHostLifecycle(ctx, resolved.WorkspaceFolder, resolved.Config.InitializeCommand, m.runner.progressCommandIO(events, lifecycleProgressLabel("initializeCommand"), m.runner.commandIO()), m.runner.backend); err != nil {
 			return err
 		}
-		if err := m.runContainerLifecycleList(ctx, containerID, resolved, resolved.Merged.OnCreateCommands, events, "Running onCreateCommand"); err != nil {
+		if err := m.runContainerLifecycleList(ctx, containerID, resolved, resolved.Merged.OnCreateCommands, events, lifecycleProgressLabel("onCreateCommand")); err != nil {
 			return err
 		}
-		if err := m.runContainerLifecycleList(ctx, containerID, resolved, resolved.Merged.UpdateContentCommands, events, "Running updateContentCommand"); err != nil {
+		if err := m.runContainerLifecycleList(ctx, containerID, resolved, resolved.Merged.UpdateContentCommands, events, lifecycleProgressLabel("updateContentCommand")); err != nil {
 			return err
 		}
-		if err := m.runContainerLifecycleList(ctx, containerID, resolved, resolved.Merged.PostCreateCommands, events, "Running postCreateCommand"); err != nil {
+		if err := m.runContainerLifecycleList(ctx, containerID, resolved, resolved.Merged.PostCreateCommands, events, lifecycleProgressLabel("postCreateCommand")); err != nil {
 			return err
 		}
 		if runDotfiles && dotfiles.Enabled() && !dotfilesStateMatches(state, dotfiles) {
@@ -82,11 +86,11 @@ func (m *runtimeLifecycleManager) RunPhase(ctx context.Context, resolved devcont
 		}
 		return nil
 	case "start":
-		return m.runContainerLifecycleList(ctx, containerID, resolved, resolved.Merged.PostStartCommands, events, "Running postStartCommand")
+		return m.runContainerLifecycleList(ctx, containerID, resolved, resolved.Merged.PostStartCommands, events, lifecycleProgressLabel("postStartCommand"))
 	case "attach":
-		return m.runContainerLifecycleList(ctx, containerID, resolved, resolved.Merged.PostAttachCommands, events, "Running postAttachCommand")
+		return m.runContainerLifecycleList(ctx, containerID, resolved, resolved.Merged.PostAttachCommands, events, lifecycleProgressLabel("postAttachCommand"))
 	default:
-		return fmt.Errorf("unknown lifecycle phase %q", phase)
+		return fmt.Errorf("invalid lifecycle phase %q; expected all, create, start, or attach", phase)
 	}
 }
 

@@ -241,7 +241,7 @@ func TestRunExecRequiresCommand(t *testing.T) {
 	app := NewWithRunner(&out, &errOut, stubRunner{})
 
 	err := app.Run(context.Background(), []string{"exec"})
-	if err == nil || err.Error() != "exec requires a command" {
+	if err == nil || err.Error() != "missing command for exec; use 'hatchctl exec -- <command>'" {
 		t.Fatalf("expected missing command error, got %v", err)
 	}
 }
@@ -281,7 +281,7 @@ func TestRunExecJSONCapturesOutputAndEnv(t *testing.T) {
 	if gotOut := out.String(); !strings.Contains(gotOut, `"exitCode": 0`) || !strings.Contains(gotOut, `"stdout": "command output\n"`) || !strings.Contains(gotOut, `"stderr": "warning output\n"`) {
 		t.Fatalf("unexpected json output %q", gotOut)
 	}
-	if gotOut := out.String(); !strings.Contains(gotOut, `"command": [`) || !strings.Contains(gotOut, `"echo hi"`) {
+	if gotOut := out.String(); !strings.Contains(gotOut, `"args": [`) || !strings.Contains(gotOut, `"echo hi"`) {
 		t.Fatalf("expected command in json output, got %q", gotOut)
 	}
 }
@@ -374,7 +374,7 @@ func TestRunLifecyclePassesPhase(t *testing.T) {
 	if err := app.Run(context.Background(), []string{"run", "--phase", "attach"}); err != nil {
 		t.Fatalf("run app: %v", err)
 	}
-	if got := out.String(); got != "Ran lifecycle commands for abc123 (attach).\n" {
+	if got := out.String(); got != "Lifecycle phase \"attach\" completed for container abc123.\n" {
 		t.Fatalf("unexpected output %q", got)
 	}
 }
@@ -399,6 +399,9 @@ func TestRunBridgeDoctorUsesFrozenLockfilePolicy(t *testing.T) {
 	if !called {
 		t.Fatal("expected doctor runner to be called")
 	}
+	if got := out.String(); !strings.Contains(got, "Bridge enabled: true") || !strings.Contains(got, "Current status: running") {
+		t.Fatalf("unexpected bridge doctor output %q", got)
+	}
 }
 
 func TestRunBridgeServeRequiresFlags(t *testing.T) {
@@ -409,7 +412,7 @@ func TestRunBridgeServeRequiresFlags(t *testing.T) {
 	app := NewWithRunner(&out, &errOut, stubRunner{})
 
 	err := app.Run(context.Background(), []string{"bridge", "serve"})
-	if err == nil || err.Error() != "bridge serve requires --state-dir and --container-id" {
+	if err == nil || err.Error() != "missing required flags: --state-dir and --container-id" {
 		t.Fatalf("expected missing flag error, got %v", err)
 	}
 }
@@ -455,7 +458,7 @@ func TestRunRejectsInvalidLockfilePolicy(t *testing.T) {
 	app := NewWithRunner(&out, &errOut, stubRunner{})
 
 	err := app.Run(context.Background(), []string{"up", "--lockfile-policy", "bogus"})
-	if err == nil || err.Error() != `unsupported lockfile policy "bogus"` {
+	if err == nil || err.Error() != `invalid lockfile policy "bogus"; expected auto, frozen, or update` {
 		t.Fatalf("expected lockfile policy error, got %v", err)
 	}
 }

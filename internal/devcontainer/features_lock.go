@@ -28,7 +28,7 @@ func ParseFeatureLockfilePolicy(value string) (FeatureLockfilePolicy, error) {
 	case FeatureLockfilePolicyFrozen, FeatureLockfilePolicyUpdate:
 		return policy, nil
 	default:
-		return "", fmt.Errorf("unsupported lockfile policy %q", value)
+		return "", fmt.Errorf("invalid lockfile policy %q; expected auto, frozen, or update", value)
 	}
 }
 

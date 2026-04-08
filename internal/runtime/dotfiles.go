@@ -113,7 +113,7 @@ func normalizeDotfilesRepository(value string) (string, error) {
 	if strings.Count(value, "/") == 1 {
 		return "https://github.com/" + value + ".git", nil
 	}
-	return "", fmt.Errorf("unsupported dotfiles repository %q; use owner/repo, github.com/owner/repo, or a git URL", value)
+	return "", fmt.Errorf("invalid dotfiles repository %q; use owner/repo, github.com/owner/repo, or a git URL", value)
 }
 
 func normalizeDotfilesTargetPath(value string) string {

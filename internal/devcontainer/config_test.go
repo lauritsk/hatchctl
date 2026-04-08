@@ -318,13 +318,13 @@ func TestResolveComposeConfigRequiresServiceAndWorkspaceFolder(t *testing.T) {
 	if err := os.WriteFile(configPath, []byte(`{"dockerComposeFile":"compose.yaml"}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Resolve(context.Background(), workspace, ""); err == nil || !strings.Contains(err.Error(), "require service") {
+	if _, err := Resolve(context.Background(), workspace, ""); err == nil || !strings.Contains(err.Error(), `must set "service"`) {
 		t.Fatalf("expected missing service error, got %v", err)
 	}
 	if err := os.WriteFile(configPath, []byte(`{"dockerComposeFile":"compose.yaml","service":"app"}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Resolve(context.Background(), workspace, ""); err == nil || !strings.Contains(err.Error(), "require workspaceFolder") {
+	if _, err := Resolve(context.Background(), workspace, ""); err == nil || !strings.Contains(err.Error(), `must set "workspaceFolder"`) {
 		t.Fatalf("expected missing workspaceFolder error, got %v", err)
 	}
 }

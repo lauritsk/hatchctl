@@ -42,7 +42,7 @@ func (c *Client) InspectImage(ctx context.Context, image string) (ImageInspect, 
 		return ImageInspect{}, fmt.Errorf("parse docker image inspect: %w", err)
 	}
 	if len(values) == 0 {
-		return ImageInspect{}, fmt.Errorf("image %s not found", image)
+		return ImageInspect{}, fmt.Errorf("image %q not found", image)
 	}
 	return values[0], nil
 }
@@ -57,7 +57,7 @@ func (c *Client) InspectContainer(ctx context.Context, container string) (Contai
 		return ContainerInspect{}, fmt.Errorf("parse docker inspect: %w", err)
 	}
 	if len(values) == 0 {
-		return ContainerInspect{}, fmt.Errorf("container %s not found", container)
+		return ContainerInspect{}, fmt.Errorf("container %q not found", container)
 	}
 	return values[0], nil
 }

@@ -88,10 +88,10 @@ exit 99
 	if _, err := client.InspectContainer(context.Background(), "broken-container"); err == nil || !strings.Contains(err.Error(), "parse docker inspect") {
 		t.Fatalf("expected parse container inspect error, got %v", err)
 	}
-	if _, err := client.InspectImage(context.Background(), "empty-image"); err == nil || err.Error() != "image empty-image not found" {
+	if _, err := client.InspectImage(context.Background(), "empty-image"); err == nil || err.Error() != `image "empty-image" not found` {
 		t.Fatalf("expected missing image error, got %v", err)
 	}
-	if _, err := client.InspectContainer(context.Background(), "empty-container"); err == nil || err.Error() != "container empty-container not found" {
+	if _, err := client.InspectContainer(context.Background(), "empty-container"); err == nil || err.Error() != `container "empty-container" not found` {
 		t.Fatalf("expected missing container error, got %v", err)
 	}
 }
