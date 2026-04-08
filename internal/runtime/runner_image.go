@@ -108,7 +108,7 @@ func (r *Runner) ensureFeaturesImageFromBase(ctx context.Context, resolved devco
 	if err := os.MkdirAll(buildDir, 0o755); err != nil {
 		return "", err
 	}
-	if err := writeFeatureBuildContext(buildDir, resolved.Features, containerUser, remoteUser, resolved.Merged.Metadata); err != nil {
+	if err := writeFeatureBuildContext(buildDir, baseImage, resolved.Features, containerUser, remoteUser, resolved.Merged.Metadata); err != nil {
 		return "", err
 	}
 	if _, err := os.Stat(filepath.Join(buildDir, "Dockerfile")); err != nil {
@@ -118,7 +118,6 @@ func (r *Runner) ensureFeaturesImageFromBase(ctx context.Context, resolved devco
 		"build",
 		"-f", filepath.Join(buildDir, "Dockerfile"),
 		"-t", resolved.ImageName,
-		"--build-arg", "BASE_IMAGE=" + baseImage,
 		buildDir,
 	}
 	if err := r.docker.Run(ctx, docker.RunOptions{Args: args, Stdout: r.stdout, Stderr: r.stderr}); err != nil {
@@ -245,7 +244,7 @@ func isManagedImage(resolved *devcontainer.ResolvedConfig, image string) bool {
 	return image == resolved.ImageName || strings.HasPrefix(image, resolved.ImageName+"-")
 }
 
-func writeFeatureBuildContext(buildDir string, features []devcontainer.ResolvedFeature, containerUser string, remoteUser string, metadata []devcontainer.MetadataEntry) error {
+func writeFeatureBuildContext(buildDir string, baseImage string, features []devcontainer.ResolvedFeature, containerUser string, remoteUser string, metadata []devcontainer.MetadataEntry) error {
 	metadataLabel, err := devcontainer.MetadataLabelValue(metadata)
 	if err != nil {
 		return err
@@ -258,7 +257,7 @@ func writeFeatureBuildContext(buildDir string, features []devcontainer.ResolvedF
 		return err
 	}
 	var dockerfile strings.Builder
-	dockerfile.WriteString("ARG BASE_IMAGE\nFROM ${BASE_IMAGE}\nUSER root\n")
+	dockerfile.WriteString("FROM " + baseImage + "\nUSER root\n")
 	dockerfile.WriteString("RUN mkdir -p /tmp/dev-container-features\n")
 	dockerfile.WriteString("COPY devcontainer-features.builtin.env /tmp/dev-container-features/devcontainer-features.builtin.env\n")
 	for i, feature := range features {

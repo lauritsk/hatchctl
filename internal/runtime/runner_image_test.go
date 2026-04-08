@@ -3,6 +3,7 @@ package runtime
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
@@ -11,6 +12,7 @@ import (
 func TestWriteFeatureBuildContextUsesOwnerOnlyGeneratedFiles(t *testing.T) {
 	buildDir := t.TempDir()
 	featureDir := filepath.Join(t.TempDir(), "feature-a")
+	baseImage := "mcr.microsoft.com/devcontainers/base:ubuntu"
 	if err := os.MkdirAll(featureDir, 0o755); err != nil {
 		t.Fatalf("mkdir feature dir: %v", err)
 	}
@@ -22,7 +24,7 @@ func TestWriteFeatureBuildContextUsesOwnerOnlyGeneratedFiles(t *testing.T) {
 		Path:    featureDir,
 		Options: map[string]string{"SECRET_TOKEN": "top-secret"},
 	}}
-	if err := writeFeatureBuildContext(buildDir, features, "root", "vscode", nil); err != nil {
+	if err := writeFeatureBuildContext(buildDir, baseImage, features, "root", "vscode", nil); err != nil {
 		t.Fatalf("write feature build context: %v", err)
 	}
 
@@ -38,5 +40,17 @@ func TestWriteFeatureBuildContextUsesOwnerOnlyGeneratedFiles(t *testing.T) {
 		if got := info.Mode().Perm(); got != 0o600 {
 			t.Fatalf("expected owner-only permissions for %s, got %#o", path, got)
 		}
+	}
+
+	dockerfile, err := os.ReadFile(filepath.Join(buildDir, "Dockerfile"))
+	if err != nil {
+		t.Fatalf("read generated Dockerfile: %v", err)
+	}
+	wantPrefix := "FROM " + baseImage + "\n"
+	if len(dockerfile) < len(wantPrefix) || string(dockerfile[:len(wantPrefix)]) != wantPrefix {
+		t.Fatalf("expected generated Dockerfile to start with %q, got %q", wantPrefix, string(dockerfile))
+	}
+	if strings.Contains(string(dockerfile), "ARG BASE_IMAGE") || strings.Contains(string(dockerfile), "FROM ${BASE_IMAGE}") {
+		t.Fatalf("expected generated Dockerfile to inline the base image, got %q", string(dockerfile))
 	}
 }
