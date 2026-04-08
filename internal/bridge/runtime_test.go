@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -410,6 +411,63 @@ func TestWaitForSocketTimesOut(t *testing.T) {
 	path := testSocketPath(t, "missing.sock")
 	err := waitForSocket(path, 150*time.Millisecond)
 	if err == nil || !strings.Contains(err.Error(), "timed out waiting for bridge socket") {
+		t.Fatalf("unexpected error %v", err)
+	}
+}
+
+func TestWaitForHelperRetriesUntilSocketReady(t *testing.T) {
+	t.Parallel()
+
+	path := testSocketPath(t, "helper.sock")
+	ready := make(chan struct{})
+	var once sync.Once
+	retries := 0
+
+	err := waitForHelper(path, 2*time.Second, func() error {
+		retries++
+		if retries != 2 {
+			return nil
+		}
+		once.Do(func() {
+			go func() {
+				listener, err := listenUnixSocket(path)
+				if err != nil {
+					return
+				}
+				defer func() {
+					_ = listener.Close()
+					_ = os.Remove(path)
+					close(ready)
+				}()
+				conn, err := listener.Accept()
+				if err != nil {
+					return
+				}
+				defer conn.Close()
+				var req bridgeRequest
+				if err := readBridgeRequest(conn, &req); err != nil {
+					return
+				}
+				_ = writeBridgeResponse(conn, bridgeResponse{OK: req.Kind == "ping"})
+			}()
+		})
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("wait for helper: %v", err)
+	}
+	if retries < 2 {
+		t.Fatalf("expected helper retry, got %d attempts", retries)
+	}
+	<-ready
+}
+
+func TestWaitForHelperTimesOut(t *testing.T) {
+	t.Parallel()
+
+	path := testSocketPath(t, "missing-helper.sock")
+	err := waitForHelper(path, 150*time.Millisecond, nil)
+	if err == nil || !strings.Contains(err.Error(), "timed out waiting for bridge helper socket") {
 		t.Fatalf("unexpected error %v", err)
 	}
 }

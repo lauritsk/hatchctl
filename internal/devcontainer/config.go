@@ -438,7 +438,11 @@ func ContainerCommand(config Config) []string {
 	if !override {
 		return nil
 	}
-	return []string{"/bin/sh", "-lc", "trap 'exit 0' TERM INT; while sleep 1000; do :; done"}
+	return []string{"/bin/sh", "-lc", KeepAliveCommand()}
+}
+
+func KeepAliveCommand() string {
+	return "exec sleep infinity"
 }
 
 func RemoteExecUser(config Config) string {

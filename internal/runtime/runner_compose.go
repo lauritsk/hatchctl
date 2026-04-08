@@ -183,7 +183,7 @@ func renderComposeOverride(resolved devcontainer.ResolvedConfig, image string) (
 		service.User = user
 	}
 	if overrideCommandEnabled(resolved.Config.OverrideCommand) {
-		service.Command = []string{"/bin/sh", "-lc", "trap 'exit 0' TERM INT; while sleep 1000; do :; done"}
+		service.Command = []string{"/bin/sh", "-lc", devcontainer.KeepAliveCommand()}
 	}
 	if len(resolved.Merged.CapAdd) > 0 {
 		service.CapAdd = slices.Clone(resolved.Merged.CapAdd)

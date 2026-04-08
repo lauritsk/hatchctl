@@ -22,6 +22,12 @@ import (
 
 const containerHelperBin = "/var/run/hatchctl/bridge/bin/hatchctl"
 
+const (
+	bridgeSocketStartupTimeout = 5 * time.Second
+	helperSocketStartupTimeout = 15 * time.Second
+	helperSocketRetryInterval  = 500 * time.Millisecond
+)
+
 type statusFile struct {
 	SessionID   string          `json:"sessionId"`
 	ContainerID string          `json:"containerId"`
@@ -107,13 +113,15 @@ func Start(stateDir string, enabled bool, helperArch string, containerID string)
 		return nil, err
 	}
 	_ = cmd.Process.Release()
-	if err := waitForSocket(session.SocketPath, 5*time.Second); err != nil {
+	if err := waitForSocket(session.SocketPath, bridgeSocketStartupTimeout); err != nil {
 		return nil, err
 	}
 	if err := ensureHelperService(session, containerID); err != nil {
 		return nil, err
 	}
-	if err := waitForHelper(session.HelperSock, 5*time.Second); err != nil {
+	if err := waitForHelper(session.HelperSock, helperSocketStartupTimeout, func() error {
+		return ensureHelperService(session, containerID)
+	}); err != nil {
 		return nil, err
 	}
 	session.Status = "running"
@@ -413,13 +421,18 @@ func waitForSocket(path string, timeout time.Duration) error {
 	return fmt.Errorf("timed out waiting for bridge socket %s", path)
 }
 
-func waitForHelper(path string, timeout time.Duration) error {
+func waitForHelper(path string, timeout time.Duration, retry func() error) error {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		if err := pingSocket(path); err == nil {
 			return nil
 		}
-		time.Sleep(100 * time.Millisecond)
+		if retry != nil {
+			if err := retry(); err != nil {
+				return err
+			}
+		}
+		time.Sleep(helperSocketRetryInterval)
 	}
 	return fmt.Errorf("timed out waiting for bridge helper socket %s", path)
 }
