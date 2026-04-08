@@ -175,7 +175,35 @@ func TestRunUpUsesGlobalDebugForProgressAndPlan(t *testing.T) {
 	if got := errOut.String(); got != "==> Resolving development container\nplan source=image config=/tmp/devcontainer.json workspace=/workspace state=/tmp/state target-image=hatchctl-demo\n" {
 		t.Fatalf("unexpected progress output %q", got)
 	}
-	if got := out.String(); got != "Container: abc123\nImage: hatchctl-demo\nWorkspace: /workspace\nState: /tmp/state\n" {
+	if got := out.String(); got != "Container: abc123\nImage: hatchctl-demo\nWorkspace: /workspace\n\nNext:\n  hatchctl exec -- /bin/sh\n  hatchctl exec -- pwd\n  hatchctl exec -- go test ./...\n" {
+		t.Fatalf("unexpected command output %q", got)
+	}
+}
+
+func TestRunUpPrintsSuggestedExecCommands(t *testing.T) {
+	t.Parallel()
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	app := NewWithRunner(&out, &errOut, stubRunner{up: func(_ context.Context, _ runtime.UpOptions) (runtime.UpResult, error) {
+		return runtime.UpResult{ContainerID: "abc123", Image: "hatchctl-demo", RemoteWorkspaceFolder: "/workspace", StateDir: "/tmp/state"}, nil
+	}})
+
+	if err := app.Run(context.Background(), []string{"up", "--workspace", "../my project", "--config", "dev/container.json", "--feature-timeout", "45s", "--lockfile-policy", "frozen"}); err != nil {
+		t.Fatalf("run app: %v", err)
+	}
+
+	want := strings.Join([]string{
+		"Container: abc123",
+		"Image: hatchctl-demo",
+		"Workspace: /workspace",
+		"",
+		"Next:",
+		"  hatchctl exec --workspace \"../my project\" --config \"dev/container.json\" --feature-timeout 45s --lockfile-policy frozen -- /bin/sh",
+		"  hatchctl exec --workspace \"../my project\" --config \"dev/container.json\" --feature-timeout 45s --lockfile-policy frozen -- pwd",
+		"  hatchctl exec --workspace \"../my project\" --config \"dev/container.json\" --feature-timeout 45s --lockfile-policy frozen -- go test ./...",
+	}, "\n") + "\n"
+	if got := out.String(); got != want {
 		t.Fatalf("unexpected command output %q", got)
 	}
 }

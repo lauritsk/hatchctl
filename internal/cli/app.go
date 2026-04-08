@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -133,7 +134,10 @@ func (a *App) newUpCommand(global *globalOptions, dotfiles *dotfilesOptions) *co
 			if jsonOut {
 				return renderer.PrintJSON(result)
 			}
-			return renderer.PrintKeyValues(upResultFields(result))
+			if err := renderer.PrintKeyValues(upResultFields(result)); err != nil {
+				return err
+			}
+			return renderer.PrintText("\nNext:\n  " + strings.Join(upSuggestedCommands(workspace, configPath, featureTimeout, policy), "\n  "))
 		},
 	}
 	cmd.Flags().StringVar(&workspace, "workspace", "", "workspace folder (defaults to current directory)")
@@ -521,12 +525,37 @@ func upResultFields(result runtime.UpResult) []ui.KeyValue {
 		{Key: "Container", Value: result.ContainerID},
 		{Key: "Image", Value: result.Image},
 		{Key: "Workspace", Value: result.RemoteWorkspaceFolder},
-		{Key: "State", Value: result.StateDir},
 	}
 	if result.Bridge != nil {
 		fields = append(fields, ui.KeyValue{Key: "Bridge", Value: fmt.Sprintf("enabled (%s)", result.Bridge.Status)})
 	}
 	return fields
+}
+
+func upSuggestedCommands(workspace string, configPath string, featureTimeout time.Duration, policy devcontainer.FeatureLockfilePolicy) []string {
+	base := []string{"hatchctl", "exec"}
+	if workspace != "" {
+		base = append(base, "--workspace", shellQuote(workspace))
+	}
+	if configPath != "" {
+		base = append(base, "--config", shellQuote(configPath))
+	}
+	if featureTimeout != 90*time.Second {
+		base = append(base, "--feature-timeout", featureTimeout.String())
+	}
+	if policy != devcontainer.FeatureLockfilePolicyAuto {
+		base = append(base, "--lockfile-policy", string(policy))
+	}
+	execPrefix := strings.Join(base, " ") + " --"
+	return []string{
+		execPrefix + " /bin/sh",
+		execPrefix + " pwd",
+		execPrefix + " go test ./...",
+	}
+}
+
+func shellQuote(value string) string {
+	return strconv.Quote(value)
 }
 
 func configResultFields(result runtime.ReadConfigResult) []ui.KeyValue {
