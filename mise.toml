@@ -46,7 +46,7 @@ description = "Create the next version and tag"
 run = "cog bump --auto"
 
 [tasks."release:check"]
-tools.goreleaser = "2.15.0"
+tools.goreleaser = "2.15.2"
 description = "Validate GoReleaser configuration"
 run = "goreleaser check"
 
