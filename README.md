@@ -1,6 +1,6 @@
 # hatchctl
 
-A Development Containers CLI in Go.
+A Better CLI for Development Containers
 
 ## Overview
 
