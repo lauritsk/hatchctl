@@ -324,11 +324,10 @@ func (r *Renderer) renderKeyValuesBox(title string, values []KeyValue) string {
 			width = w
 		}
 	}
-	lines := make([]string, 0, len(values)+2)
+	lines := make([]string, 0, len(values)+1)
 	if title != "" {
 		lines = append(lines, r.styles.title.Render(title))
 	}
-	lines = append(lines, r.styles.muted.Render(r.styles.success.Render("ready")+" development container details"))
 	for _, value := range values {
 		key := r.styles.label.Render(fmt.Sprintf("%-*s", width, value.Key))
 		lines = append(lines, key+"  "+r.styles.text.Render(value.Value))

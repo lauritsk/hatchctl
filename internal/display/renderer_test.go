@@ -163,6 +163,9 @@ func TestRendererPrintSummaryUsesBoxLayoutForTTY(t *testing.T) {
 			t.Fatalf("expected summary to contain %q, got %q", want, got)
 		}
 	}
+	if strings.Contains(got, "development container details") {
+		t.Fatalf("expected summary to avoid hardcoded subtitle, got %q", got)
+	}
 }
 
 func TestRendererPrintCommandListUsesTTYCommandStyling(t *testing.T) {

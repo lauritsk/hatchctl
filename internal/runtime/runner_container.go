@@ -81,7 +81,7 @@ func (r *Runner) readManagedContainerState(prepared preparedWorkspace) (*Managed
 	}
 	inspect := prepared.containerInspect
 	if inspect == nil {
-		return nil, errors.New("managed container inspect not loaded")
+		return nil, fmt.Errorf("read managed container state for %s: container metadata is unavailable", prepared.containerID)
 	}
 	metadata, err := devcontainer.MetadataFromLabel(inspect.Config.Labels[devcontainer.ImageMetadataLabel])
 	if err != nil {

@@ -268,31 +268,31 @@ func (r gitHubFeatureReference) tarballURL() string {
 
 func parseGitHubFeatureReference(source string) (gitHubFeatureReference, error) {
 	if strings.Contains(source, "://") || strings.HasPrefix(source, "./") || strings.HasPrefix(source, "../") || strings.HasPrefix(source, "/") {
-		return gitHubFeatureReference{}, fmt.Errorf("expected deprecated github shorthand reference")
+		return gitHubFeatureReference{}, fmt.Errorf("invalid GitHub feature reference %q; expected owner/repo/feature[@version]", source)
 	}
 	version := ""
 	featurePath := source
 	if before, after, ok := strings.Cut(source, "@"); ok {
 		if after == "" || strings.Contains(after, "@") {
-			return gitHubFeatureReference{}, fmt.Errorf("invalid github shorthand version")
+			return gitHubFeatureReference{}, fmt.Errorf("invalid GitHub feature reference %q; expected owner/repo/feature[@version]", source)
 		}
 		featurePath = before
 		version = after
 	}
 	parts := strings.Split(featurePath, "/")
 	if len(parts) != 3 {
-		return gitHubFeatureReference{}, fmt.Errorf("expected owner/repo/feature")
+		return gitHubFeatureReference{}, fmt.Errorf("invalid GitHub feature reference %q; expected owner/repo/feature[@version]", source)
 	}
 	if strings.Contains(parts[0], ".") || strings.Contains(parts[0], ":") || parts[0] == "localhost" || strings.Contains(parts[2], ":") {
-		return gitHubFeatureReference{}, fmt.Errorf("expected deprecated github shorthand reference")
+		return gitHubFeatureReference{}, fmt.Errorf("invalid GitHub feature reference %q; expected owner/repo/feature[@version]", source)
 	}
 	for _, part := range parts {
 		if part == "" {
-			return gitHubFeatureReference{}, fmt.Errorf("expected owner/repo/feature")
+			return gitHubFeatureReference{}, fmt.Errorf("invalid GitHub feature reference %q; expected owner/repo/feature[@version]", source)
 		}
 	}
 	if !strings.Contains(featurePath, "/") {
-		return gitHubFeatureReference{}, fmt.Errorf("expected owner/repo/feature")
+		return gitHubFeatureReference{}, fmt.Errorf("invalid GitHub feature reference %q; expected owner/repo/feature[@version]", source)
 	}
 	return gitHubFeatureReference{owner: parts[0], repo: parts[1], feature: parts[2], tag: version}, nil
 }

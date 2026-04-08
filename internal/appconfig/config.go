@@ -2,6 +2,7 @@ package appconfig
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"time"
@@ -74,7 +75,7 @@ func Load(path string) (Config, error) {
 	}
 	var cfg Config
 	if _, err := toml.DecodeFile(path, &cfg); err != nil {
-		return Config{}, err
+		return Config{}, fmt.Errorf("load config %s: %w", path, err)
 	}
 	cfg.loadedFrom = path
 	resolveRelativePaths(&cfg)
@@ -85,7 +86,15 @@ func (c Config) FeatureTimeoutDuration() (time.Duration, error) {
 	if c.FeatureTimeout == "" {
 		return 0, nil
 	}
-	return time.ParseDuration(c.FeatureTimeout)
+	duration, err := time.ParseDuration(c.FeatureTimeout)
+	if err != nil {
+		source := "config"
+		if c.loadedFrom != "" {
+			source = c.loadedFrom
+		}
+		return 0, fmt.Errorf("parse feature_timeout in %s: %w", source, err)
+	}
+	return duration, nil
 }
 
 func merge(base Config, override Config) Config {
