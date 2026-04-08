@@ -1754,7 +1754,13 @@ func initGitRepoForTest(t *testing.T, dir string, files map[string]string) {
 	}
 	runGit("init")
 	runGit("add", ".")
-	runGit("-c", "user.name=Test User", "-c", "user.email=test@example.com", "commit", "-m", "init")
+	runGit(
+		"-c", "user.name=Test User",
+		"-c", "user.email=test@example.com",
+		"-c", "commit.gpgsign=false",
+		"-c", "tag.gpgsign=false",
+		"commit", "-m", "init",
+	)
 }
 
 func cloneGitRepoBareForTest(t *testing.T, src string, dst string) {
