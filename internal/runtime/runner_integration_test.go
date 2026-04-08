@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/lauritsk/hatchctl/internal/bridge"
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
@@ -84,21 +85,17 @@ func TestBuildPersistsMetadataLabel(t *testing.T) {
 }
 
 func TestUpInstallsDotfilesOnceAndReportsStatus(t *testing.T) {
-	// TODO: Re-enable this once the test fixture stops cloning dotfiles from a
-	// bind-mounted local git repo. CI hits git safe.directory checks on the
-	// file:// source inside the container (`detected dubious ownership`).
-	t.Skip("TODO: fix dotfiles integration test to avoid git safe.directory failure in CI")
-
 	client := dockerClientForTest(t)
 	ctx := context.Background()
 	workspace := t.TempDir()
+	networkName := "hatchctl-dotfiles-net-" + sanitizeName(filepath.Base(workspace))
 	configDir := filepath.Join(workspace, ".devcontainer")
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	baseImage := "hatchctl-dotfiles-test-" + sanitizeName(filepath.Base(workspace))
 	baseDockerfileDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(baseDockerfileDir, "Dockerfile"), []byte("FROM alpine:3.20\nRUN apk add --no-cache git\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(baseDockerfileDir, "Dockerfile"), []byte("FROM alpine:3.20\nRUN apk add --no-cache git git-daemon\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := client.Run(ctx, docker.RunOptions{Args: []string{"build", "-t", baseImage, baseDockerfileDir}}); err != nil {
@@ -119,9 +116,19 @@ func TestUpInstallsDotfilesOnceAndReportsStatus(t *testing.T) {
 	})
 	dotfilesBareRepo := filepath.Join(workspace, "dotfiles-repo.git")
 	cloneGitRepoBareForTest(t, dotfilesRepo, dotfilesBareRepo)
+	gitServerName := startGitDaemonForTest(t, client, ctx, networkName, baseImage, dotfilesBareRepo)
+	waitForGitRepoForTest(t, client, ctx, networkName, baseImage, gitServerName, "git://dotfiles/dotfiles.git")
+
+	if err := os.WriteFile(filepath.Join(configDir, "devcontainer.json"), []byte(`{
+		"image": "`+baseImage+`",
+		"workspaceFolder": "/workspaces/demo",
+		"runArgs": ["--network", "`+networkName+`"]
+	}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	runner := NewRunner(client)
-	dotfiles := DotfilesOptions{Repository: "file:///workspaces/demo/dotfiles-repo.git"}
+	dotfiles := DotfilesOptions{Repository: "git://dotfiles/dotfiles.git"}
 	upResult, err := runner.Up(ctx, UpOptions{Workspace: workspace, Recreate: true, Dotfiles: dotfiles})
 	if err != nil {
 		t.Fatalf("up with dotfiles: %v", err)
@@ -153,7 +160,7 @@ func TestUpInstallsDotfilesOnceAndReportsStatus(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read state: %v", err)
 	}
-	if !state.DotfilesReady || state.DotfilesRepo != "file:///workspaces/demo/dotfiles-repo.git" || state.DotfilesTarget != "$HOME/.dotfiles" {
+	if !state.DotfilesReady || state.DotfilesRepo != "git://dotfiles/dotfiles.git" || state.DotfilesTarget != "$HOME/.dotfiles" {
 		t.Fatalf("unexpected dotfiles state %#v", state)
 	}
 }
@@ -1810,6 +1817,57 @@ func cloneGitRepoBareForTest(t *testing.T, src string, dst string) {
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("git clone --bare: %v\n%s", err, string(output))
+	}
+}
+
+func startGitDaemonForTest(t *testing.T, client *docker.Client, ctx context.Context, networkName string, image string, repoPath string) string {
+	t.Helper()
+	if _, err := client.Output(ctx, "network", "create", networkName); err != nil {
+		t.Fatalf("create docker network: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = client.Run(ctx, docker.RunOptions{Args: []string{"network", "rm", networkName}})
+	})
+
+	serverName := networkName + "-git"
+	if _, err := client.Output(ctx,
+		"run", "-d",
+		"--name", serverName,
+		"--network", networkName,
+		"--network-alias", "dotfiles",
+		"--mount", fmt.Sprintf("type=bind,source=%s,target=/srv/git/dotfiles.git,readonly", repoPath),
+		image,
+		"sh", "-lc", "exec git daemon --reuseaddr --base-path=/srv/git --export-all --verbose /srv/git",
+	); err != nil {
+		t.Fatalf("start git daemon: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rm", "-f", serverName}})
+	})
+	return serverName
+}
+
+func waitForGitRepoForTest(t *testing.T, client *docker.Client, ctx context.Context, networkName string, image string, serverName string, repoURL string) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		err := client.Run(ctx, docker.RunOptions{Args: []string{
+			"run", "--rm",
+			"--network", networkName,
+			image,
+			"sh", "-lc", "git ls-remote " + quoteShell(repoURL) + " >/dev/null 2>&1",
+		}})
+		if err == nil {
+			return
+		}
+		if time.Now().After(deadline) {
+			logs, logErr := client.CombinedOutput(ctx, "logs", serverName)
+			if logErr != nil {
+				logs = fmt.Sprintf("(unable to read logs: %v)", logErr)
+			}
+			t.Fatalf("wait for git repo %s: %v\nserver logs:\n%s", repoURL, err, logs)
+		}
+		time.Sleep(200 * time.Millisecond)
 	}
 }
 

@@ -7,7 +7,6 @@
 - extend the current runtime backend/engine seams so Docker, Compose, and other host process execution share one narrow boundary for logging, env policy, and lifecycle behavior instead of scattering command orchestration across runtime and bridge paths
 - isolate bridge support behind a narrower subsystem contract that separates planning, config injection, state persistence, and daemon/runtime behavior so optional macOS-specific behavior stops leaking through core runtime orchestration
 - replace hatchctl-owned shell-script assembly for UID/GID reconciliation, dotfiles installation, exec-home discovery, and feature build wiring with typed operations or fixed helper artifacts where possible to reduce quoting, portability, and injection risk
-- fix `TestUpInstallsDotfilesOnceAndReportsStatus` by switching the dotfiles fixture away from the bind-mounted `file://` repo that trips git `safe.directory` checks in CI, then re-enable the test
 - add first-class `config.toml` support with XDG/Linux and macOS-compliant config discovery plus a clear merge/override hierarchy across user, workspace, and CLI options; ensure cache/state/artifact outputs also follow platform best practices
 
 ## Done
@@ -16,6 +15,7 @@
 - [x] split `internal/runtime.Runner` into a small orchestration layer plus focused services such as planner, image manager, container manager, lifecycle runner, bridge manager, and state store so command flows stop accumulating cross-cutting responsibilities in one type
 - [x] make devcontainer resolution side-effect free and move lockfile, feature-state, plan-cache, workspace-state, and bridge-state persistence behind explicit store interfaces so read/inspect paths do not perform hidden writes
 - [x] add first-class dotfiles personalization support with explicit CLI UX and one-time install tracking
+- [x] fix `TestUpInstallsDotfilesOnceAndReportsStatus` by switching the dotfiles fixture away from the bind-mounted `file://` repo that trips git `safe.directory` checks in CI, then re-enable the test
 - [x] move UID/GID reconciliation out of derived image rebuilds and into a runtime-oriented approach where possible
 - [x] redesign bridge transport around a persistent localhost-only control/data channel so browser-open and localhost callback auth flows still work without a detached wide-bind HTTP server or per-connection `docker exec`
 - [x] harden single-container metadata parity
