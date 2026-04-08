@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -409,6 +411,39 @@ func TestRunBridgeServeRequiresFlags(t *testing.T) {
 	err := app.Run(context.Background(), []string{"bridge", "serve"})
 	if err == nil || err.Error() != "bridge serve requires --state-dir and --container-id" {
 		t.Fatalf("expected missing flag error, got %v", err)
+	}
+}
+
+func TestRunUpLoadsWorkspaceConfigTomlDefaults(t *testing.T) {
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	workspace := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(workspace, ".hatchctl"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(workspace, ".hatchctl", "config.toml"), []byte("config = \"../.devcontainer/devcontainer.json\"\nfeature_timeout = \"45s\"\nlockfile_policy = \"update\"\nbridge = true\n[dotfiles]\nrepository = \"github.com/example/dotfiles\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var got runtime.UpOptions
+	app := NewWithRunner(&out, &errOut, stubRunner{up: func(_ context.Context, opts runtime.UpOptions) (runtime.UpResult, error) {
+		got = opts
+		return runtime.UpResult{}, nil
+	}})
+
+	if err := app.Run(context.Background(), []string{"up", "--workspace", workspace}); err != nil {
+		t.Fatalf("run app: %v", err)
+	}
+	if got.ConfigPath != filepath.Join(workspace, ".devcontainer", "devcontainer.json") {
+		t.Fatalf("unexpected config path %q", got.ConfigPath)
+	}
+	if got.FeatureTimeout != 45*time.Second || got.LockfilePolicy != devcontainer.FeatureLockfilePolicyUpdate {
+		t.Fatalf("unexpected config defaults %#v", got)
+	}
+	if !got.BridgeEnabled || got.Dotfiles.Repository != "github.com/example/dotfiles" {
+		t.Fatalf("unexpected merged workspace config %#v", got)
+	}
+	if got.Workspace != workspace {
+		t.Fatalf("unexpected workspace %q", got.Workspace)
 	}
 }
 

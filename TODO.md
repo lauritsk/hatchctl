@@ -2,10 +2,9 @@
 
 ## Not Done
 
-- add first-class `config.toml` support with XDG/Linux and macOS-compliant config discovery plus a clear merge/override hierarchy across user, workspace, and CLI options; ensure cache/state/artifact outputs also follow platform best practices
-
 ## Done
 
+- [x] add first-class `config.toml` support with XDG/Linux and macOS-compliant config discovery plus a clear merge/override hierarchy across user, workspace, and CLI options; ensure cache/state/artifact outputs also follow platform best practices
 - [x] make `internal/display` the single presentation layer for progress, warnings, debug logs, and final command output so runtime/security paths stop writing directly to stderr and emit renderer-controlled events instead
 - [x] centralize atomic file writes and recovery semantics for stateful artifacts such as workspace state, resolved plan cache, bridge session/config/status files, and helper shims so partial writes or interruptions cannot leave corrupted control files behind
 - [x] extend the current runtime backend/engine seams so Docker, Compose, and other host process execution share one narrow boundary for logging, env policy, and lifecycle behavior instead of scattering command orchestration across runtime and bridge paths

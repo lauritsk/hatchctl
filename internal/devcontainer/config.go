@@ -196,6 +196,7 @@ type ResolvedConfig struct {
 	Features        []ResolvedFeature
 	Merged          MergedConfig
 	StateDir        string
+	CacheDir        string
 	WorkspaceMount  string
 	RemoteWorkspace string
 	ImageName       string
@@ -213,6 +214,8 @@ type ResolveOptions struct {
 	WritePlanCache     bool
 	WriteFeatureLock   bool
 	WriteFeatureState  bool
+	StateBaseDir       string
+	CacheBaseDir       string
 	VerifyImage        func(context.Context, string) security.VerificationResult
 	FeatureHTTPTimeout time.Duration
 	LockfilePolicy     FeatureLockfilePolicy
@@ -271,7 +274,7 @@ func resolve(ctx context.Context, workspaceArg string, configArg string, opts Re
 	if err != nil {
 		return ResolvedConfig{}, err
 	}
-	stateDir, err := WorkspaceStateDir(workspace, configPath)
+	stateDir, cacheDir, err := workspaceOutputDirs(workspace, configPath, opts)
 	if err != nil {
 		return ResolvedConfig{}, err
 	}
@@ -279,7 +282,7 @@ func resolve(ctx context.Context, workspaceArg string, configArg string, opts Re
 	if err != nil {
 		return ResolvedConfig{}, err
 	}
-	if cached, ok, err := persistence.ReadPlanCache(stateDir, cacheKey, opts); err != nil {
+	if cached, ok, err := persistence.ReadPlanCache(cacheDir, cacheKey, opts); err != nil {
 		return ResolvedConfig{}, err
 	} else if ok {
 		if err := persistence.WriteCachedArtifacts(configPath, stateDir, cached, opts); err != nil {
@@ -320,7 +323,7 @@ func resolve(ctx context.Context, workspaceArg string, configArg string, opts Re
 		ManagedByLabel:  ManagedByValue,
 	}
 
-	features, err := ResolveFeatures(ctx, configPath, configDir, filepath.Join(stateDir, "features-cache"), config.Features, FeatureResolveOptions{
+	features, err := ResolveFeatures(ctx, configPath, configDir, filepath.Join(cacheDir, "features-cache"), config.Features, FeatureResolveOptions{
 		AllowNetwork:   opts.AllowNetwork,
 		StateDir:       stateDir,
 		HTTPTimeout:    opts.FeatureHTTPTimeout,
@@ -346,6 +349,7 @@ func resolve(ctx context.Context, workspaceArg string, configArg string, opts Re
 		Features:        features,
 		Merged:          MergeMetadata(config, metadata),
 		StateDir:        stateDir,
+		CacheDir:        cacheDir,
 		WorkspaceMount:  workspaceMount,
 		RemoteWorkspace: remoteWorkspace,
 		ImageName:       imageName,
@@ -360,10 +364,26 @@ func resolve(ctx context.Context, workspaceArg string, configArg string, opts Re
 	if err != nil {
 		return ResolvedConfig{}, err
 	}
-	if err := persistence.WritePlanCache(stateDir, cacheKey, resolved, opts); err != nil {
+	if err := persistence.WritePlanCache(cacheDir, cacheKey, resolved, opts); err != nil {
 		return ResolvedConfig{}, err
 	}
 	return resolved, nil
+}
+
+func workspaceOutputDirs(workspace string, configPath string, opts ResolveOptions) (string, string, error) {
+	roots, err := DefaultOutputRoots()
+	if err != nil {
+		return "", "", err
+	}
+	stateRoot := roots.StateRoot
+	if opts.StateBaseDir != "" {
+		stateRoot = opts.StateBaseDir
+	}
+	cacheRoot := roots.CacheRoot
+	if opts.CacheBaseDir != "" {
+		cacheRoot = opts.CacheBaseDir
+	}
+	return workspaceScopedDir(stateRoot, workspace, configPath), workspaceScopedDir(cacheRoot, workspace, configPath), nil
 }
 
 func Load(configPath string) (Config, error) {

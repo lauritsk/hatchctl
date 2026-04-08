@@ -22,8 +22,8 @@ type resolvedPlanCache struct {
 	Resolved ResolvedConfig `json:"resolved"`
 }
 
-func readResolvedPlanCache(stateDir string, key string) (ResolvedConfig, bool, error) {
-	data, err := fileutil.ReadFile(filepath.Join(stateDir, "resolved-plan.json"))
+func readResolvedPlanCache(cacheDir string, key string) (ResolvedConfig, bool, error) {
+	data, err := fileutil.ReadFile(filepath.Join(cacheDir, "resolved-plan.json"))
 	if err != nil {
 		if os.IsNotExist(err) {
 			return ResolvedConfig{}, false, nil
@@ -40,8 +40,8 @@ func readResolvedPlanCache(stateDir string, key string) (ResolvedConfig, bool, e
 	return cache.Resolved, true, nil
 }
 
-func writeResolvedPlanCache(stateDir string, key string, resolved ResolvedConfig) error {
-	if err := os.MkdirAll(stateDir, 0o755); err != nil {
+func writeResolvedPlanCache(cacheDir string, key string, resolved ResolvedConfig) error {
+	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
 		return err
 	}
 	data, err := json.MarshalIndent(resolvedPlanCache{
@@ -52,7 +52,7 @@ func writeResolvedPlanCache(stateDir string, key string, resolved ResolvedConfig
 	if err != nil {
 		return err
 	}
-	return fileutil.WriteFile(filepath.Join(stateDir, "resolved-plan.json"), data, 0o644)
+	return fileutil.WriteFile(filepath.Join(cacheDir, "resolved-plan.json"), data, 0o644)
 }
 
 func resolvedPlanCacheKey(configPath string, configDir string, config Config, composeFiles []string) (string, error) {

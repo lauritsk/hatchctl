@@ -54,6 +54,8 @@ func NewRunnerWithIO(client *docker.Client, stdin io.Reader, stdout io.Writer, s
 type UpOptions struct {
 	Workspace      string
 	ConfigPath     string
+	StateDir       string
+	CacheDir       string
 	FeatureTimeout time.Duration
 	LockfilePolicy devcontainer.FeatureLockfilePolicy
 	Dotfiles       DotfilesOptions
@@ -77,6 +79,8 @@ type UpResult struct {
 type BuildOptions struct {
 	Workspace      string
 	ConfigPath     string
+	StateDir       string
+	CacheDir       string
 	FeatureTimeout time.Duration
 	LockfilePolicy devcontainer.FeatureLockfilePolicy
 	Verbose        bool
@@ -93,6 +97,8 @@ type BuildResult struct {
 type ExecOptions struct {
 	Workspace      string
 	ConfigPath     string
+	StateDir       string
+	CacheDir       string
 	FeatureTimeout time.Duration
 	LockfilePolicy devcontainer.FeatureLockfilePolicy
 	Verbose        bool
@@ -108,6 +114,8 @@ type ExecOptions struct {
 type ReadConfigOptions struct {
 	Workspace      string
 	ConfigPath     string
+	StateDir       string
+	CacheDir       string
 	FeatureTimeout time.Duration
 	LockfilePolicy devcontainer.FeatureLockfilePolicy
 	Dotfiles       DotfilesOptions
@@ -131,6 +139,7 @@ type ReadConfigResult struct {
 	ImageUser            string            `json:"imageUser,omitempty"`
 	ContainerName        string            `json:"containerName"`
 	StateDir             string            `json:"stateDir"`
+	CacheDir             string            `json:"cacheDir"`
 	RemoteUser           string            `json:"remoteUser,omitempty"`
 	ContainerUser        string            `json:"containerUser,omitempty"`
 	RemoteEnv            map[string]string `json:"remoteEnv,omitempty"`
@@ -177,6 +186,8 @@ type ManagedContainer struct {
 type RunLifecycleOptions struct {
 	Workspace      string
 	ConfigPath     string
+	StateDir       string
+	CacheDir       string
 	FeatureTimeout time.Duration
 	LockfilePolicy devcontainer.FeatureLockfilePolicy
 	Dotfiles       DotfilesOptions
@@ -209,6 +220,8 @@ func (r *Runner) verifyResolvedFeatures(resolved devcontainer.ResolvedConfig, ev
 type BridgeDoctorOptions struct {
 	Workspace      string
 	ConfigPath     string
+	StateDir       string
+	CacheDir       string
 	FeatureTimeout time.Duration
 	LockfilePolicy devcontainer.FeatureLockfilePolicy
 	Verbose        bool
@@ -225,6 +238,8 @@ type ExitError struct {
 type prepareResolveOptions struct {
 	Workspace      string
 	ConfigPath     string
+	StateDir       string
+	CacheDir       string
 	FeatureTimeout time.Duration
 	LockfilePolicy devcontainer.FeatureLockfilePolicy
 	ReadOnly       bool
@@ -246,6 +261,8 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 	prepared, err := runner.planner.prepareWorkspace(ctx, prepareWorkspaceOptions{resolve: prepareResolveOptions{
 		Workspace:      opts.Workspace,
 		ConfigPath:     opts.ConfigPath,
+		StateDir:       opts.StateDir,
+		CacheDir:       opts.CacheDir,
 		FeatureTimeout: opts.FeatureTimeout,
 		LockfilePolicy: opts.LockfilePolicy,
 		ProgressLabel:  "Resolving development container",
@@ -349,6 +366,8 @@ func (r *Runner) Build(ctx context.Context, opts BuildOptions) (BuildResult, err
 	prepared, err := runner.planner.prepareWorkspace(ctx, prepareWorkspaceOptions{resolve: prepareResolveOptions{
 		Workspace:      opts.Workspace,
 		ConfigPath:     opts.ConfigPath,
+		StateDir:       opts.StateDir,
+		CacheDir:       opts.CacheDir,
 		FeatureTimeout: opts.FeatureTimeout,
 		LockfilePolicy: opts.LockfilePolicy,
 		ProgressLabel:  "Resolving development container",
@@ -375,6 +394,8 @@ func (r *Runner) Exec(ctx context.Context, opts ExecOptions) (int, error) {
 	prepared, err := r.planner.prepareWorkspace(ctx, prepareWorkspaceOptions{resolve: prepareResolveOptions{
 		Workspace:      opts.Workspace,
 		ConfigPath:     opts.ConfigPath,
+		StateDir:       opts.StateDir,
+		CacheDir:       opts.CacheDir,
 		FeatureTimeout: opts.FeatureTimeout,
 		LockfilePolicy: opts.LockfilePolicy,
 		ProgressLabel:  "Resolving development container",
@@ -418,6 +439,8 @@ func (r *Runner) ReadConfig(ctx context.Context, opts ReadConfigOptions) (ReadCo
 	prepared, err := runner.planner.prepareWorkspace(ctx, prepareWorkspaceOptions{resolve: prepareResolveOptions{
 		Workspace:      opts.Workspace,
 		ConfigPath:     opts.ConfigPath,
+		StateDir:       opts.StateDir,
+		CacheDir:       opts.CacheDir,
 		FeatureTimeout: opts.FeatureTimeout,
 		LockfilePolicy: opts.LockfilePolicy,
 		ReadOnly:       true,
@@ -473,6 +496,7 @@ func (r *Runner) ReadConfig(ctx context.Context, opts ReadConfigOptions) (ReadCo
 		ImageUser:            imageUser,
 		ContainerName:        resolved.ContainerName,
 		StateDir:             resolved.StateDir,
+		CacheDir:             resolved.CacheDir,
 		RemoteUser:           resolvedUser,
 		ContainerUser:        resolved.Merged.ContainerUser,
 		RemoteEnv:            resolved.Merged.RemoteEnv,
@@ -495,6 +519,8 @@ func (r *Runner) RunLifecycle(ctx context.Context, opts RunLifecycleOptions) (Ru
 	prepared, err := runner.planner.prepareWorkspace(ctx, prepareWorkspaceOptions{resolve: prepareResolveOptions{
 		Workspace:      opts.Workspace,
 		ConfigPath:     opts.ConfigPath,
+		StateDir:       opts.StateDir,
+		CacheDir:       opts.CacheDir,
 		FeatureTimeout: opts.FeatureTimeout,
 		LockfilePolicy: opts.LockfilePolicy,
 		ProgressLabel:  "Resolving development container",
@@ -532,6 +558,8 @@ func (r *Runner) BridgeDoctor(ctx context.Context, opts BridgeDoctorOptions) (br
 	prepared, err := runner.planner.prepareWorkspace(ctx, prepareWorkspaceOptions{resolve: prepareResolveOptions{
 		Workspace:      opts.Workspace,
 		ConfigPath:     opts.ConfigPath,
+		StateDir:       opts.StateDir,
+		CacheDir:       opts.CacheDir,
 		FeatureTimeout: opts.FeatureTimeout,
 		LockfilePolicy: opts.LockfilePolicy,
 		ReadOnly:       true,

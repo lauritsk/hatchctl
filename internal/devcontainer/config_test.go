@@ -649,12 +649,12 @@ func TestResolveReadOnlyFixtureReusesRemoteFeatureLockfile(t *testing.T) {
 		"__FEATURE_INTEGRITY__": integrity,
 	})
 
-	stateDir, err := WorkspaceStateDir(workspace, configPath)
+	cacheDir, err := WorkspaceCacheDir(workspace, configPath)
 	if err != nil {
-		t.Fatalf("compute state dir: %v", err)
+		t.Fatalf("compute cache dir: %v", err)
 	}
 	cacheKey := sha256.Sum256([]byte(featureURL))
-	featureDir := filepath.Join(stateDir, "features-cache", hex.EncodeToString(cacheKey[:]), sanitizeFeatureCacheRef(integrity))
+	featureDir := filepath.Join(cacheDir, "features-cache", hex.EncodeToString(cacheKey[:]), sanitizeFeatureCacheRef(integrity))
 	if err := os.MkdirAll(featureDir, 0o755); err != nil {
 		t.Fatalf("create cached feature dir: %v", err)
 	}
@@ -726,7 +726,7 @@ func TestResolveReusesPersistedPlanCacheForRemoteFeatures(t *testing.T) {
 	if requests != 1 {
 		t.Fatalf("expected cached resolve to avoid a second fetch, got %d requests", requests)
 	}
-	if _, err := os.Stat(filepath.Join(resolved.StateDir, "resolved-plan.json")); err != nil {
+	if _, err := os.Stat(filepath.Join(resolved.CacheDir, "resolved-plan.json")); err != nil {
 		t.Fatalf("expected resolved plan cache file: %v", err)
 	}
 }
@@ -770,6 +770,20 @@ func TestResolveInvalidatesPersistedPlanCacheWhenLocalFeatureChanges(t *testing.
 	}
 	if got := resolved.Merged.ContainerEnv["VALUE"]; got != "two" {
 		t.Fatalf("expected cache invalidation after local feature change, got %q", got)
+	}
+}
+
+func TestOutputRootsFollowPlatformConventions(t *testing.T) {
+	t.Parallel()
+
+	darwin := outputRoots("darwin", "/Users/demo", "/Users/demo/Library/Application Support", "/Users/demo/Library/Caches", "")
+	if darwin.StateRoot != "/Users/demo/Library/Application Support/hatchctl" || darwin.CacheRoot != "/Users/demo/Library/Caches/hatchctl" {
+		t.Fatalf("unexpected darwin roots %#v", darwin)
+	}
+
+	linux := outputRoots("linux", "/home/demo", "/home/demo/.config", "/home/demo/.cache", "/tmp/state")
+	if linux.StateRoot != "/tmp/state/hatchctl" || linux.CacheRoot != "/home/demo/.cache/hatchctl" {
+		t.Fatalf("unexpected linux roots %#v", linux)
 	}
 }
 
