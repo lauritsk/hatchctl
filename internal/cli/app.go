@@ -231,12 +231,12 @@ func (a *App) newExecCommand(global *globalOptions) *cobra.Command {
 	var jsonOut bool
 	var remoteEnv []string
 	cmd := &cobra.Command{
-		Use:                "exec -- COMMAND [ARG...]",
+		Use:                "exec [-- COMMAND [ARG...]]",
 		Short:              "Run a command inside the devcontainer",
 		DisableFlagParsing: false,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if len(args) == 0 {
-				return errors.New("missing command for exec; use 'hatchctl exec -- <command>'")
+			if jsonOut && len(args) == 0 {
+				return errors.New("missing command for exec --json; use 'hatchctl exec --json -- <command>'")
 			}
 			renderer := a.newRenderer(jsonOut)
 			defer renderer.Close()
@@ -695,7 +695,7 @@ func upSuggestedCommands(workspace string, configPath string, featureTimeout tim
 	}
 	execPrefix := strings.Join(base, " ") + " --"
 	return []string{
-		execPrefix + " /bin/sh",
+		strings.Join(base, " "),
 		execPrefix + " pwd",
 		execPrefix + " go test ./...",
 	}

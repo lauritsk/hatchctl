@@ -17,14 +17,14 @@ func TestDockerExecArgsFallsBackToContainerUserAndInjectsHome(t *testing.T) {
 	ctx := context.Background()
 	logPath := filepath.Join(t.TempDir(), "docker.log")
 	runner := NewRunnerWithIO(docker.NewClient(fakeDockerBinary(t, logPath)), nil, nil, nil)
-	resolved := devcontainer.ResolvedConfig{Merged: devcontainer.MergedConfig{RemoteEnv: map[string]string{"A": "1"}}}
+	resolved := devcontainer.ResolvedConfig{RemoteWorkspace: "/workspaces/demo", Merged: devcontainer.MergedConfig{RemoteEnv: map[string]string{"A": "1"}}}
 
 	args, err := runner.dockerExecArgs(ctx, "container-123", resolved, true, false, map[string]string{"B": "2"}, []string{"id", "-un"})
 	if err != nil {
 		t.Fatalf("build docker exec args: %v", err)
 	}
 	joined := strings.Join(args, " ")
-	for _, want := range []string{"exec -i -u app", "-e A=1", "-e B=2", "-e HOME=/home/app", "container-123 id -un"} {
+	for _, want := range []string{"exec -i -u app", "--workdir /workspaces/demo", "-e A=1", "-e B=2", "-e HOME=/home/app", "container-123 id -un"} {
 		if !strings.Contains(joined, want) {
 			t.Fatalf("expected %q in args %q", want, joined)
 		}
@@ -52,7 +52,7 @@ func TestDockerExecArgsPreservesExplicitHome(t *testing.T) {
 	ctx := context.Background()
 	logPath := filepath.Join(t.TempDir(), "docker.log")
 	runner := NewRunnerWithIO(docker.NewClient(fakeDockerBinary(t, logPath)), nil, nil, nil)
-	resolved := devcontainer.ResolvedConfig{Merged: devcontainer.MergedConfig{RemoteUser: "app", RemoteEnv: map[string]string{"HOME": "/custom-home"}}}
+	resolved := devcontainer.ResolvedConfig{RemoteWorkspace: "/workspaces/demo", Merged: devcontainer.MergedConfig{RemoteUser: "app", RemoteEnv: map[string]string{"HOME": "/custom-home"}}}
 
 	args, err := runner.dockerExecArgs(ctx, "container-123", resolved, false, false, nil, []string{"pwd"})
 	if err != nil {
@@ -62,12 +62,33 @@ func TestDockerExecArgsPreservesExplicitHome(t *testing.T) {
 	if !strings.Contains(joined, "-u app") || !strings.Contains(joined, "-e HOME=/custom-home") {
 		t.Fatalf("unexpected args %q", joined)
 	}
+	if !strings.Contains(joined, "--workdir /workspaces/demo") {
+		t.Fatalf("expected workdir in args %q", joined)
+	}
 	data, err := os.ReadFile(logPath)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("read fake docker log: %v", err)
 	}
 	if gotLog := string(data); strings.Contains(gotLog, "cat|"+passwdFilePath) {
 		t.Fatalf("did not expect home resolution lookup, got log %q", gotLog)
+	}
+}
+
+func TestDockerExecArgsUsesUserShellWhenCommandMissing(t *testing.T) {
+	ctx := context.Background()
+	logPath := filepath.Join(t.TempDir(), "docker.log")
+	runner := NewRunnerWithIO(docker.NewClient(fakeDockerBinary(t, logPath)), nil, nil, nil)
+	resolved := devcontainer.ResolvedConfig{RemoteWorkspace: "/workspaces/demo", Merged: devcontainer.MergedConfig{RemoteUser: "app"}}
+
+	args, err := runner.dockerExecArgs(ctx, "container-123", resolved, true, true, nil, nil)
+	if err != nil {
+		t.Fatalf("build docker exec args: %v", err)
+	}
+	joined := strings.Join(args, " ")
+	for _, want := range []string{"-t", "--workdir /workspaces/demo", "-e HOME=/home/app", "container-123 /bin/sh"} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("expected %q in args %q", want, joined)
+		}
 	}
 }
 
@@ -106,6 +127,16 @@ func TestResolveDotfilesTargetPathLeavesLiteralHomeWhenUnknown(t *testing.T) {
 	}
 	if targetPath != "$HOME/.dotfiles" {
 		t.Fatalf("unexpected target path %q", targetPath)
+	}
+}
+
+func TestPasswdEntryFromPasswdReturnsHomeAndShell(t *testing.T) {
+	entry, ok := passwdEntryFromPasswd("root:x:0:0:root:/root:/bin/sh\napp:x:1000:1000::/home/app:/bin/zsh\n", "app")
+	if !ok {
+		t.Fatal("expected passwd entry")
+	}
+	if entry.Home != "/home/app" || entry.Shell != "/bin/zsh" {
+		t.Fatalf("unexpected passwd entry %#v", entry)
 	}
 }
 

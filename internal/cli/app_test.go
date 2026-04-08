@@ -198,7 +198,7 @@ func TestRunUpUsesGlobalDebugForProgressAndPlan(t *testing.T) {
 	if got := errOut.String(); got != "==> Resolving development container\nplan source=image config=/tmp/devcontainer.json workspace=/workspace state=/tmp/state target-image=hatchctl-demo\n" {
 		t.Fatalf("unexpected progress output %q", got)
 	}
-	if got := out.String(); got != "Container: abc123\nImage: hatchctl-demo\nWorkspace: /workspace\n\nNext:\n  hatchctl exec -- /bin/sh\n  hatchctl exec -- pwd\n  hatchctl exec -- go test ./...\n" {
+	if got := out.String(); got != "Container: abc123\nImage: hatchctl-demo\nWorkspace: /workspace\n\nNext:\n  hatchctl exec\n  hatchctl exec -- pwd\n  hatchctl exec -- go test ./...\n" {
 		t.Fatalf("unexpected command output %q", got)
 	}
 }
@@ -222,7 +222,7 @@ func TestRunUpPrintsSuggestedExecCommands(t *testing.T) {
 		"Workspace: /workspace",
 		"",
 		"Next:",
-		"  hatchctl exec --workspace \"../my project\" --config \"dev/container.json\" --feature-timeout 45s --lockfile-policy frozen -- /bin/sh",
+		"  hatchctl exec --workspace \"../my project\" --config \"dev/container.json\" --feature-timeout 45s --lockfile-policy frozen",
 		"  hatchctl exec --workspace \"../my project\" --config \"dev/container.json\" --feature-timeout 45s --lockfile-policy frozen -- pwd",
 		"  hatchctl exec --workspace \"../my project\" --config \"dev/container.json\" --feature-timeout 45s --lockfile-policy frozen -- go test ./...",
 	}, "\n") + "\n"
@@ -254,15 +254,37 @@ func TestRunUpJSONDisablesProgressOutput(t *testing.T) {
 	}
 }
 
-func TestRunExecRequiresCommand(t *testing.T) {
+func TestRunExecAllowsMissingCommand(t *testing.T) {
+	isolateConfigHome(t)
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	called := false
+	app := NewWithRunner(&out, &errOut, stubRunner{exec: func(_ context.Context, opts runtime.ExecOptions) (int, error) {
+		called = true
+		if len(opts.Args) != 0 {
+			t.Fatalf("expected no exec args, got %#v", opts.Args)
+		}
+		return 0, nil
+	}})
+
+	if err := app.Run(context.Background(), []string{"exec"}); err != nil {
+		t.Fatalf("run app: %v", err)
+	}
+	if !called {
+		t.Fatal("expected exec runner to be called")
+	}
+}
+
+func TestRunExecJSONRequiresCommand(t *testing.T) {
 	isolateConfigHome(t)
 
 	var out bytes.Buffer
 	var errOut bytes.Buffer
 	app := NewWithRunner(&out, &errOut, stubRunner{})
 
-	err := app.Run(context.Background(), []string{"exec"})
-	if err == nil || err.Error() != "missing command for exec; use 'hatchctl exec -- <command>'" {
+	err := app.Run(context.Background(), []string{"exec", "--json"})
+	if err == nil || err.Error() != "missing command for exec --json; use 'hatchctl exec --json -- <command>'" {
 		t.Fatalf("expected missing command error, got %v", err)
 	}
 }

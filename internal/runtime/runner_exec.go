@@ -16,6 +16,10 @@ func (r *Runner) dockerExecArgs(ctx context.Context, containerID string, resolve
 	if err != nil {
 		return nil, err
 	}
+	command, err = r.execCommand(ctx, containerID, user, command)
+	if err != nil {
+		return nil, err
+	}
 	env, err := r.execRemoteEnv(ctx, containerID, resolved, user, extraEnv)
 	if err != nil {
 		return nil, err
@@ -30,12 +34,26 @@ func (r *Runner) dockerExecArgs(ctx context.Context, containerID string, resolve
 	if user != "" {
 		args = append(args, "-u", user)
 	}
+	if resolved.RemoteWorkspace != "" {
+		args = append(args, "--workdir", resolved.RemoteWorkspace)
+	}
 	for _, key := range devcontainer.SortedMapKeys(env) {
 		args = append(args, "-e", key+"="+env[key])
 	}
 	args = append(args, containerID)
 	args = append(args, command...)
 	return args, nil
+}
+
+func (r *Runner) execCommand(ctx context.Context, containerID string, user string, command []string) ([]string, error) {
+	if len(command) != 0 {
+		return command, nil
+	}
+	shell, err := r.resolveExecShell(ctx, containerID, user)
+	if err != nil {
+		return nil, err
+	}
+	return []string{firstNonEmpty(shell, "/bin/sh")}, nil
 }
 
 func (r *Runner) effectiveExecUser(ctx context.Context, containerID string, resolved devcontainer.ResolvedConfig) (string, error) {
@@ -73,7 +91,23 @@ func (r *Runner) execRemoteEnv(ctx context.Context, containerID string, resolved
 	return env, nil
 }
 
+func (r *Runner) resolveExecShell(ctx context.Context, containerID string, user string) (string, error) {
+	entry, err := r.lookupExecUserEntry(ctx, containerID, user)
+	if err != nil {
+		return "", err
+	}
+	return entry.Shell, nil
+}
+
 func (r *Runner) resolveExecHome(ctx context.Context, containerID string, user string) (string, error) {
+	entry, err := r.lookupExecUserEntry(ctx, containerID, user)
+	if err != nil {
+		return "", err
+	}
+	return entry.Home, nil
+}
+
+func (r *Runner) lookupExecUserEntry(ctx context.Context, containerID string, user string) (passwdEntry, error) {
 	args := []string{"exec"}
 	if user != "" {
 		args = append(args, "-u", user)
@@ -81,13 +115,18 @@ func (r *Runner) resolveExecHome(ctx context.Context, containerID string, user s
 	args = append(args, containerID, "cat", passwdFilePath)
 	passwd, err := r.backend.Output(ctx, runtimeCommand{Kind: runtimeCommandDocker, Args: args})
 	if err != nil {
-		return "", fmt.Errorf("resolve home for container user %q: %w", firstNonEmpty(user, "default"), err)
+		return passwdEntry{}, fmt.Errorf("resolve passwd entry for container user %q: %w", firstNonEmpty(user, "default"), err)
 	}
-	home, _ := homeFromPasswd(passwd, user)
-	return home, nil
+	entry, _ := passwdEntryFromPasswd(passwd, user)
+	return entry, nil
 }
 
-func homeFromPasswd(passwd string, user string) (string, bool) {
+type passwdEntry struct {
+	Home  string
+	Shell string
+}
+
+func passwdEntryFromPasswd(passwd string, user string) (passwdEntry, bool) {
 	lookupName, lookupUID := passwdLookup(user)
 	for _, line := range strings.Split(passwd, "\n") {
 		fields := strings.Split(line, ":")
@@ -96,15 +135,15 @@ func homeFromPasswd(passwd string, user string) (string, bool) {
 		}
 		if lookupUID != "" {
 			if fields[2] == lookupUID {
-				return fields[5], true
+				return passwdEntry{Home: fields[5], Shell: fields[6]}, true
 			}
 			continue
 		}
 		if fields[0] == lookupName {
-			return fields[5], true
+			return passwdEntry{Home: fields[5], Shell: fields[6]}, true
 		}
 	}
-	return "", false
+	return passwdEntry{}, false
 }
 
 func passwdLookup(user string) (string, string) {

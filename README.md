@@ -39,10 +39,10 @@ Start or reuse the devcontainer for the current workspace:
 hatchctl up
 ```
 
-Run a shell inside the container:
+Open the default shell inside the container workspace:
 
 ```sh
-hatchctl exec -- /bin/sh
+hatchctl exec
 ```
 
 Run tests inside the container:
@@ -83,6 +83,7 @@ hatchctl up --dotfiles lauritsk/dotfiles
 hatchctl up --allow-host-lifecycle
 hatchctl up --feature-timeout 2m
 hatchctl build
+hatchctl exec
 hatchctl exec -- go test ./...
 hatchctl config --json
 hatchctl run --phase start
@@ -93,6 +94,7 @@ hatchctl bridge doctor
 
 - `hatchctl up`: create or reuse the workspace container
 - `hatchctl build`: build the devcontainer image without starting the container
+- `hatchctl exec`: open the remote user's default shell in the container workspace
 - `hatchctl exec -- ...`: run a command inside the container
 - `hatchctl config`: show the merged config and detected runtime state
 - `hatchctl run --phase ...`: re-run lifecycle steps in an existing container

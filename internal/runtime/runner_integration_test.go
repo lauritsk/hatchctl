@@ -594,6 +594,49 @@ func TestExecStreamsStdinWithoutTTYAndReturnsExitCode(t *testing.T) {
 	}
 }
 
+func TestExecWithoutCommandStartsInRemoteWorkspace(t *testing.T) {
+	client := dockerClientForTest(t)
+	ctx := context.Background()
+	workspace := t.TempDir()
+	configDir := filepath.Join(workspace, ".devcontainer")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	baseImage := sharedAlpineBaseImage(t, client, ctx)
+
+	configPath := filepath.Join(configDir, "devcontainer.json")
+	if err := os.WriteFile(configPath, []byte(`{"image":"`+baseImage+`","workspaceFolder":"/workspaces/demo"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	runner := NewRunner(client)
+	upResult, err := runner.Up(ctx, UpOptions{Workspace: workspace, Recreate: true})
+	if err != nil {
+		t.Fatalf("up container: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rm", "-f", upResult.ContainerID}})
+	})
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode, err := runner.Exec(ctx, ExecOptions{
+		Workspace: workspace,
+		Stdin:     strings.NewReader("pwd\nexit\n"),
+		Stdout:    &stdout,
+		Stderr:    &stderr,
+	})
+	if err != nil {
+		t.Fatalf("exec default shell: %v (stderr: %s)", err, stderr.String())
+	}
+	if exitCode != 0 {
+		t.Fatalf("unexpected default shell exit code %d (stderr: %s)", exitCode, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "/workspaces/demo") {
+		t.Fatalf("expected default shell to start in workspace, got %q", stdout.String())
+	}
+}
+
 func TestUpUpdatesNamedNonRootUserUID(t *testing.T) {
 	client := dockerClientForTest(t)
 	ctx := context.Background()
