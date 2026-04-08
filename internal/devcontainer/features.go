@@ -20,6 +20,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/lauritsk/hatchctl/internal/security"
 )
 
 var (
@@ -36,6 +38,7 @@ type ResolvedFeature struct {
 	Version       string
 	Resolved      string
 	Integrity     string
+	Verification  security.VerificationResult
 	Options       map[string]string
 	DependsOn     []string
 	InstallsAfter []string
@@ -49,7 +52,7 @@ type FeatureResolveOptions struct {
 	StateDir       string
 	HTTPTimeout    time.Duration
 	LockfilePolicy FeatureLockfilePolicy
-	VerifyImage    func(context.Context, string) error
+	VerifyImage    func(context.Context, string) security.VerificationResult
 }
 
 var githubReleaseBaseURL = "https://github.com"
@@ -135,7 +138,7 @@ func resolveFeatures(ctx context.Context, configPath string, configDir string, c
 		if err := validateFeatureLockfilePolicy(source, lockFile[source], policy); err != nil {
 			return nil, err
 		}
-		featurePath, kind, resolvedRef, integrity, version, err := resolveFeaturePath(ctx, configDir, cacheDir, source, lockFile[source], opts.AllowNetwork, policy, opts.HTTPTimeout, opts.VerifyImage)
+		featurePath, kind, resolvedRef, integrity, version, verification, err := resolveFeaturePath(ctx, configDir, cacheDir, source, lockFile[source], opts.AllowNetwork, policy, opts.HTTPTimeout, opts.VerifyImage)
 		if err != nil {
 			return nil, err
 		}
@@ -153,6 +156,7 @@ func resolveFeatures(ctx context.Context, configPath string, configDir string, c
 			Version:       version,
 			Resolved:      resolvedRef,
 			Integrity:     integrity,
+			Verification:  verification,
 			Options:       materializeFeatureOptions(manifest, options),
 			DependsOn:     sortedKeys(manifest.DependsOn),
 			InstallsAfter: slices.Clone(manifest.InstallsAfter),
@@ -180,60 +184,60 @@ func resolveFeatures(ctx context.Context, configPath string, configDir string, c
 	return orderFeatures(features, byAlias)
 }
 
-func resolveFeaturePath(ctx context.Context, configDir string, cacheDir string, source string, lock FeatureLockEntry, allowNetwork bool, policy FeatureLockfilePolicy, httpTimeout time.Duration, verifyImage func(context.Context, string) error) (string, string, string, string, string, error) {
+func resolveFeaturePath(ctx context.Context, configDir string, cacheDir string, source string, lock FeatureLockEntry, allowNetwork bool, policy FeatureLockfilePolicy, httpTimeout time.Duration, verifyImage func(context.Context, string) security.VerificationResult) (string, string, string, string, string, security.VerificationResult, error) {
 	httpTimeout = effectiveFeatureHTTPTimeout(httpTimeout)
 	parsed, err := parseFeatureSource(configDir, source)
 	if err != nil {
-		return "", "", "", "", "", err
+		return "", "", "", "", "", security.VerificationResult{}, err
 	}
 	if parsed.Kind == "file-path" {
-		return parsed.LocalPath, "file-path", source, "", "", nil
+		return parsed.LocalPath, "file-path", source, "", "", security.VerificationResult{}, nil
 	}
 	if parsed.Kind == "direct-tarball" {
 		if policy == FeatureLockfilePolicyUpdate {
 			if !allowNetwork {
-				return "", "", "", "", "", fmt.Errorf("feature %q requires network access in update lockfile mode", source)
+				return "", "", "", "", "", security.VerificationResult{}, fmt.Errorf("feature %q requires network access in update lockfile mode", source)
 			}
 			resolved, integrity, err := fetchTarballFeature(ctx, cacheDir, parsed.Source, lock, httpTimeout)
-			return resolved, "direct-tarball", parsed.Source, integrity, parsed.Source, err
+			return resolved, "direct-tarball", parsed.Source, integrity, parsed.Source, security.VerificationResult{}, err
 		}
 		if !allowNetwork {
 			resolved, integrity, err := cachedTarballFeature(cacheDir, parsed.Source, lock)
-			return resolved, "direct-tarball", parsed.Source, integrity, parsed.Source, err
+			return resolved, "direct-tarball", parsed.Source, integrity, parsed.Source, security.VerificationResult{}, err
 		}
 		resolved, integrity, err := fetchTarballFeature(ctx, cacheDir, parsed.Source, lock, httpTimeout)
-		return resolved, "direct-tarball", parsed.Source, integrity, parsed.Source, err
+		return resolved, "direct-tarball", parsed.Source, integrity, parsed.Source, security.VerificationResult{}, err
 	}
 	if parsed.Kind == "github-release" {
 		resolvedSource := parsed.GitHubRef.tarballURL()
 		if policy == FeatureLockfilePolicyUpdate {
 			if !allowNetwork {
-				return "", "", "", "", "", fmt.Errorf("feature %q requires network access in update lockfile mode", source)
+				return "", "", "", "", "", security.VerificationResult{}, fmt.Errorf("feature %q requires network access in update lockfile mode", source)
 			}
 			resolved, integrity, err := fetchTarballFeature(ctx, cacheDir, resolvedSource, lock, httpTimeout)
-			return resolved, "github-release", resolvedSource, integrity, parsed.GitHubRef.version(), err
+			return resolved, "github-release", resolvedSource, integrity, parsed.GitHubRef.version(), security.VerificationResult{}, err
 		}
 		if !allowNetwork {
 			resolved, integrity, err := cachedTarballFeature(cacheDir, resolvedSource, lock)
-			return resolved, "github-release", resolvedSource, integrity, parsed.GitHubRef.version(), err
+			return resolved, "github-release", resolvedSource, integrity, parsed.GitHubRef.version(), security.VerificationResult{}, err
 		}
 		resolved, integrity, err := fetchTarballFeature(ctx, cacheDir, resolvedSource, lock, httpTimeout)
-		return resolved, "github-release", resolvedSource, integrity, parsed.GitHubRef.version(), err
+		return resolved, "github-release", resolvedSource, integrity, parsed.GitHubRef.version(), security.VerificationResult{}, err
 	}
 	ref := parsed.OCIRef
 	if policy == FeatureLockfilePolicyUpdate {
 		if !allowNetwork {
-			return "", "", "", "", "", fmt.Errorf("feature %q requires network access in update lockfile mode", source)
+			return "", "", "", "", "", security.VerificationResult{}, fmt.Errorf("feature %q requires network access in update lockfile mode", source)
 		}
-		resolvedPath, resolvedRef, integrity, version, err := fetchOCIFeature(ctx, cacheDir, source, ref, lock, httpTimeout, verifyImage)
-		return resolvedPath, "oci", resolvedRef, integrity, version, err
+		resolvedPath, resolvedRef, integrity, version, verification, err := fetchOCIFeature(ctx, cacheDir, source, ref, lock, httpTimeout, verifyImage)
+		return resolvedPath, "oci", resolvedRef, integrity, version, verification, err
 	}
 	if !allowNetwork {
 		resolvedPath, resolvedRef, integrity, version, err := cachedOCIFeature(cacheDir, source, ref, lock)
-		return resolvedPath, "oci", resolvedRef, integrity, version, err
+		return resolvedPath, "oci", resolvedRef, integrity, version, security.VerificationResult{}, err
 	}
-	resolvedPath, resolvedRef, integrity, version, err := fetchOCIFeature(ctx, cacheDir, source, ref, lock, httpTimeout, verifyImage)
-	return resolvedPath, "oci", resolvedRef, integrity, version, err
+	resolvedPath, resolvedRef, integrity, version, verification, err := fetchOCIFeature(ctx, cacheDir, source, ref, lock, httpTimeout, verifyImage)
+	return resolvedPath, "oci", resolvedRef, integrity, version, verification, err
 }
 
 type gitHubFeatureReference struct {
@@ -405,9 +409,9 @@ func parseOCIReference(source string) (ociReference, error) {
 	}, nil
 }
 
-func fetchOCIFeature(ctx context.Context, cacheDir string, source string, ref ociReference, lock FeatureLockEntry, httpTimeout time.Duration, verifyImage func(context.Context, string) error) (string, string, string, string, error) {
+func fetchOCIFeature(ctx context.Context, cacheDir string, source string, ref ociReference, lock FeatureLockEntry, httpTimeout time.Duration, verifyImage func(context.Context, string) security.VerificationResult) (string, string, string, string, security.VerificationResult, error) {
 	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
-		return "", "", "", "", err
+		return "", "", "", "", security.VerificationResult{}, err
 	}
 	key := sha256.Sum256([]byte(source))
 	baseDir := filepath.Join(cacheDir, hex.EncodeToString(key[:]))
@@ -417,28 +421,27 @@ func fetchOCIFeature(ctx context.Context, cacheDir string, source string, ref oc
 	}
 	manifest, digest, token, err := fetchOCIManifest(ctx, manifestRef, httpTimeout)
 	if err != nil {
-		return "", "", "", "", err
+		return "", "", "", "", security.VerificationResult{}, err
 	}
 	if digest == "" {
 		digest = manifestRef.Reference
 	}
+	verification := security.VerificationResult{}
 	if verifyImage != nil {
-		if err := verifyImage(ctx, ref.Registry+"/"+ref.Repository+"@"+digest); err != nil {
-			return "", "", "", "", err
-		}
+		verification = verifyImage(ctx, ref.Registry+"/"+ref.Repository+"@"+digest)
 	}
 	featureDir := filepath.Join(baseDir, sanitizeFeatureCacheRef(digest))
 	if _, err := os.Stat(filepath.Join(featureDir, "devcontainer-feature.json")); err == nil {
-		return featureDir, ref.Registry + "/" + ref.Repository + "@" + digest, digest, ref.Reference, nil
+		return featureDir, ref.Registry + "/" + ref.Repository + "@" + digest, digest, ref.Reference, verification, nil
 	}
 	if len(manifest.Layers) == 0 {
-		return "", "", "", "", fmt.Errorf("OCI feature %q has no layers", source)
+		return "", "", "", "", verification, fmt.Errorf("OCI feature %q has no layers", source)
 	}
 	if err := os.RemoveAll(featureDir); err != nil {
-		return "", "", "", "", err
+		return "", "", "", "", verification, err
 	}
 	if err := os.MkdirAll(featureDir, 0o755); err != nil {
-		return "", "", "", "", err
+		return "", "", "", "", verification, err
 	}
 	defer func() {
 		if _, err := os.Stat(filepath.Join(featureDir, "devcontainer-feature.json")); err != nil {
@@ -446,12 +449,12 @@ func fetchOCIFeature(ctx context.Context, cacheDir string, source string, ref oc
 		}
 	}()
 	if err := fetchOCIBlob(ctx, ref, manifest.Layers[0].Digest, token, featureDir, httpTimeout); err != nil {
-		return "", "", "", "", err
+		return "", "", "", "", verification, err
 	}
 	if _, err := os.Stat(filepath.Join(featureDir, "devcontainer-feature.json")); err != nil {
-		return "", "", "", "", fmt.Errorf("OCI feature %q did not contain devcontainer-feature.json", source)
+		return "", "", "", "", verification, fmt.Errorf("OCI feature %q did not contain devcontainer-feature.json", source)
 	}
-	return featureDir, ref.Registry + "/" + ref.Repository + "@" + digest, digest, ref.Reference, nil
+	return featureDir, ref.Registry + "/" + ref.Repository + "@" + digest, digest, ref.Reference, verification, nil
 }
 
 func fetchTarballFeature(ctx context.Context, cacheDir string, source string, lock FeatureLockEntry, httpTimeout time.Duration) (string, string, error) {

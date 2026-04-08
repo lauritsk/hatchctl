@@ -20,8 +20,11 @@ func newImageVerificationPolicy(stderr io.Writer) imageVerificationPolicy {
 	return imageVerificationPolicy{strict: envTruthy(security.CosignStrictEnvVar), stderr: stderr}
 }
 
-func (p imageVerificationPolicy) Verify(ctx context.Context, ref string) error {
-	result := security.VerifyImage(ctx, ref)
+func (p imageVerificationPolicy) Check(ctx context.Context, ref string) security.VerificationResult {
+	return security.VerifyImage(ctx, ref)
+}
+
+func (p imageVerificationPolicy) Apply(result security.VerificationResult) error {
 	if result.Verified || result.Reason == "" {
 		return nil
 	}
@@ -32,6 +35,10 @@ func (p imageVerificationPolicy) Verify(ctx context.Context, ref string) error {
 		_, _ = fmt.Fprintf(p.stderr, "warning: %s\n", result.Error())
 	}
 	return nil
+}
+
+func (p imageVerificationPolicy) Verify(ctx context.Context, ref string) error {
+	return p.Apply(p.Check(ctx, ref))
 }
 
 func envTruthy(name string) bool {

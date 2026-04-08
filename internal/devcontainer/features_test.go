@@ -14,6 +14,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/lauritsk/hatchctl/internal/security"
 )
 
 var featureResolveOpts = FeatureResolveOptions{AllowNetwork: true, WriteLockFile: true}
@@ -156,6 +158,48 @@ func TestResolveFeaturesFetchesOCIRegistryFeature(t *testing.T) {
 	}
 	if (*requests)["/v2/features/remote-tool/manifests/sha256:test-manifest"] == 0 {
 		t.Fatalf("expected digest-pinned manifest request, got %#v", *requests)
+	}
+}
+
+func TestResolveFeaturesCarriesOCIVerificationResult(t *testing.T) {
+	layer := buildFeatureLayer(t, map[string]string{
+		"devcontainer-feature.json": `{"id":"remote-tool"}`,
+		"install.sh":                "#!/bin/sh\nexit 0\n",
+	})
+	server, _ := newFeatureRegistryServer(t, layer)
+	defer server.Close()
+	registryHost := strings.TrimPrefix(server.URL, "http://")
+	configPath := filepath.Join(t.TempDir(), ".devcontainer", "devcontainer.json")
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var verifiedRef string
+	features, err := ResolveFeatures(context.Background(), configPath, filepath.Dir(configPath), t.TempDir(), map[string]any{
+		registryHost + "/features/remote-tool:1": true,
+	}, FeatureResolveOptions{
+		AllowNetwork: true,
+		VerifyImage: func(_ context.Context, ref string) security.VerificationResult {
+			verifiedRef = ref
+			return security.VerificationResult{Ref: ref, Reason: "no signatures found"}
+		},
+	})
+	if err != nil {
+		t.Fatalf("resolve oci feature: %v", err)
+	}
+	if len(features) != 1 {
+		t.Fatalf("expected one feature, got %d", len(features))
+	}
+	if verifiedRef == "" {
+		t.Fatal("expected image verifier to be called")
+	}
+	if got := features[0].Verification.Ref; got != verifiedRef {
+		t.Fatalf("unexpected verification ref %q", got)
+	}
+	if got := features[0].Verification.Reason; got != "no signatures found" {
+		t.Fatalf("unexpected verification result %#v", features[0].Verification)
+	}
+	if features[0].Verification.Verified {
+		t.Fatalf("expected unresolved verification result %#v", features[0].Verification)
 	}
 }
 

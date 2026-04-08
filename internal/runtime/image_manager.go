@@ -22,7 +22,7 @@ func (m *runtimeImageManager) EnsureImage(ctx context.Context, resolved devconta
 		return m.ensureImageWithFeatures(ctx, resolved, events)
 	}
 	if resolved.Config.Image != "" {
-		if err := m.runner.imageVerifier.Verify(ctx, resolved.Config.Image); err != nil {
+		if err := m.runner.verifyImageReference(ctx, resolved.Config.Image); err != nil {
 			return "", err
 		}
 		return resolved.Config.Image, nil
@@ -67,7 +67,7 @@ func (m *runtimeImageManager) ensureImageWithFeatures(ctx context.Context, resol
 		if err := m.buildDockerfileImage(ctx, resolved, baseImage, events); err != nil {
 			return "", err
 		}
-	} else if err := m.runner.imageVerifier.Verify(ctx, baseImage); err != nil {
+	} else if err := m.runner.verifyImageReference(ctx, baseImage); err != nil {
 		return "", err
 	}
 	return m.ensureFeaturesImageFromBase(ctx, resolved, baseImage, events)
@@ -124,7 +124,7 @@ func (m *runtimeImageManager) ensureComposeImage(ctx context.Context, resolved d
 		}
 	}
 	if baseImage != "" && !service.Build.Enabled() {
-		if err := m.runner.imageVerifier.Verify(ctx, baseImage); err != nil {
+		if err := m.runner.verifyImageReference(ctx, baseImage); err != nil {
 			return "", err
 		}
 	}

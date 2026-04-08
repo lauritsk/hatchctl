@@ -10,6 +10,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/lauritsk/hatchctl/internal/security"
 )
 
 const (
@@ -211,7 +213,7 @@ type ResolveOptions struct {
 	WritePlanCache     bool
 	WriteFeatureLock   bool
 	WriteFeatureState  bool
-	VerifyImage        func(context.Context, string) error
+	VerifyImage        func(context.Context, string) security.VerificationResult
 	FeatureHTTPTimeout time.Duration
 	LockfilePolicy     FeatureLockfilePolicy
 }

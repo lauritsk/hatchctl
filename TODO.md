@@ -2,7 +2,6 @@
 
 ## Not Done
 
-- move image verification policy to the CLI/runtime boundary and keep `internal/security` limited to structured verification results so trust behavior is explicit, testable, and consistent across image and feature flows
 - make `internal/display` the single presentation layer for progress, warnings, debug logs, and final command output so runtime/security paths stop writing directly to stderr and emit renderer-controlled events instead
 - centralize atomic file writes and recovery semantics for stateful artifacts such as workspace state, resolved plan cache, bridge session/config/status files, and helper shims so partial writes or interruptions cannot leave corrupted control files behind
 - extend the current runtime backend/engine seams so Docker, Compose, and other host process execution share one narrow boundary for logging, env policy, and lifecycle behavior instead of scattering command orchestration across runtime and bridge paths
@@ -13,6 +12,7 @@
 
 ## Done
 
+- [x] move image verification policy to the CLI/runtime boundary and keep `internal/security` limited to structured verification results so trust behavior is explicit, testable, and consistent across image and feature flows
 - [x] split `internal/runtime.Runner` into a small orchestration layer plus focused services such as planner, image manager, container manager, lifecycle runner, bridge manager, and state store so command flows stop accumulating cross-cutting responsibilities in one type
 - [x] make devcontainer resolution side-effect free and move lockfile, feature-state, plan-cache, workspace-state, and bridge-state persistence behind explicit store interfaces so read/inspect paths do not perform hidden writes
 - [x] add first-class dotfiles personalization support with explicit CLI UX and one-time install tracking

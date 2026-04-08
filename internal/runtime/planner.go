@@ -15,7 +15,7 @@ type workspacePlanner struct {
 func (p *workspacePlanner) prepareResolved(ctx context.Context, opts prepareResolveOptions) (devcontainer.ResolvedConfig, error) {
 	p.runner.emitProgress(opts.Events, opts.ProgressLabel)
 	resolveOpts := devcontainer.ResolveOptions{LockfilePolicy: opts.LockfilePolicy, FeatureHTTPTimeout: opts.FeatureTimeout, ReadPlanCache: true}
-	resolveOpts.VerifyImage = p.runner.imageVerifier.Verify
+	resolveOpts.VerifyImage = p.runner.imageVerifier.Check
 	if !opts.ReadOnly {
 		resolveOpts.AllowNetwork = true
 		resolveOpts.WritePlanCache = true
@@ -32,6 +32,9 @@ func (p *workspacePlanner) prepareResolved(ctx context.Context, opts prepareReso
 		resolved, err = p.resolver.Resolve(ctx, opts.Workspace, opts.ConfigPath, resolveOpts)
 	}
 	if err != nil {
+		return devcontainer.ResolvedConfig{}, err
+	}
+	if err := p.runner.verifyResolvedFeatures(resolved); err != nil {
 		return devcontainer.ResolvedConfig{}, err
 	}
 	if opts.Debug {

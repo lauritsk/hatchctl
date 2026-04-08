@@ -185,6 +185,19 @@ type RunLifecycleResult struct {
 	Phase       string `json:"phase"`
 }
 
+func (r *Runner) verifyImageReference(ctx context.Context, ref string) error {
+	return r.imageVerifier.Apply(r.imageVerifier.Check(ctx, ref))
+}
+
+func (r *Runner) verifyResolvedFeatures(resolved devcontainer.ResolvedConfig) error {
+	for _, feature := range resolved.Features {
+		if err := r.imageVerifier.Apply(feature.Verification); err != nil {
+			return fmt.Errorf("verify feature %q: %w", feature.Source, err)
+		}
+	}
+	return nil
+}
+
 type BridgeDoctorOptions struct {
 	Workspace      string
 	ConfigPath     string
