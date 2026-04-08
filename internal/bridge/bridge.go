@@ -4,7 +4,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -94,9 +93,6 @@ func Apply(stateDir string, enabled bool, merged devcontainer.MergedConfig) (*Se
 	session, err := Prepare(stateDir, enabled)
 	if err != nil {
 		return nil, devcontainer.MergedConfig{}, err
-	}
-	if session == nil {
-		return session, merged, nil
 	}
 	return session, applySession(session, merged), nil
 }
@@ -213,40 +209,7 @@ func helperBinaryData() ([]byte, error) {
 	if data, ok := embeddedHelperBinary(runtime.GOARCH); ok {
 		return data, nil
 	}
-
-	sourcePath, err := packagedHelperBinary()
-	if err != nil {
-		return nil, err
-	}
-	return os.ReadFile(sourcePath)
-}
-
-func packagedHelperBinary() (string, error) {
-	for _, candidate := range helperBinaryCandidates() {
-		if _, err := os.Stat(candidate); err == nil {
-			return candidate, nil
-		} else if !os.IsNotExist(err) {
-			return "", err
-		}
-	}
-	return "", errors.New("packaged bridge helper not found; set HATCHCTL_BRIDGE_HELPER or use a release build of hatchctl")
-}
-
-func helperBinaryCandidates() []string {
-	base := helperArtifactName()
-	var candidates []string
-	if exe, err := os.Executable(); err == nil {
-		exeDir := filepath.Dir(exe)
-		candidates = append(candidates,
-			filepath.Join(exeDir, base),
-			filepath.Join(exeDir, "libexec", base),
-		)
-	}
-	return candidates
-}
-
-func helperArtifactName() string {
-	return fmt.Sprintf("hatchctl-linux-%s", runtime.GOARCH)
+	return nil, fmt.Errorf("bridge helper not available for host %s/%s; set %s for development builds or use a release build of hatchctl", runtime.GOOS, runtime.GOARCH, helperBinaryEnvVar)
 }
 
 func applySession(session *Session, merged devcontainer.MergedConfig) devcontainer.MergedConfig {

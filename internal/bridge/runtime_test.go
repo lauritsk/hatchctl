@@ -8,7 +8,6 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
@@ -168,7 +167,7 @@ func TestHelperOpenUsesBridgeSocket(t *testing.T) {
 }
 
 func TestHelperBinaryDataUsesConfiguredPath(t *testing.T) {
-	helperPath := filepath.Join(t.TempDir(), helperArtifactName())
+	helperPath := filepath.Join(t.TempDir(), "hatchctl")
 	if err := os.WriteFile(helperPath, []byte("helper"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -183,17 +182,8 @@ func TestHelperBinaryDataUsesConfiguredPath(t *testing.T) {
 	}
 }
 
-func TestHelperBinaryCandidatesDoNotUseRepoLayoutFallbacks(t *testing.T) {
-	t.Parallel()
-	for _, candidate := range helperBinaryCandidates() {
-		if strings.Contains(candidate, ".dist/") || strings.Contains(candidate, ".dist\\") {
-			t.Fatalf("unexpected repo-layout helper candidate %q", candidate)
-		}
-	}
-}
-
 func TestPrepareAndRuntimeFilesUseOwnerOnlyPermissions(t *testing.T) {
-	helperPath := filepath.Join(t.TempDir(), helperArtifactName())
+	helperPath := filepath.Join(t.TempDir(), "hatchctl")
 	if err := os.WriteFile(helperPath, []byte("helper"), 0o755); err != nil {
 		t.Fatal(err)
 	}

@@ -1,3 +1,5 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+
 version: 2
 
 before:
@@ -8,34 +10,53 @@ before:
     - CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -tags release -o internal/bridge/embedded/hatchctl-linux-arm64 ./cmd/hatchctl
 
 builds:
-  - id: hatchctl
-    main: ./cmd/hatchctl
+  - main: ./cmd/hatchctl
     binary: hatchctl
     tags:
       - release
-    goos:
-      - darwin
-      - linux
-    goarch:
-      - amd64
-      - arm64
+    env:
+      - CGO_ENABLED=0
     ldflags:
       - -s -w -X github.com/lauritsk/hatchctl/internal/version.Version={{ .Version }}
-
-checksum:
-  name_template: checksums.txt
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - arm64
+      - amd64
 
 archives:
-  - id: hatchctl
-    ids:
-      - hatchctl
+  - formats: [tar.gz]
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
 
 signs:
   - cmd: cosign
     signature: "${artifact}.sigstore.json"
     args:
-      - sign-blob
-      - --bundle=${signature}
-      - ${artifact}
-      - --yes
+      - "sign-blob"
+      - "--bundle=${signature}"
+      - "${artifact}"
+      - "--yes"
     artifacts: checksum
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+
+checksum:
+  name_template: "{{ .ProjectName }}_checksums.txt"
+
+release:
+  footer: >-
+
+    ---
+
+    Released by [GoReleaser](https://github.com/goreleaser/goreleaser).

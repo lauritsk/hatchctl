@@ -97,8 +97,8 @@ Release checksums are signed with keyless Cosign using GitHub Actions OIDC.
 Verify a published release with:
 
 ```sh
-cosign verify-blob checksums.txt \
-  --bundle checksums.txt.sigstore.json \
+cosign verify-blob hatchctl_checksums.txt \
+  --bundle hatchctl_checksums.txt.sigstore.json \
   --certificate-identity "https://github.com/lauritsk/hatchctl/.github/workflows/release.yml@refs/tags/vX.Y.Z" \
   --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
 ```
