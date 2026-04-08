@@ -2,6 +2,24 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## [v0.1.4](https://github.com/lauritsk/hatchctl/compare/bbd7dd84a3da79180cea9fe191d7f55646dba966..v0.1.4) - 2026-04-08
+#### Bug Fixes
+- (**bridge**) make --bridge work without extra setup - ([d25afa8](https://github.com/lauritsk/hatchctl/commit/d25afa8167c5d345ff0e6032b4f3082bea835fce)) - Karl Hans Laurits
+#### Performance Improvements
+- (**devcontainer**) cache resolved workspace plans - ([101bc0b](https://github.com/lauritsk/hatchctl/commit/101bc0bdec47408b9d6a03668ea9051bfd0c0f70)) - Karl Hans Laurits
+#### Tests
+- (**runtime**) cover CLI and bridge edge cases - ([e75bc5e](https://github.com/lauritsk/hatchctl/commit/e75bc5e478bd9b0d56492af70c3a27317721f554)) - Karl Hans Laurits
+#### Refactoring
+- (**release**) align versioning and bridge packaging - ([30baa1f](https://github.com/lauritsk/hatchctl/commit/30baa1f699182f2034747e7840a1755cf6b6a765)) - Karl Hans Laurits
+- drop legacy bridge helper packaging - ([a6a66d9](https://github.com/lauritsk/hatchctl/commit/a6a66d97b96975d0a57140652cb2525e44ca2083)) - Karl Hans Laurits
+#### Miscellaneous Chores
+- (**deps**) bump Go toolchain to 1.26.2 - ([bbd7dd8](https://github.com/lauritsk/hatchctl/commit/bbd7dd84a3da79180cea9fe191d7f55646dba966)) - Karl Hans Laurits
+- (**mise**) scope gofumpt to formatting tasks - ([79d3ac9](https://github.com/lauritsk/hatchctl/commit/79d3ac94b0155fa4e355c79834ca7d3d2cf28ddb)) - Karl Hans Laurits
+- (**release**) restore goreleaser defaults - ([7aaf8fc](https://github.com/lauritsk/hatchctl/commit/7aaf8fc76da4a799688c3430a5bbd3f59cd8db60)) - Karl Hans Laurits
+- align release check goreleaser version - ([8dbb3ed](https://github.com/lauritsk/hatchctl/commit/8dbb3ed6823cb44c095520c139df697d34e4dd1a)) - Karl Hans Laurits
+
+- - -
+
 ## [v0.1.3](https://github.com/lauritsk/hatchctl/compare/901883fcf6ec5249a76a170d793c3a09c791da99..v0.1.3) - 2026-04-07
 #### Bug Fixes
 - embed bridge helpers in release builds - ([2b931ea](https://github.com/lauritsk/hatchctl/commit/2b931ea47141773eb96d2e7b3a2c7c1dea4055a5)) - Karl Hans Laurits
