@@ -2,6 +2,14 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## [v0.5.0](https://github.com/lauritsk/hatchctl/compare/35ff158842fb2509ce86fa65c58fec49588b63db..v0.5.0) - 2026-04-08
+#### Features
+- (**runtime**) Add structured runtime phases to progress output - ([35ff158](https://github.com/lauritsk/hatchctl/commit/35ff158842fb2509ce86fa65c58fec49588b63db)) - Karl Hans Laurits
+#### Miscellaneous Chores
+- (**mise**) Update hatchctl tool version - ([db01648](https://github.com/lauritsk/hatchctl/commit/db016482399375beb3a2281605827da42797625d)) - Karl Hans Laurits
+
+- - -
+
 ## [v0.4.0](https://github.com/lauritsk/hatchctl/compare/e0c2f22da0817b9ef0ea3cce60009e73d90feb6a..v0.4.0) - 2026-04-08
 #### Features
 - (**cli**) Improve inline terminal summaries - ([e0c2f22](https://github.com/lauritsk/hatchctl/commit/e0c2f22da0817b9ef0ea3cce60009e73d90feb6a)) - Karl Hans Laurits
