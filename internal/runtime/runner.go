@@ -21,6 +21,7 @@ type Runner struct {
 	stdout            io.Writer
 	stderr            io.Writer
 	hostCommandRunner hostCommandRunner
+	resolver          workspaceResolver
 	planner           *workspacePlanner
 	stateStore        workspaceStateStore
 	bridgeManager     runtimeBridgeManager
@@ -40,8 +41,10 @@ func NewRunnerWithIO(client *docker.Client, stdin io.Reader, stdout io.Writer, s
 		stdout:            stdout,
 		stderr:            stderr,
 		hostCommandRunner: defaultHostCommandRunner,
+		resolver:          devcontainerResolver{},
+		stateStore:        devcontainerStateStore{},
 	}
-	runner.planner = &workspacePlanner{runner: runner}
+	runner.planner = &workspacePlanner{runner: runner, resolver: runner.resolver}
 	runner.imageManager = &runtimeImageManager{runner: runner}
 	runner.containerManager = &runtimeContainerManager{runner: runner}
 	runner.lifecycleManager = &runtimeLifecycleManager{runner: runner}

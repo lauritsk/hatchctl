@@ -8,7 +8,8 @@ import (
 )
 
 type workspacePlanner struct {
-	runner *Runner
+	runner   *Runner
+	resolver workspaceResolver
 }
 
 func (p *workspacePlanner) prepareResolved(ctx context.Context, opts prepareResolveOptions) (devcontainer.ResolvedConfig, error) {
@@ -24,9 +25,9 @@ func (p *workspacePlanner) prepareResolved(ctx context.Context, opts prepareReso
 		err      error
 	)
 	if opts.ReadOnly {
-		resolved, err = devcontainer.ResolveReadOnlyWithOptions(ctx, opts.Workspace, opts.ConfigPath, resolveOpts)
+		resolved, err = p.resolver.ResolveReadOnly(ctx, opts.Workspace, opts.ConfigPath, resolveOpts)
 	} else {
-		resolved, err = devcontainer.ResolveWithOptions(ctx, opts.Workspace, opts.ConfigPath, resolveOpts)
+		resolved, err = p.resolver.Resolve(ctx, opts.Workspace, opts.ConfigPath, resolveOpts)
 	}
 	if err != nil {
 		return devcontainer.ResolvedConfig{}, err
