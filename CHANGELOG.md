@@ -2,6 +2,15 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## [v0.2.2](https://github.com/lauritsk/hatchctl/compare/3b7fb715b1c91c3181ead7ed2235f48b4ffb5feb..v0.2.2) - 2026-04-08
+#### Bug Fixes
+- (**ci**) skip flaky dotfiles integration test - ([3b7fb71](https://github.com/lauritsk/hatchctl/commit/3b7fb715b1c91c3181ead7ed2235f48b4ffb5feb)) - Karl Hans Laurits
+- (**exec**) clear spinner before interactive handoff - ([7857016](https://github.com/lauritsk/hatchctl/commit/7857016cbc2c1a0491e5aaf3573cbc196ce3c9be)) - Karl Hans Laurits
+#### Miscellaneous Chores
+- (**git**) ignore local build output - ([fcff2ab](https://github.com/lauritsk/hatchctl/commit/fcff2abe6bcd75cca57de43c4aaf6a7c64603578)) - Karl Hans Laurits
+
+- - -
+
 ## [v0.2.1](https://github.com/lauritsk/hatchctl/compare/314b223eff8c1b7c60b29cbffeb0ff8807c71110..v0.2.1) - 2026-04-08
 #### Bug Fixes
 - (**bridge**) remove stale unix socket paths - ([314b223](https://github.com/lauritsk/hatchctl/commit/314b223eff8c1b7c60b29cbffeb0ff8807c71110)) - Karl Hans Laurits
