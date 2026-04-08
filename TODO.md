@@ -4,6 +4,7 @@
 
 - fix `TestUpInstallsDotfilesOnceAndReportsStatus` so it does not clone dotfiles from a bind-mounted `file://` repo that trips git `safe.directory` checks in CI; re-enable the test after switching the fixture to a CI-safe transport
 - evaluate a hybrid Docker integration that uses the Engine API for inspect/start/exec-heavy paths while keeping Compose behavior compatible where the CLI is still the best fit
+- add first-class `config.toml` support with XDG/Linux and macOS-compliant config discovery plus fallback standard locations, and define a clear merge/override hierarchy where broader defaults are overridden by user, workspace, and CLI-nearest config/options; ensure cache/state/artifact outputs also follow platform best practices
 
 ## Done
 
