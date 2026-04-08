@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## [v0.3.4](https://github.com/lauritsk/hatchctl/compare/00a3a29cffcc21090fbab4f1910d2e47a5ea42b9..v0.3.4) - 2026-04-08
+#### Bug Fixes
+- (**bridge**) Rewrite embedded callback URLs for browser auth - ([00a3a29](https://github.com/lauritsk/hatchctl/commit/00a3a29cffcc21090fbab4f1910d2e47a5ea42b9)) - Karl Hans Laurits
+
+- - -
+
 ## [v0.3.3](https://github.com/lauritsk/hatchctl/compare/9ab8bf06e484f3e378d770d70d7c8c52b5e04193..v0.3.3) - 2026-04-08
 #### Bug Fixes
 - (**runtime**) Preserve base image metadata in feature images - ([8824d48](https://github.com/lauritsk/hatchctl/commit/8824d484a74fb161b26d6b8ebe29694c681b93b0)) - Karl Hans Laurits
