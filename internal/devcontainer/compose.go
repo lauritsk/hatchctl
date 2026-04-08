@@ -7,6 +7,20 @@ import (
 	"strings"
 )
 
+type MountSpec struct {
+	Type            string
+	Source          string
+	Target          string
+	ReadOnly        bool
+	Consistency     string
+	BindPropagation string
+	CreateHostPath  *bool
+	SELinux         string
+	NoCopy          bool
+	Subpath         string
+	Raw             string
+}
+
 func ComposeOverrideFile(stateDir string) string {
 	return filepath.Join(stateDir, "docker-compose.override.yml")
 }
@@ -78,4 +92,62 @@ func ComposeProjectName(workspace string, configPath string) string {
 		return "hatchctl"
 	}
 	return result
+}
+
+func ParseMountSpec(raw string) (MountSpec, bool) {
+	parts := map[string]string{}
+	for _, segment := range strings.Split(raw, ",") {
+		segment = strings.TrimSpace(segment)
+		if segment == "" {
+			continue
+		}
+		key, value, ok := strings.Cut(segment, "=")
+		if !ok {
+			parts[segment] = "true"
+			continue
+		}
+		parts[strings.TrimSpace(key)] = strings.TrimSpace(value)
+	}
+	target := firstNonEmptyString(parts["target"], parts["dst"])
+	if target == "" {
+		return MountSpec{}, false
+	}
+	spec := MountSpec{
+		Type:            parts["type"],
+		Source:          firstNonEmptyString(parts["source"], parts["src"]),
+		Target:          target,
+		ReadOnly:        parseMountBool(parts["readonly"]) || parseMountBool(parts["ro"]),
+		Consistency:     parts["consistency"],
+		BindPropagation: parts["bind-propagation"],
+		SELinux:         parts["selinux"],
+		NoCopy:          parseMountBool(parts["nocopy"]),
+		Subpath:         parts["subpath"],
+		Raw:             raw,
+	}
+	if value, ok := optionalMountBool(parts, "create-host-path"); ok {
+		spec.CreateHostPath = value
+	}
+	return spec, true
+}
+
+func parseMountBool(value string) bool {
+	return strings.EqualFold(value, "true") || value == "1"
+}
+
+func optionalMountBool(values map[string]string, key string) (*bool, bool) {
+	value, ok := values[key]
+	if !ok || value == "" {
+		return nil, false
+	}
+	parsed := parseMountBool(value)
+	return &parsed, true
+}
+
+func firstNonEmptyString(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }

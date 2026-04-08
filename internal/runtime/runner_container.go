@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/lauritsk/hatchctl/internal/bridge"
@@ -133,13 +134,7 @@ func (r *Runner) findContainer(ctx context.Context, resolved devcontainer.Resolv
 	if err != nil {
 		return "", err
 	}
-	for _, line := range strings.Split(result, "\n") {
-		line = strings.TrimSpace(line)
-		if line != "" {
-			return line, nil
-		}
-	}
-	return "", errManagedContainerNotFound
+	return r.selectBestContainerID(ctx, result)
 }
 
 func (r *Runner) removeContainer(ctx context.Context, containerID string) error {
@@ -255,6 +250,50 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func (r *Runner) selectBestContainerID(ctx context.Context, output string) (string, error) {
+	ids := make([]string, 0)
+	seen := map[string]struct{}{}
+	for _, line := range strings.Split(output, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if _, ok := seen[line]; ok {
+			continue
+		}
+		seen[line] = struct{}{}
+		ids = append(ids, line)
+	}
+	if len(ids) == 0 {
+		return "", errManagedContainerNotFound
+	}
+	type candidate struct {
+		id      string
+		running bool
+	}
+	candidates := make([]candidate, 0, len(ids))
+	for _, id := range ids {
+		inspect, err := r.docker.InspectContainer(ctx, id)
+		if err != nil {
+			if docker.IsNotFound(err) {
+				continue
+			}
+			return "", err
+		}
+		candidates = append(candidates, candidate{id: inspect.ID, running: inspect.State.Running})
+	}
+	if len(candidates) == 0 {
+		return "", errManagedContainerNotFound
+	}
+	sort.Slice(candidates, func(i, j int) bool {
+		if candidates[i].running != candidates[j].running {
+			return candidates[i].running
+		}
+		return candidates[i].id < candidates[j].id
+	})
+	return candidates[0].id, nil
 }
 
 func isNumericUser(value string) bool {

@@ -124,13 +124,7 @@ func (r *Runner) findComposeContainer(ctx context.Context, resolved devcontainer
 	if err != nil {
 		return "", err
 	}
-	for _, line := range strings.Split(result, "\n") {
-		line = strings.TrimSpace(line)
-		if line != "" {
-			return line, nil
-		}
-	}
-	return "", errManagedContainerNotFound
+	return r.selectBestContainerID(ctx, result)
 }
 
 func writeComposeOverride(resolved devcontainer.ResolvedConfig, image string) (string, error) {
@@ -224,50 +218,37 @@ func overrideCommandEnabled(value *bool) bool {
 }
 
 func composeMountValue(raw string) (composeServiceMount, bool) {
-	parts := map[string]string{}
-	for _, segment := range strings.Split(raw, ",") {
-		segment = strings.TrimSpace(segment)
-		if segment == "" {
-			continue
-		}
-		key, value, ok := strings.Cut(segment, "=")
-		if !ok {
-			parts[segment] = "true"
-			continue
-		}
-		parts[key] = value
-	}
-	target := parts["target"]
-	if target == "" {
+	spec, ok := devcontainer.ParseMountSpec(raw)
+	if !ok {
 		return composeServiceMount{}, false
 	}
-	switch parts["type"] {
+	switch spec.Type {
 	case "bind", "volume":
-		source := parts["source"]
-		if source == "" {
+		if spec.Source == "" {
 			return composeServiceMount{}, false
 		}
 		mount := composeServiceMount{
-			Type:   parts["type"],
-			Source: source,
-			Target: target,
+			Type:   spec.Type,
+			Source: spec.Source,
+			Target: spec.Target,
 		}
-		if isTrue(parts["readonly"]) || isTrue(parts["ro"]) {
+		if spec.ReadOnly {
 			mount.ReadOnly = true
 		}
-		if parts["consistency"] != "" {
-			mount.Consistency = parts["consistency"]
+		if spec.Consistency != "" {
+			mount.Consistency = spec.Consistency
 		}
 		if mount.Type == "bind" {
 			bind := &composeBindMountOptions{}
-			if parts["bind-propagation"] != "" {
-				bind.Propagation = parts["bind-propagation"]
+			if spec.BindPropagation != "" {
+				bind.Propagation = spec.BindPropagation
 			}
-			if value, ok := optionalBool(parts, "create-host-path"); ok {
-				bind.CreateHostPath = value
+			if spec.CreateHostPath != nil {
+				value := *spec.CreateHostPath
+				bind.CreateHostPath = &value
 			}
-			if parts["selinux"] != "" {
-				bind.SELinux = parts["selinux"]
+			if spec.SELinux != "" {
+				bind.SELinux = spec.SELinux
 			}
 			if bind.Propagation != "" || bind.CreateHostPath != nil || bind.SELinux != "" {
 				mount.Bind = bind
@@ -275,11 +256,11 @@ func composeMountValue(raw string) (composeServiceMount, bool) {
 		}
 		if mount.Type == "volume" {
 			volume := &composeVolumeMountOptions{}
-			if isTrue(parts["nocopy"]) {
+			if spec.NoCopy {
 				volume.NoCopy = true
 			}
-			if parts["subpath"] != "" {
-				volume.Subpath = parts["subpath"]
+			if spec.Subpath != "" {
+				volume.Subpath = spec.Subpath
 			}
 			if volume.NoCopy || volume.Subpath != "" {
 				mount.Volume = volume
@@ -292,31 +273,15 @@ func composeMountValue(raw string) (composeServiceMount, bool) {
 }
 
 func composeNamedVolume(raw string) (string, bool) {
-	parts := map[string]string{}
-	for _, segment := range strings.Split(raw, ",") {
-		key, value, ok := strings.Cut(strings.TrimSpace(segment), "=")
-		if !ok {
-			continue
-		}
-		parts[key] = value
-	}
-	if parts["type"] != "volume" || parts["source"] == "" {
+	spec, ok := devcontainer.ParseMountSpec(raw)
+	if !ok || spec.Type != "volume" || spec.Source == "" {
 		return "", false
 	}
-	return parts["source"], true
+	return spec.Source, true
 }
 
 func isTrue(value string) bool {
 	return strings.EqualFold(value, "true") || value == "1"
-}
-
-func optionalBool(values map[string]string, key string) (*bool, bool) {
-	value, ok := values[key]
-	if !ok || value == "" {
-		return nil, false
-	}
-	parsed := isTrue(value)
-	return &parsed, true
 }
 
 func sortedVolumeNames(values map[string]struct{}) []string {

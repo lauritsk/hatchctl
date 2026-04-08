@@ -102,6 +102,14 @@ type ociManifest struct {
 	} `json:"layers"`
 }
 
+type parsedFeatureSource struct {
+	Kind      string
+	Source    string
+	LocalPath string
+	GitHubRef gitHubFeatureReference
+	OCIRef    ociReference
+}
+
 func ResolveFeatures(ctx context.Context, configPath string, configDir string, cacheDir string, values map[string]any, opts FeatureResolveOptions) ([]ResolvedFeature, error) {
 	if len(values) == 0 {
 		return nil, nil
@@ -181,48 +189,45 @@ func ResolveFeatures(ctx context.Context, configPath string, configDir string, c
 
 func resolveFeaturePath(ctx context.Context, configDir string, cacheDir string, source string, lock FeatureLockEntry, allowNetwork bool, policy FeatureLockfilePolicy, httpTimeout time.Duration) (string, string, string, string, string, error) {
 	httpTimeout = effectiveFeatureHTTPTimeout(httpTimeout)
-	resolved, err := resolveLocalFeaturePath(configDir, source)
-	if err == nil {
-		return resolved, "file-path", source, "", "", nil
-	}
-	if !isMissingPathError(err) {
+	parsed, err := parseFeatureSource(configDir, source)
+	if err != nil {
 		return "", "", "", "", "", err
 	}
-	if strings.HasPrefix(source, "https://") || strings.HasPrefix(source, "http://") {
+	if parsed.Kind == "file-path" {
+		return parsed.LocalPath, "file-path", source, "", "", nil
+	}
+	if parsed.Kind == "direct-tarball" {
 		if policy == FeatureLockfilePolicyUpdate {
 			if !allowNetwork {
 				return "", "", "", "", "", fmt.Errorf("feature %q requires network access in update lockfile mode", source)
 			}
-			resolved, integrity, err := fetchTarballFeature(ctx, cacheDir, source, lock, httpTimeout)
-			return resolved, "direct-tarball", source, integrity, source, err
+			resolved, integrity, err := fetchTarballFeature(ctx, cacheDir, parsed.Source, lock, httpTimeout)
+			return resolved, "direct-tarball", parsed.Source, integrity, parsed.Source, err
 		}
 		if !allowNetwork {
-			resolved, integrity, err := cachedTarballFeature(cacheDir, source, lock)
-			return resolved, "direct-tarball", source, integrity, source, err
+			resolved, integrity, err := cachedTarballFeature(cacheDir, parsed.Source, lock)
+			return resolved, "direct-tarball", parsed.Source, integrity, parsed.Source, err
 		}
-		resolved, integrity, err := fetchTarballFeature(ctx, cacheDir, source, lock, httpTimeout)
-		return resolved, "direct-tarball", source, integrity, source, err
+		resolved, integrity, err := fetchTarballFeature(ctx, cacheDir, parsed.Source, lock, httpTimeout)
+		return resolved, "direct-tarball", parsed.Source, integrity, parsed.Source, err
 	}
-	if githubRef, err := parseGitHubFeatureReference(source); err == nil {
-		resolvedSource := githubRef.tarballURL()
+	if parsed.Kind == "github-release" {
+		resolvedSource := parsed.GitHubRef.tarballURL()
 		if policy == FeatureLockfilePolicyUpdate {
 			if !allowNetwork {
 				return "", "", "", "", "", fmt.Errorf("feature %q requires network access in update lockfile mode", source)
 			}
 			resolved, integrity, err := fetchTarballFeature(ctx, cacheDir, resolvedSource, lock, httpTimeout)
-			return resolved, "github-release", resolvedSource, integrity, githubRef.version(), err
+			return resolved, "github-release", resolvedSource, integrity, parsed.GitHubRef.version(), err
 		}
 		if !allowNetwork {
 			resolved, integrity, err := cachedTarballFeature(cacheDir, resolvedSource, lock)
-			return resolved, "github-release", resolvedSource, integrity, githubRef.version(), err
+			return resolved, "github-release", resolvedSource, integrity, parsed.GitHubRef.version(), err
 		}
 		resolved, integrity, err := fetchTarballFeature(ctx, cacheDir, resolvedSource, lock, httpTimeout)
-		return resolved, "github-release", resolvedSource, integrity, githubRef.version(), err
+		return resolved, "github-release", resolvedSource, integrity, parsed.GitHubRef.version(), err
 	}
-	ref, err := parseOCIReference(source)
-	if err != nil {
-		return "", "", "", "", "", fmt.Errorf("feature %q not found locally and is not a valid remote feature source: %w", source, err)
-	}
+	ref := parsed.OCIRef
 	if policy == FeatureLockfilePolicyUpdate {
 		if !allowNetwork {
 			return "", "", "", "", "", fmt.Errorf("feature %q requires network access in update lockfile mode", source)
@@ -305,14 +310,35 @@ func isRemoteFeatureSource(source string) bool {
 	if strings.HasPrefix(source, "./") || strings.HasPrefix(source, "../") || strings.HasPrefix(source, "/") {
 		return false
 	}
+	parsed, err := parseFeatureSource("", source)
+	if err != nil {
+		return false
+	}
+	return parsed.Kind != "file-path"
+}
+
+func parseFeatureSource(configDir string, source string) (parsedFeatureSource, error) {
+	resolved, err := resolveLocalFeaturePath(configDir, source)
+	if err == nil {
+		return parsedFeatureSource{Kind: "file-path", Source: source, LocalPath: resolved}, nil
+	}
+	if err != nil && !isMissingPathError(err) {
+		return parsedFeatureSource{}, err
+	}
+	if strings.HasPrefix(source, "./") || strings.HasPrefix(source, "../") || strings.HasPrefix(source, "/") {
+		return parsedFeatureSource{}, err
+	}
 	if strings.HasPrefix(source, "https://") || strings.HasPrefix(source, "http://") {
-		return true
+		return parsedFeatureSource{Kind: "direct-tarball", Source: source}, nil
 	}
-	if _, err := parseGitHubFeatureReference(source); err == nil {
-		return true
+	if githubRef, err := parseGitHubFeatureReference(source); err == nil {
+		return parsedFeatureSource{Kind: "github-release", Source: source, GitHubRef: githubRef}, nil
 	}
-	_, err := parseOCIReference(source)
-	return err == nil
+	ref, err := parseOCIReference(source)
+	if err != nil {
+		return parsedFeatureSource{}, fmt.Errorf("feature %q not found locally and is not a valid remote feature source: %w", source, err)
+	}
+	return parsedFeatureSource{Kind: "oci", Source: source, OCIRef: ref}, nil
 }
 
 func cachedOCIFeature(cacheDir string, source string, ref ociReference, lock FeatureLockEntry) (string, string, string, string, error) {

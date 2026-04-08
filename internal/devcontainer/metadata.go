@@ -309,16 +309,11 @@ func mergeMounts(entries []MetadataEntry) []string {
 }
 
 func mountTarget(mount string) string {
-	for _, part := range strings.Split(mount, ",") {
-		part = strings.TrimSpace(part)
-		if strings.HasPrefix(part, "target=") {
-			return strings.TrimPrefix(part, "target=")
-		}
-		if strings.HasPrefix(part, "dst=") {
-			return strings.TrimPrefix(part, "dst=")
-		}
+	spec, ok := ParseMountSpec(mount)
+	if !ok {
+		return ""
 	}
-	return ""
+	return spec.Target
 }
 
 func mergeCustomizations(entries []MetadataEntry) map[string][]any {

@@ -288,6 +288,33 @@ func TestResolveFeaturesRejectsOversizedTarballs(t *testing.T) {
 	}
 }
 
+func TestParseFeatureSourceClassifiesInputs(t *testing.T) {
+	t.Parallel()
+
+	configDir := t.TempDir()
+	localFeature := filepath.Join(configDir, "tool")
+	if err := os.MkdirAll(localFeature, 0o755); err != nil {
+		t.Fatalf("mkdir local feature: %v", err)
+	}
+
+	local, err := parseFeatureSource(configDir, "./tool")
+	if err != nil || local.Kind != "file-path" {
+		t.Fatalf("expected local feature classification, got %#v err=%v", local, err)
+	}
+	tarball, err := parseFeatureSource(configDir, "https://example.com/feature.tgz")
+	if err != nil || tarball.Kind != "direct-tarball" {
+		t.Fatalf("expected tarball classification, got %#v err=%v", tarball, err)
+	}
+	github, err := parseFeatureSource(configDir, "owner/repo/feature@v1.2.3")
+	if err != nil || github.Kind != "github-release" {
+		t.Fatalf("expected github classification, got %#v err=%v", github, err)
+	}
+	oci, err := parseFeatureSource(configDir, "ghcr.io/devcontainers/features/go:1")
+	if err != nil || oci.Kind != "oci" {
+		t.Fatalf("expected oci classification, got %#v err=%v", oci, err)
+	}
+}
+
 func TestExtractFeatureLayerSkipsNonLocalAndDotDotArchivePaths(t *testing.T) {
 	dstDir := t.TempDir()
 	parentDir := filepath.Dir(dstDir)
