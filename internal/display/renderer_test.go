@@ -83,3 +83,41 @@ func TestRendererProgressOutputDoesNotDuplicateNonTTYProgress(t *testing.T) {
 		t.Fatalf("unexpected progress output %q", got)
 	}
 }
+
+func TestRendererStdoutRedirectsToStderrForJSON(t *testing.T) {
+	t.Parallel()
+
+	var outBuf bytes.Buffer
+	var errBuf bytes.Buffer
+	r := NewRenderer(&outBuf, &errBuf, true)
+
+	if _, err := r.Stdout().Write([]byte("docker build log\n")); err != nil {
+		t.Fatalf("write stdout: %v", err)
+	}
+
+	if outBuf.Len() != 0 {
+		t.Fatalf("expected json stdout to stay clean, got %q", outBuf.String())
+	}
+	if got := errBuf.String(); got != "docker build log\n" {
+		t.Fatalf("unexpected redirected output %q", got)
+	}
+}
+
+func TestRendererManagedWriterClearsSpinner(t *testing.T) {
+	t.Parallel()
+
+	spinner := &lineSpinner{running: true}
+	var outBuf bytes.Buffer
+	r := &Renderer{out: &outBuf, spinner: spinner}
+
+	if _, err := r.Stdout().Write([]byte("command output\n")); err != nil {
+		t.Fatalf("write managed stdout: %v", err)
+	}
+
+	if spinner.running {
+		t.Fatal("expected managed writer to clear spinner")
+	}
+	if got := outBuf.String(); got != "command output\n" {
+		t.Fatalf("unexpected managed output %q", got)
+	}
+}

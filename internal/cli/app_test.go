@@ -284,6 +284,38 @@ func TestRunExecJSONCapturesOutputAndEnv(t *testing.T) {
 	}
 }
 
+func TestRunBuildJSONKeepsStdoutClean(t *testing.T) {
+	t.Parallel()
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	app := NewWithRunner(&out, &errOut, stubRunner{build: func(_ context.Context, opts runtime.BuildOptions) (runtime.BuildResult, error) {
+		if opts.Stdout == nil || opts.Stderr == nil {
+			t.Fatalf("expected managed build writers, got stdout=%v stderr=%v", opts.Stdout, opts.Stderr)
+		}
+		if _, err := opts.Stdout.Write([]byte("build output\n")); err != nil {
+			t.Fatalf("write build stdout: %v", err)
+		}
+		if _, err := opts.Stderr.Write([]byte("build warning\n")); err != nil {
+			t.Fatalf("write build stderr: %v", err)
+		}
+		return runtime.BuildResult{Image: "hatchctl-demo"}, nil
+	}})
+
+	if err := app.Run(context.Background(), []string{"build", "--json"}); err != nil {
+		t.Fatalf("run app: %v", err)
+	}
+	if got := out.String(); !strings.Contains(got, `"image": "hatchctl-demo"`) {
+		t.Fatalf("expected json build output, got %q", got)
+	}
+	if strings.Contains(out.String(), "build output") || strings.Contains(out.String(), "build warning") {
+		t.Fatalf("expected command output to stay off stdout, got %q", out.String())
+	}
+	if got := errOut.String(); got != "build output\nbuild warning\n" {
+		t.Fatalf("unexpected redirected command output %q", got)
+	}
+}
+
 func TestRunExecReturnsExitErrorForNonZeroCode(t *testing.T) {
 	t.Parallel()
 

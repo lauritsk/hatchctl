@@ -62,6 +62,8 @@ type UpOptions struct {
 	Verbose        bool
 	Debug          bool
 	Events         ui.Sink
+	Stdout         io.Writer
+	Stderr         io.Writer
 }
 
 type UpResult struct {
@@ -80,6 +82,8 @@ type BuildOptions struct {
 	Verbose        bool
 	Debug          bool
 	Events         ui.Sink
+	Stdout         io.Writer
+	Stderr         io.Writer
 }
 
 type BuildResult struct {
@@ -110,6 +114,8 @@ type ReadConfigOptions struct {
 	Verbose        bool
 	Debug          bool
 	Events         ui.Sink
+	Stdout         io.Writer
+	Stderr         io.Writer
 }
 
 type ReadConfigResult struct {
@@ -178,6 +184,8 @@ type RunLifecycleOptions struct {
 	Debug          bool
 	Events         ui.Sink
 	Phase          string
+	Stdout         io.Writer
+	Stderr         io.Writer
 }
 
 type RunLifecycleResult struct {
@@ -206,6 +214,8 @@ type BridgeDoctorOptions struct {
 	Verbose        bool
 	Debug          bool
 	Events         ui.Sink
+	Stdout         io.Writer
+	Stderr         io.Writer
 }
 
 type ExitError struct {
@@ -228,11 +238,12 @@ func (e ExitError) Error() string {
 }
 
 func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
+	runner := r.withCommandIO(commandIO{Stdin: r.stdin, Stdout: opts.Stdout, Stderr: opts.Stderr})
 	dotfiles, err := opts.Dotfiles.Normalized()
 	if err != nil {
 		return UpResult{}, err
 	}
-	prepared, err := r.planner.prepareWorkspace(ctx, prepareWorkspaceOptions{resolve: prepareResolveOptions{
+	prepared, err := runner.planner.prepareWorkspace(ctx, prepareWorkspaceOptions{resolve: prepareResolveOptions{
 		Workspace:      opts.Workspace,
 		ConfigPath:     opts.ConfigPath,
 		FeatureTimeout: opts.FeatureTimeout,
@@ -245,39 +256,39 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 		return UpResult{}, err
 	}
 	resolved := prepared.resolved
-	if err := r.stateStore.EnsureDir(resolved.StateDir); err != nil {
+	if err := runner.stateStore.EnsureDir(resolved.StateDir); err != nil {
 		return UpResult{}, err
 	}
 	state := prepared.state
 
 	if opts.Recreate && state.ContainerID != "" {
-		r.emitProgress(opts.Events, "Recreating managed container")
-		_ = r.removeContainer(ctx, state.ContainerID, opts.Events)
+		runner.emitProgress(opts.Events, "Recreating managed container")
+		_ = runner.removeContainer(ctx, state.ContainerID, opts.Events)
 		state = devcontainer.State{}
 	}
 
-	r.emitProgress(opts.Events, "Ensuring container image")
-	image, err := r.imageManager.EnsureImage(ctx, resolved, opts.Events)
+	runner.emitProgress(opts.Events, "Ensuring container image")
+	image, err := runner.imageManager.EnsureImage(ctx, resolved, opts.Events)
 	if err != nil {
 		return UpResult{}, err
 	}
-	r.emitProgress(opts.Events, "Applying runtime metadata")
-	if err := r.enrichMergedConfig(ctx, &resolved, image); err != nil {
+	runner.emitProgress(opts.Events, "Applying runtime metadata")
+	if err := runner.enrichMergedConfig(ctx, &resolved, image); err != nil {
 		return UpResult{}, err
 	}
-	helperArch, err := r.inspectImageArchitecture(ctx, image)
+	helperArch, err := runner.inspectImageArchitecture(ctx, image)
 	if err != nil {
 		return UpResult{}, err
 	}
 	var bridgeReport *bridge.Report
-	r.emitProgress(opts.Events, "Configuring bridge support")
-	bridgeReport, err = r.bridgeManager.Apply(&resolved, opts.BridgeEnabled, helperArch)
+	runner.emitProgress(opts.Events, "Configuring bridge support")
+	bridgeReport, err = runner.bridgeManager.Apply(&resolved, opts.BridgeEnabled, helperArch)
 	if err != nil {
 		return UpResult{}, err
 	}
 	overridePath := ""
 	if resolved.SourceKind == "compose" {
-		r.emitProgress(opts.Events, "Preparing Compose override")
+		runner.emitProgress(opts.Events, "Preparing Compose override")
 		overridePath, err = writeComposeOverride(resolved, image)
 		if err != nil {
 			return UpResult{}, err
@@ -285,26 +296,26 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 		defer os.Remove(overridePath)
 	}
 
-	r.emitProgress(opts.Events, "Ensuring managed container")
-	containerID, created, err := r.containerManager.EnsureContainer(ctx, resolved, image, opts.BridgeEnabled, overridePath, opts.Events)
+	runner.emitProgress(opts.Events, "Ensuring managed container")
+	containerID, created, err := runner.containerManager.EnsureContainer(ctx, resolved, image, opts.BridgeEnabled, overridePath, opts.Events)
 	if err != nil {
 		return UpResult{}, err
 	}
-	r.emitProgress(opts.Events, "Reconciling container user")
-	if err := r.imageManager.EnsureUpdatedUIDContainer(ctx, resolved, image, containerID, opts.Events); err != nil {
+	runner.emitProgress(opts.Events, "Reconciling container user")
+	if err := runner.imageManager.EnsureUpdatedUIDContainer(ctx, resolved, image, containerID, opts.Events); err != nil {
 		return UpResult{}, err
 	}
 	if bridgeReport != nil {
-		r.emitProgress(opts.Events, "Starting bridge session")
-		startedBridge, err := r.bridgeManager.Start(resolved.StateDir, opts.BridgeEnabled, helperArch, containerID)
+		runner.emitProgress(opts.Events, "Starting bridge session")
+		startedBridge, err := runner.bridgeManager.Start(resolved.StateDir, opts.BridgeEnabled, helperArch, containerID)
 		if err != nil {
 			return UpResult{}, err
 		}
 		bridgeReport = (*bridge.Report)(startedBridge)
 	}
 
-	r.emitProgress(opts.Events, "Running lifecycle commands")
-	if err := r.lifecycleManager.RunForUp(ctx, resolved, containerID, created, state, dotfiles, opts.Events); err != nil {
+	runner.emitProgress(opts.Events, "Running lifecycle commands")
+	if err := runner.lifecycleManager.RunForUp(ctx, resolved, containerID, created, state, dotfiles, opts.Events); err != nil {
 		return UpResult{}, err
 	}
 
@@ -318,8 +329,8 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 	if bridgeReport != nil {
 		state.BridgeSessionID = bridgeReport.ID
 	}
-	r.emitProgress(opts.Events, "Writing workspace state")
-	if err := r.stateStore.Write(resolved.StateDir, state); err != nil {
+	runner.emitProgress(opts.Events, "Writing workspace state")
+	if err := runner.stateStore.Write(resolved.StateDir, state); err != nil {
 		return UpResult{}, err
 	}
 
@@ -333,7 +344,8 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 }
 
 func (r *Runner) Build(ctx context.Context, opts BuildOptions) (BuildResult, error) {
-	prepared, err := r.planner.prepareWorkspace(ctx, prepareWorkspaceOptions{resolve: prepareResolveOptions{
+	runner := r.withCommandIO(commandIO{Stdin: r.stdin, Stdout: opts.Stdout, Stderr: opts.Stderr})
+	prepared, err := runner.planner.prepareWorkspace(ctx, prepareWorkspaceOptions{resolve: prepareResolveOptions{
 		Workspace:      opts.Workspace,
 		ConfigPath:     opts.ConfigPath,
 		FeatureTimeout: opts.FeatureTimeout,
@@ -346,13 +358,13 @@ func (r *Runner) Build(ctx context.Context, opts BuildOptions) (BuildResult, err
 		return BuildResult{}, err
 	}
 	resolved := prepared.resolved
-	r.emitProgress(opts.Events, "Ensuring container image")
-	image, err := r.imageManager.EnsureImage(ctx, resolved, opts.Events)
+	runner.emitProgress(opts.Events, "Ensuring container image")
+	image, err := runner.imageManager.EnsureImage(ctx, resolved, opts.Events)
 	if err != nil {
 		return BuildResult{}, err
 	}
-	r.emitProgress(opts.Events, "Applying runtime metadata")
-	if err := r.enrichMergedConfig(ctx, &resolved, image); err != nil {
+	runner.emitProgress(opts.Events, "Applying runtime metadata")
+	if err := runner.enrichMergedConfig(ctx, &resolved, image); err != nil {
 		return BuildResult{}, err
 	}
 	return BuildResult{Image: image}, nil
@@ -397,11 +409,12 @@ func (r *Runner) Exec(ctx context.Context, opts ExecOptions) (int, error) {
 }
 
 func (r *Runner) ReadConfig(ctx context.Context, opts ReadConfigOptions) (ReadConfigResult, error) {
+	runner := r.withCommandIO(commandIO{Stdin: r.stdin, Stdout: opts.Stdout, Stderr: opts.Stderr})
 	dotfiles, err := opts.Dotfiles.Normalized()
 	if err != nil {
 		return ReadConfigResult{}, err
 	}
-	prepared, err := r.planner.prepareWorkspace(ctx, prepareWorkspaceOptions{resolve: prepareResolveOptions{
+	prepared, err := runner.planner.prepareWorkspace(ctx, prepareWorkspaceOptions{resolve: prepareResolveOptions{
 		Workspace:      opts.Workspace,
 		ConfigPath:     opts.ConfigPath,
 		FeatureTimeout: opts.FeatureTimeout,
@@ -418,27 +431,27 @@ func (r *Runner) ReadConfig(ctx context.Context, opts ReadConfigOptions) (ReadCo
 	image := prepared.image
 	state := prepared.state
 	var bridgeReport *bridge.Report
-	bridgeReport, err = r.bridgeManager.Preview(&resolved, state.BridgeEnabled)
+	bridgeReport, err = runner.bridgeManager.Preview(&resolved, state.BridgeEnabled)
 	if err != nil {
 		return ReadConfigResult{}, err
 	}
 	if state.BridgeEnabled {
-		report, err := r.bridgeManager.Doctor(resolved.StateDir)
+		report, err := runner.bridgeManager.Doctor(resolved.StateDir)
 		if err != nil {
 			return ReadConfigResult{}, err
 		}
 		bridgeReport = (*bridge.Report)(&report)
 	}
 	prepared.resolved = resolved
-	resolvedUser, err := r.effectiveRemoteUser(ctx, prepared)
+	resolvedUser, err := runner.effectiveRemoteUser(ctx, prepared)
 	if err != nil {
 		return ReadConfigResult{}, err
 	}
-	imageUser, err := r.inspectImageUser(ctx, image)
+	imageUser, err := runner.inspectImageUser(ctx, image)
 	if err != nil {
 		return ReadConfigResult{}, err
 	}
-	managedContainer, err := r.readManagedContainerState(prepared)
+	managedContainer, err := runner.readManagedContainerState(prepared)
 	if err != nil {
 		return ReadConfigResult{}, err
 	}
@@ -469,11 +482,12 @@ func (r *Runner) ReadConfig(ctx context.Context, opts ReadConfigOptions) (ReadCo
 }
 
 func (r *Runner) RunLifecycle(ctx context.Context, opts RunLifecycleOptions) (RunLifecycleResult, error) {
+	runner := r.withCommandIO(commandIO{Stdin: r.stdin, Stdout: opts.Stdout, Stderr: opts.Stderr})
 	dotfiles, err := opts.Dotfiles.Normalized()
 	if err != nil {
 		return RunLifecycleResult{}, err
 	}
-	prepared, err := r.planner.prepareWorkspace(ctx, prepareWorkspaceOptions{resolve: prepareResolveOptions{
+	prepared, err := runner.planner.prepareWorkspace(ctx, prepareWorkspaceOptions{resolve: prepareResolveOptions{
 		Workspace:      opts.Workspace,
 		ConfigPath:     opts.ConfigPath,
 		FeatureTimeout: opts.FeatureTimeout,
@@ -491,9 +505,9 @@ func (r *Runner) RunLifecycle(ctx context.Context, opts RunLifecycleOptions) (Ru
 	if phase == "" {
 		phase = "all"
 	}
-	r.emitProgress(opts.Events, "Running lifecycle commands")
+	runner.emitProgress(opts.Events, "Running lifecycle commands")
 	runDotfiles := phase == "all" || phase == "create"
-	if err := r.lifecycleManager.RunPhase(ctx, resolved, prepared.containerID, phase, state, dotfiles, runDotfiles, opts.Events); err != nil {
+	if err := runner.lifecycleManager.RunPhase(ctx, resolved, prepared.containerID, phase, state, dotfiles, runDotfiles, opts.Events); err != nil {
 		return RunLifecycleResult{}, err
 	}
 	if runDotfiles {
@@ -501,7 +515,7 @@ func (r *Runner) RunLifecycle(ctx context.Context, opts RunLifecycleOptions) (Ru
 		state.DotfilesRepo = dotfiles.Repository
 		state.DotfilesInstall = dotfiles.InstallCommand
 		state.DotfilesTarget = dotfiles.TargetPath
-		if err := r.stateStore.Write(resolved.StateDir, state); err != nil {
+		if err := runner.stateStore.Write(resolved.StateDir, state); err != nil {
 			return RunLifecycleResult{}, err
 		}
 	}
@@ -509,7 +523,8 @@ func (r *Runner) RunLifecycle(ctx context.Context, opts RunLifecycleOptions) (Ru
 }
 
 func (r *Runner) BridgeDoctor(ctx context.Context, opts BridgeDoctorOptions) (bridge.Report, error) {
-	prepared, err := r.planner.prepareWorkspace(ctx, prepareWorkspaceOptions{resolve: prepareResolveOptions{
+	runner := r.withCommandIO(commandIO{Stdin: r.stdin, Stdout: opts.Stdout, Stderr: opts.Stderr})
+	prepared, err := runner.planner.prepareWorkspace(ctx, prepareWorkspaceOptions{resolve: prepareResolveOptions{
 		Workspace:      opts.Workspace,
 		ConfigPath:     opts.ConfigPath,
 		FeatureTimeout: opts.FeatureTimeout,
@@ -522,7 +537,7 @@ func (r *Runner) BridgeDoctor(ctx context.Context, opts BridgeDoctorOptions) (br
 	if err != nil {
 		return bridge.Report{}, err
 	}
-	return r.bridgeManager.Doctor(prepared.resolved.StateDir)
+	return runner.bridgeManager.Doctor(prepared.resolved.StateDir)
 }
 
 func preparedImage(resolved devcontainer.ResolvedConfig) string {
@@ -556,6 +571,30 @@ func (r *Runner) emitPlan(events ui.Sink, resolved devcontainer.ResolvedConfig) 
 
 func (r *Runner) commandIO() commandIO {
 	return commandIO{Stdin: r.stdin, Stdout: r.stdout, Stderr: r.stderr}
+}
+
+func (r *Runner) withCommandIO(streams commandIO) *Runner {
+	clone := *r
+	if streams.Stdin == nil {
+		streams.Stdin = r.stdin
+	}
+	if streams.Stdout == nil {
+		streams.Stdout = r.stdout
+	}
+	if streams.Stderr == nil {
+		streams.Stderr = r.stderr
+	}
+	clone.stdin = streams.Stdin
+	clone.stdout = streams.Stdout
+	clone.stderr = streams.Stderr
+	if backend, ok := r.backend.(*localRuntimeBackend); ok {
+		clone.backend = &localRuntimeBackend{runner: &clone, docker: backend.docker, hostCommand: backend.hostCommand}
+	}
+	clone.planner = &workspacePlanner{runner: &clone, resolver: clone.resolver}
+	clone.imageManager = &runtimeImageManager{runner: &clone}
+	clone.containerManager = &runtimeContainerManager{runner: &clone}
+	clone.lifecycleManager = &runtimeLifecycleManager{runner: &clone}
+	return &clone
 }
 
 const updateUIDCommand = `REMOTE_USER="$1"; NEW_UID="$2"; NEW_GID="$3"; \

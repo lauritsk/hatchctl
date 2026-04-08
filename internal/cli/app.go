@@ -127,6 +127,8 @@ func (a *App) newUpCommand(global *globalOptions, dotfiles *dotfilesOptions) *co
 				Verbose:        global.Verbose || global.Debug,
 				Debug:          global.Debug,
 				Events:         renderer.Events(),
+				Stdout:         renderer.Stdout(),
+				Stderr:         renderer.Stderr(),
 			})
 			if err != nil {
 				return err
@@ -174,6 +176,8 @@ func (a *App) newBuildCommand(global *globalOptions) *cobra.Command {
 				Verbose:        global.Verbose || global.Debug,
 				Debug:          global.Debug,
 				Events:         renderer.Events(),
+				Stdout:         renderer.Stdout(),
+				Stderr:         renderer.Stderr(),
 			})
 			if err != nil {
 				return err
@@ -213,8 +217,8 @@ func (a *App) newExecCommand(global *globalOptions) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			stdout := a.out
-			stderr := a.err
+			stdout := renderer.Stdout()
+			stderr := renderer.Stderr()
 			var stdoutBuffer strings.Builder
 			var stderrBuffer strings.Builder
 			if jsonOut {
@@ -288,6 +292,8 @@ func (a *App) newConfigCommand(global *globalOptions, dotfiles *dotfilesOptions)
 				Verbose:        global.Verbose || global.Debug,
 				Debug:          global.Debug,
 				Events:         renderer.Events(),
+				Stdout:         renderer.Stdout(),
+				Stderr:         renderer.Stderr(),
 			})
 			if err != nil {
 				return err
@@ -333,6 +339,8 @@ func (a *App) newRunCommand(global *globalOptions, dotfiles *dotfilesOptions) *c
 				Debug:          global.Debug,
 				Events:         renderer.Events(),
 				Phase:          phase,
+				Stdout:         renderer.Stdout(),
+				Stderr:         renderer.Stderr(),
 			})
 			if err != nil {
 				return err
@@ -416,6 +424,8 @@ func (a *App) newBridgeDoctorCommand(global *globalOptions) *cobra.Command {
 				Verbose:        global.Verbose || global.Debug,
 				Debug:          global.Debug,
 				Events:         renderer.Events(),
+				Stdout:         renderer.Stdout(),
+				Stderr:         renderer.Stderr(),
 			})
 			if err != nil {
 				return err

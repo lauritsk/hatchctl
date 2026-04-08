@@ -47,6 +47,11 @@ type Renderer struct {
 	spinner *lineSpinner
 }
 
+type streamWriter struct {
+	renderer *Renderer
+	target   io.Writer
+}
+
 func (r *Renderer) Events() Sink {
 	if r == nil || r.jsonOut {
 		return nil
@@ -144,6 +149,27 @@ func (r *Renderer) PrintText(text string) error {
 	return err
 }
 
+func (r *Renderer) Stdout() io.Writer {
+	if r == nil {
+		return nil
+	}
+	target := r.out
+	if r.jsonOut {
+		target = r.err
+	}
+	if target == nil {
+		return nil
+	}
+	return &streamWriter{renderer: r, target: target}
+}
+
+func (r *Renderer) Stderr() io.Writer {
+	if r == nil || r.err == nil {
+		return nil
+	}
+	return &streamWriter{renderer: r, target: r.err}
+}
+
 func (r *Renderer) PrintKeyValues(values []KeyValue) error {
 	r.pauseProgress()
 	for _, value := range values {
@@ -176,6 +202,16 @@ func (r *Renderer) pauseProgress() {
 	if r.spinner != nil {
 		r.spinner.Clear()
 	}
+}
+
+func (w *streamWriter) Write(p []byte) (int, error) {
+	if w == nil || w.target == nil {
+		return len(p), nil
+	}
+	if w.renderer != nil {
+		w.renderer.pauseProgress()
+	}
+	return w.target.Write(p)
 }
 
 func (r *Renderer) styleDebug(message string) string {
