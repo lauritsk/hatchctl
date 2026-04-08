@@ -156,6 +156,12 @@ func (a *App) newUpCommand(global *globalOptions) *cobra.Command {
 			if jsonOut {
 				return renderer.PrintJSON(result)
 			}
+			if renderer.TTY() {
+				if err := renderer.PrintSummary("Devcontainer Ready", upResultFields(result)); err != nil {
+					return err
+				}
+				return renderer.PrintCommandList("Next", upSuggestedCommands(defaults.Workspace, defaults.ConfigPath, defaults.FeatureTimeout, policy))
+			}
 			if err := renderer.PrintKeyValues(upResultFields(result)); err != nil {
 				return err
 			}
@@ -212,6 +218,9 @@ func (a *App) newBuildCommand(global *globalOptions) *cobra.Command {
 			}
 			if jsonOut {
 				return renderer.PrintJSON(result)
+			}
+			if renderer.TTY() {
+				return renderer.PrintSummary("Image Ready", []ui.KeyValue{{Key: "Image", Value: result.Image}})
 			}
 			return renderer.PrintText(fmt.Sprintf("Devcontainer image ready: %s", result.Image))
 		},
@@ -360,6 +369,9 @@ func (a *App) newConfigCommand(global *globalOptions) *cobra.Command {
 			}
 			if jsonOut {
 				return renderer.PrintJSON(result)
+			}
+			if renderer.TTY() {
+				return renderer.PrintSummary("Configuration", configResultFields(result))
 			}
 			return renderer.PrintKeyValues(configResultFields(result))
 		},

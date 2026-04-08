@@ -141,3 +141,49 @@ func TestRendererManagedWriterPreservesFileDescriptor(t *testing.T) {
 		t.Fatalf("unexpected file descriptor %d want %d", got, want)
 	}
 }
+
+func TestRendererPrintSummaryUsesBoxLayoutForTTY(t *testing.T) {
+	t.Parallel()
+
+	var outBuf bytes.Buffer
+	r := &Renderer{
+		out:    &outBuf,
+		outTTY: true,
+		styles: NewRenderer(&bytes.Buffer{}, &bytes.Buffer{}, false).styles,
+	}
+
+	err := r.PrintSummary("Devcontainer Ready", []KeyValue{{Key: "Container", Value: "abc123"}, {Key: "Image", Value: "demo"}})
+	if err != nil {
+		t.Fatalf("print summary: %v", err)
+	}
+
+	got := outBuf.String()
+	for _, want := range []string{"Devcontainer Ready", "Container", "abc123", "Image", "demo"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("expected summary to contain %q, got %q", want, got)
+		}
+	}
+}
+
+func TestRendererPrintCommandListUsesTTYCommandStyling(t *testing.T) {
+	t.Parallel()
+
+	var outBuf bytes.Buffer
+	r := &Renderer{
+		out:    &outBuf,
+		outTTY: true,
+		styles: NewRenderer(&bytes.Buffer{}, &bytes.Buffer{}, false).styles,
+	}
+
+	err := r.PrintCommandList("Next", []string{"hatchctl exec", "hatchctl exec -- pwd"})
+	if err != nil {
+		t.Fatalf("print command list: %v", err)
+	}
+
+	got := outBuf.String()
+	for _, want := range []string{"Next", "$ ", "hatchctl exec", "hatchctl exec -- pwd"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("expected command list to contain %q, got %q", want, got)
+		}
+	}
+}

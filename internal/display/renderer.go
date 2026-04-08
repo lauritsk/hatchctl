@@ -63,12 +63,26 @@ func (r *Renderer) Events() Sink {
 	return r
 }
 
+func (r *Renderer) TTY() bool {
+	if r == nil {
+		return false
+	}
+	return r.outTTY
+}
+
 type styles struct {
-	label    lipgloss.Style
-	text     lipgloss.Style
-	progress lipgloss.Style
-	debug    lipgloss.Style
-	frame    lipgloss.Style
+	title      lipgloss.Style
+	label      lipgloss.Style
+	text       lipgloss.Style
+	muted      lipgloss.Style
+	progress   lipgloss.Style
+	debug      lipgloss.Style
+	warning    lipgloss.Style
+	success    lipgloss.Style
+	frame      lipgloss.Style
+	box        lipgloss.Style
+	command    lipgloss.Style
+	commandBox lipgloss.Style
 }
 
 func NewRenderer(out io.Writer, err io.Writer, jsonOut bool) *Renderer {
@@ -81,11 +95,18 @@ func NewRenderer(out io.Writer, err io.Writer, jsonOut bool) *Renderer {
 		outTTY:  outTTY,
 		errTTY:  errTTY,
 		styles: styles{
-			label:    lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12")),
-			text:     lipgloss.NewStyle().Foreground(lipgloss.Color("15")),
-			progress: lipgloss.NewStyle().Bold(true),
-			debug:    lipgloss.NewStyle().Faint(true),
-			frame:    lipgloss.NewStyle().Foreground(lipgloss.Color("6")),
+			title:      lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12")),
+			label:      lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12")),
+			text:       lipgloss.NewStyle().Foreground(lipgloss.Color("15")),
+			muted:      lipgloss.NewStyle().Faint(true).Foreground(lipgloss.Color("8")),
+			progress:   lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("15")),
+			debug:      lipgloss.NewStyle().Faint(true).Foreground(lipgloss.Color("8")),
+			warning:    lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("11")),
+			success:    lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("10")),
+			frame:      lipgloss.NewStyle().Foreground(lipgloss.Color("6")),
+			box:        lipgloss.NewStyle().Border(lipgloss.NormalBorder()).BorderForeground(lipgloss.Color("6")).Padding(0, 1),
+			command:    lipgloss.NewStyle().Foreground(lipgloss.Color("10")),
+			commandBox: lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("12")).Padding(0, 1),
 		},
 	}
 	if !jsonOut && errTTY {
@@ -176,16 +197,62 @@ func (r *Renderer) Stderr() io.Writer {
 
 func (r *Renderer) PrintKeyValues(values []KeyValue) error {
 	r.pauseProgress()
+	if r.outTTY {
+		_, err := fmt.Fprintln(r.out, r.renderKeyValuesBox("Summary", values))
+		return err
+	}
 	for _, value := range values {
 		line := value.Key + ": " + value.Value
-		if r.outTTY {
-			line = r.styles.label.Render(value.Key+":") + " " + r.styles.text.Render(value.Value)
-		}
 		if _, err := fmt.Fprintln(r.out, line); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func (r *Renderer) PrintSummary(title string, values []KeyValue) error {
+	r.pauseProgress()
+	if !r.outTTY {
+		if title != "" {
+			if _, err := fmt.Fprintln(r.out, title); err != nil {
+				return err
+			}
+		}
+		for _, value := range values {
+			if _, err := fmt.Fprintf(r.out, "%s: %s\n", value.Key, value.Value); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	_, err := fmt.Fprintln(r.out, r.renderKeyValuesBox(title, values))
+	return err
+}
+
+func (r *Renderer) PrintCommandList(title string, commands []string) error {
+	r.pauseProgress()
+	if !r.outTTY {
+		if title != "" {
+			if _, err := fmt.Fprintln(r.out, title+":"); err != nil {
+				return err
+			}
+		}
+		for _, command := range commands {
+			if _, err := fmt.Fprintln(r.out, "  "+command); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	lines := make([]string, 0, len(commands)+1)
+	if title != "" {
+		lines = append(lines, r.styles.title.Render(title))
+	}
+	for _, command := range commands {
+		lines = append(lines, r.styles.command.Render("$ ")+r.styles.text.Render(command))
+	}
+	_, err := fmt.Fprintln(r.out, r.styles.commandBox.Render(strings.Join(lines, "\n")))
+	return err
 }
 
 func (r *Renderer) PrintJSON(value any) error {
@@ -240,14 +307,33 @@ func (r *Renderer) styleProgress(message string) string {
 	if !r.errTTY {
 		return "==> " + message
 	}
-	return r.styles.progress.Render("==> " + message)
+	return r.styles.frame.Render("[run]") + " " + r.styles.progress.Render(message)
 }
 
 func (r *Renderer) styleWarning(message string) string {
 	if !r.errTTY {
 		return "warning: " + message
 	}
-	return r.styles.debug.Render("warning: " + message)
+	return r.styles.warning.Render("warning:") + " " + r.styles.text.Render(message)
+}
+
+func (r *Renderer) renderKeyValuesBox(title string, values []KeyValue) string {
+	width := 0
+	for _, value := range values {
+		if w := lipgloss.Width(value.Key); w > width {
+			width = w
+		}
+	}
+	lines := make([]string, 0, len(values)+2)
+	if title != "" {
+		lines = append(lines, r.styles.title.Render(title))
+	}
+	lines = append(lines, r.styles.muted.Render(r.styles.success.Render("ready")+" development container details"))
+	for _, value := range values {
+		key := r.styles.label.Render(fmt.Sprintf("%-*s", width, value.Key))
+		lines = append(lines, key+"  "+r.styles.text.Render(value.Value))
+	}
+	return r.styles.box.Render(strings.Join(lines, "\n"))
 }
 
 func isTerminal(w io.Writer) bool {
