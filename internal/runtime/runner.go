@@ -280,9 +280,9 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 	if err != nil {
 		return UpResult{}, err
 	}
-	var bridgeReport *bridge.Report
+	var bridgeSession *bridge.Session
 	runner.emitProgress(opts.Events, "Configuring bridge support")
-	bridgeReport, err = runner.bridgeManager.Apply(&resolved, opts.BridgeEnabled, helperArch)
+	bridgeSession, err = runner.bridgeManager.Apply(&resolved, opts.BridgeEnabled, helperArch)
 	if err != nil {
 		return UpResult{}, err
 	}
@@ -305,9 +305,10 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 	if err := runner.imageManager.EnsureUpdatedUIDContainer(ctx, resolved, image, containerID, opts.Events); err != nil {
 		return UpResult{}, err
 	}
-	if bridgeReport != nil {
+	var bridgeReport *bridge.Report
+	if bridgeSession != nil {
 		runner.emitProgress(opts.Events, "Starting bridge session")
-		startedBridge, err := runner.bridgeManager.Start(resolved.StateDir, opts.BridgeEnabled, helperArch, containerID)
+		startedBridge, err := runner.bridgeManager.Start(bridgeSession, containerID)
 		if err != nil {
 			return UpResult{}, err
 		}
@@ -430,10 +431,14 @@ func (r *Runner) ReadConfig(ctx context.Context, opts ReadConfigOptions) (ReadCo
 	resolved := prepared.resolved
 	image := prepared.image
 	state := prepared.state
-	var bridgeReport *bridge.Report
-	bridgeReport, err = runner.bridgeManager.Preview(&resolved, state.BridgeEnabled)
+	var bridgeSession *bridge.Session
+	bridgeSession, err = runner.bridgeManager.Preview(&resolved, state.BridgeEnabled)
 	if err != nil {
 		return ReadConfigResult{}, err
+	}
+	var bridgeReport *bridge.Report
+	if bridgeSession != nil {
+		bridgeReport = (*bridge.Report)(bridgeSession)
 	}
 	if state.BridgeEnabled {
 		report, err := runner.bridgeManager.Doctor(resolved.StateDir)

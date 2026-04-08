@@ -7,26 +7,29 @@ import (
 
 type runtimeBridgeManager struct{}
 
-func (runtimeBridgeManager) Apply(resolved *devcontainer.ResolvedConfig, enabled bool, helperArch string) (*bridge.Report, error) {
-	report, merged, err := bridge.Apply(resolved.StateDir, enabled, helperArch, resolved.Merged)
+func (runtimeBridgeManager) Apply(resolved *devcontainer.ResolvedConfig, enabled bool, helperArch string) (*bridge.Session, error) {
+	if !enabled {
+		return nil, nil
+	}
+	session, err := (bridge.Planner{}).Prepare(resolved.StateDir, enabled, helperArch)
 	if err != nil {
 		return nil, err
 	}
-	resolved.Merged = merged
-	return (*bridge.Report)(report), nil
+	resolved.Merged = (bridge.Planner{}).Inject(session, resolved.Merged)
+	return session, nil
 }
 
-func (runtimeBridgeManager) Preview(resolved *devcontainer.ResolvedConfig, enabled bool) (*bridge.Report, error) {
-	report, merged, err := bridge.Preview(resolved.StateDir, enabled, resolved.Merged)
+func (runtimeBridgeManager) Preview(resolved *devcontainer.ResolvedConfig, enabled bool) (*bridge.Session, error) {
+	session, err := (bridge.Planner{}).Preview(resolved.StateDir, enabled)
 	if err != nil {
 		return nil, err
 	}
-	resolved.Merged = merged
-	return (*bridge.Report)(report), nil
+	resolved.Merged = (bridge.Planner{}).Inject(session, resolved.Merged)
+	return session, nil
 }
 
-func (runtimeBridgeManager) Start(stateDir string, enabled bool, helperArch string, containerID string) (*bridge.Session, error) {
-	return bridge.Start(stateDir, enabled, helperArch, containerID)
+func (runtimeBridgeManager) Start(session *bridge.Session, containerID string) (*bridge.Session, error) {
+	return (bridge.Runtime{}).Start(session, containerID)
 }
 
 func (runtimeBridgeManager) Doctor(stateDir string) (bridge.Report, error) {

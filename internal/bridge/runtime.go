@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"path/filepath"
 	"runtime"
 	"sort"
 	"strconv"
@@ -28,6 +29,8 @@ const bridgeStartupTimeout = 5 * time.Second
 type containerConnectRunner func(string, int, io.Reader, io.Writer) error
 
 var runContainerConnect containerConnectRunner = defaultContainerConnectRunner
+
+type Runtime struct{}
 
 var (
 	hostCommandRunner command.Runner = command.Local{}
@@ -80,14 +83,11 @@ type bridgeHostService struct {
 	forwarded   map[int]forwardedPort
 }
 
-func Start(stateDir string, enabled bool, helperArch string, containerID string) (*Session, error) {
-	if !enabled {
+func (Runtime) Start(session *Session, containerID string) (*Session, error) {
+	if session == nil || !session.Enabled {
 		return nil, nil
 	}
-	session, err := Prepare(stateDir, enabled, helperArch)
-	if err != nil {
-		return nil, err
-	}
+	stateDir := filepath.Dir(session.StatePath)
 	if runtime.GOOS != "darwin" {
 		session.Status = "scaffolded"
 		return session, nil
@@ -131,8 +131,16 @@ func Start(stateDir string, enabled bool, helperArch string, containerID string)
 	return session, nil
 }
 
+func Start(stateDir string, enabled bool, helperArch string, containerID string) (*Session, error) {
+	session, err := Planner{}.Prepare(stateDir, enabled, helperArch)
+	if err != nil {
+		return nil, err
+	}
+	return Runtime{}.Start(session, containerID)
+}
+
 func Serve(ctx context.Context, stateDir string, containerID string) error {
-	session, err := Prepare(stateDir, true, "")
+	session, err := Planner{}.Prepare(stateDir, true, "")
 	if err != nil {
 		return err
 	}
@@ -363,7 +371,7 @@ func stopExisting(session *Session) error {
 }
 
 func Stop(stateDir string) error {
-	session, err := Prepare(stateDir, true, "")
+	session, err := Planner{}.Prepare(stateDir, true, "")
 	if err != nil {
 		return err
 	}
