@@ -2,6 +2,18 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## [v0.6.0](https://github.com/lauritsk/hatchctl/compare/e3f08b32833d8b43f6295e63d37521cd19979f48..v0.6.0) - 2026-04-08
+#### Features
+- (**runtime**) Add ssh-agent passthrough for managed containers - ([e3f08b3](https://github.com/lauritsk/hatchctl/commit/e3f08b32833d8b43f6295e63d37521cd19979f48)) - Karl Hans Laurits
+#### Bug Fixes
+- (**runtime**) Stabilize runtime Docker integrations on Darwin - ([e7aa15a](https://github.com/lauritsk/hatchctl/commit/e7aa15a9702e723f15d8a1341f56693913db43ee)) - Karl Hans Laurits
+- (**runtime**) Avoid copying image verification policy locks - ([fa0299f](https://github.com/lauritsk/hatchctl/commit/fa0299f9c3bb8d5cdff6326d239423302e505fe6)) - Karl Hans Laurits
+#### Miscellaneous Chores
+- Track Darwin integration stability follow-up - ([59f850a](https://github.com/lauritsk/hatchctl/commit/59f850abb15cc2bbbec4c6c8b05ee6da62c2c2f9)) - Karl Hans Laurits
+- Improve CLI guidance and dependency update defaults - ([c39ce95](https://github.com/lauritsk/hatchctl/commit/c39ce95721eb99474b30216ba70fd927dd2fc6c7)) - Karl Hans Laurits
+
+- - -
+
 ## [v0.5.1](https://github.com/lauritsk/hatchctl/compare/3ab1fa875bfff4a591e963c231101378fa3bfd12..v0.5.1) - 2026-04-08
 #### Bug Fixes
 - (**runtime**) Harden untrusted workspace and artifact trust checks - ([3ab1fa8](https://github.com/lauritsk/hatchctl/commit/3ab1fa875bfff4a591e963c231101378fa3bfd12)) - Karl Hans Laurits
