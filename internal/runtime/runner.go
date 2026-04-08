@@ -26,6 +26,7 @@ type Runner struct {
 	bridgeManager     runtimeBridgeManager
 	imageManager      *runtimeImageManager
 	containerManager  *runtimeContainerManager
+	lifecycleManager  *runtimeLifecycleManager
 }
 
 func NewRunner(client *docker.Client) *Runner {
@@ -43,6 +44,7 @@ func NewRunnerWithIO(client *docker.Client, stdin io.Reader, stdout io.Writer, s
 	runner.planner = &workspacePlanner{runner: runner}
 	runner.imageManager = &runtimeImageManager{runner: runner}
 	runner.containerManager = &runtimeContainerManager{runner: runner}
+	runner.lifecycleManager = &runtimeLifecycleManager{runner: runner}
 	return runner
 }
 
@@ -286,7 +288,7 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 	}
 
 	r.emitProgress(opts.Events, "Running lifecycle commands")
-	if err := r.runLifecycleForUp(ctx, resolved, containerID, created, state, dotfiles, opts.Events); err != nil {
+	if err := r.lifecycleManager.RunForUp(ctx, resolved, containerID, created, state, dotfiles, opts.Events); err != nil {
 		return UpResult{}, err
 	}
 
@@ -480,7 +482,7 @@ func (r *Runner) RunLifecycle(ctx context.Context, opts RunLifecycleOptions) (Ru
 	}
 	r.emitProgress(opts.Events, "Running lifecycle commands")
 	runDotfiles := phase == "all" || phase == "create"
-	if err := r.runLifecyclePhase(ctx, resolved, prepared.containerID, phase, state, dotfiles, runDotfiles, opts.Events); err != nil {
+	if err := r.lifecycleManager.RunPhase(ctx, resolved, prepared.containerID, phase, state, dotfiles, runDotfiles, opts.Events); err != nil {
 		return RunLifecycleResult{}, err
 	}
 	if runDotfiles {
