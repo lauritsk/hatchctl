@@ -2,15 +2,14 @@
 
 ## Not Done
 
-- introduce a narrow container-engine/process-execution abstraction that centralizes Docker/Compose/process calls, logging, env policy, and future backend support instead of mixing `docker.Client`, direct `exec.Command`, and bridge-specific process spawning paths
-- move security verification policy to the CLI/runtime boundary and make `internal/security` return structured verification results instead of reading env vars and printing warnings directly, so trust behavior is explicit, testable, and consistent across image and feature flows
-- make `internal/display` the single presentation layer for progress, warnings, debug logs, and final command output so runtime/security/CLI paths emit structured events through one renderer-controlled surface with consistent spacing, spinner clearing, and styling
-- isolate bridge support behind a narrower subsystem contract that separates planning, config injection, state persistence, and daemon/runtime behavior so optional macOS-specific behavior stops leaking through core runtime orchestration
-- replace hatchctl-owned shell-script assembly for UID/GID reconciliation, dotfiles installation, exec-home discovery, and feature build wiring with typed operations or fixed helper scripts/binaries where possible to reduce quoting, portability, and injection risk
+- move image verification policy to the CLI/runtime boundary and keep `internal/security` limited to structured verification results so trust behavior is explicit, testable, and consistent across image and feature flows
+- make `internal/display` the single presentation layer for progress, warnings, debug logs, and final command output so runtime/security paths stop writing directly to stderr and emit renderer-controlled events instead
 - centralize atomic file writes and recovery semantics for stateful artifacts such as workspace state, resolved plan cache, bridge session/config/status files, and helper shims so partial writes or interruptions cannot leave corrupted control files behind
-- fix `TestUpInstallsDotfilesOnceAndReportsStatus` so it does not clone dotfiles from a bind-mounted `file://` repo that trips git `safe.directory` checks in CI; re-enable the test after switching the fixture to a CI-safe transport
-- evaluate a hybrid Docker integration that uses the Engine API for inspect/start/exec-heavy paths while keeping Compose behavior compatible where the CLI is still the best fit
-- add first-class `config.toml` support with XDG/Linux and macOS-compliant config discovery plus fallback standard locations, and define a clear merge/override hierarchy where broader defaults are overridden by user, workspace, and CLI-nearest config/options; ensure cache/state/artifact outputs also follow platform best practices
+- extend the current runtime backend/engine seams so Docker, Compose, and other host process execution share one narrow boundary for logging, env policy, and lifecycle behavior instead of scattering command orchestration across runtime and bridge paths
+- isolate bridge support behind a narrower subsystem contract that separates planning, config injection, state persistence, and daemon/runtime behavior so optional macOS-specific behavior stops leaking through core runtime orchestration
+- replace hatchctl-owned shell-script assembly for UID/GID reconciliation, dotfiles installation, exec-home discovery, and feature build wiring with typed operations or fixed helper artifacts where possible to reduce quoting, portability, and injection risk
+- fix `TestUpInstallsDotfilesOnceAndReportsStatus` by switching the dotfiles fixture away from the bind-mounted `file://` repo that trips git `safe.directory` checks in CI, then re-enable the test
+- add first-class `config.toml` support with XDG/Linux and macOS-compliant config discovery plus a clear merge/override hierarchy across user, workspace, and CLI options; ensure cache/state/artifact outputs also follow platform best practices
 
 ## Done
 
