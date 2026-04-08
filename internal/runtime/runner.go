@@ -33,7 +33,7 @@ func NewRunnerWithIO(client *docker.Client, stdin io.Reader, stdout io.Writer, s
 		stdin:         stdin,
 		stdout:        stdout,
 		stderr:        stderr,
-		imageVerifier: newImageVerificationPolicy(),
+		imageVerifier: newImageVerificationPolicy(stdin, stderr),
 	}
 	runner.backend = newLocalRuntimeBackend(runner, client)
 	runner.planner = &workspacePlanner{runner: runner}
@@ -49,6 +49,7 @@ type UpOptions struct {
 	LockfilePolicy     devcontainer.FeatureLockfilePolicy
 	Dotfiles           DotfilesOptions
 	AllowHostLifecycle bool
+	TrustWorkspace     bool
 	Recreate           bool
 	BridgeEnabled      bool
 	Verbose            bool
@@ -73,6 +74,7 @@ type BuildOptions struct {
 	CacheDir       string
 	FeatureTimeout time.Duration
 	LockfilePolicy devcontainer.FeatureLockfilePolicy
+	TrustWorkspace bool
 	Verbose        bool
 	Debug          bool
 	Events         ui.Sink
@@ -208,13 +210,14 @@ type RunLifecycleResult struct {
 }
 
 func (r *Runner) verifyImageReference(ctx context.Context, ref string, events ui.Sink) error {
-	return r.imageVerifier.Apply(r.imageVerifier.Check(ctx, ref), events)
+	return r.imageVerifier.ApplyImage(r.imageVerifier.Check(ctx, ref), events)
 }
 
 func (r *Runner) verifyResolvedFeatures(resolved devcontainer.ResolvedConfig, events ui.Sink) error {
 	for _, feature := range resolved.Features {
-		if err := r.imageVerifier.Apply(feature.Verification, events); err != nil {
-			return fmt.Errorf("verify feature %q: %w", feature.Source, err)
+		allowUnverified := feature.SourceKind == "oci" && (allowInsecureFeatureVerification() || isLoopbackOCIReference(feature.Resolved))
+		if err := r.imageVerifier.ApplyFeature(feature.Source, feature.Verification, allowUnverified, events); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -278,6 +281,9 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 		return UpResult{}, err
 	}
 	resolved := prepared.resolved
+	if err := ensureWorkspaceTrust(resolved, opts.TrustWorkspace); err != nil {
+		return UpResult{}, err
+	}
 	if err := ensureDir(resolved.StateDir); err != nil {
 		return UpResult{}, err
 	}
@@ -391,6 +397,9 @@ func (r *Runner) Build(ctx context.Context, opts BuildOptions) (BuildResult, err
 		return BuildResult{}, err
 	}
 	resolved := prepared.resolved
+	if err := ensureWorkspaceTrust(resolved, opts.TrustWorkspace); err != nil {
+		return BuildResult{}, err
+	}
 	runner.emitPhaseProgress(opts.Events, phaseImage, "Ensuring container image")
 	image, err := runner.ensureImage(ctx, resolved, opts.Events)
 	if err != nil {
@@ -520,8 +529,8 @@ func (r *Runner) ReadConfig(ctx context.Context, opts ReadConfigOptions) (ReadCo
 		CacheDir:             resolved.CacheDir,
 		RemoteUser:           resolvedUser,
 		ContainerUser:        resolved.Merged.ContainerUser,
-		RemoteEnv:            resolved.Merged.RemoteEnv,
-		ContainerEnv:         resolved.Merged.ContainerEnv,
+		RemoteEnv:            redactSensitiveMap(resolved.Merged.RemoteEnv),
+		ContainerEnv:         redactSensitiveMap(resolved.Merged.ContainerEnv),
 		Mounts:               resolved.Merged.Mounts,
 		ForwardPorts:         []string(resolved.Merged.ForwardPorts),
 		Bridge:               bridgeReport,

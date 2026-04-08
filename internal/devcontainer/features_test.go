@@ -161,10 +161,31 @@ func TestResolveFeaturesFetchesOCIRegistryFeature(t *testing.T) {
 	}
 }
 
-func TestValidateOCIFeatureVerificationRejectsUnsignedRemoteSourcesByDefault(t *testing.T) {
-	err := validateOCIFeatureVerification("ghcr.io/devcontainers/features/go:1", ociReference{Registry: "ghcr.io", Repository: "devcontainers/features/go"}, security.VerificationResult{Ref: "ghcr.io/devcontainers/features/go@sha256:abc", Reason: "no signatures found"})
-	if err == nil || !strings.Contains(err.Error(), "verify OCI feature") {
-		t.Fatalf("expected OCI verification error, got %v", err)
+func TestResolveFeaturesRecordsUnsignedOCIVerificationResult(t *testing.T) {
+	layer := buildFeatureLayer(t, map[string]string{
+		"devcontainer-feature.json": `{"id":"remote-tool"}`,
+		"install.sh":                "#!/bin/sh\nexit 0\n",
+	})
+	server, _ := newFeatureRegistryServer(t, layer)
+	defer server.Close()
+	registryHost := strings.TrimPrefix(server.URL, "http://")
+	configPath := filepath.Join(t.TempDir(), ".devcontainer", "devcontainer.json")
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	features, err := ResolveFeatures(context.Background(), configPath, filepath.Dir(configPath), t.TempDir(), map[string]any{
+		registryHost + "/features/remote-tool:1": true,
+	}, FeatureResolveOptions{
+		AllowNetwork: true,
+		VerifyImage: func(_ context.Context, ref string) security.VerificationResult {
+			return security.VerificationResult{Ref: ref, Reason: "no signatures found"}
+		},
+	})
+	if err != nil {
+		t.Fatalf("resolve oci feature: %v", err)
+	}
+	if len(features) != 1 || features[0].Verification.Reason != "no signatures found" {
+		t.Fatalf("unexpected feature verification %#v", features)
 	}
 }
 
@@ -201,10 +222,9 @@ func TestResolveFeaturesAllowsUnsignedOCIWhenExplicitlyEnabled(t *testing.T) {
 	}
 }
 
-func TestValidateOCIFeatureVerificationAllowsUnsignedLoopbackSources(t *testing.T) {
-	err := validateOCIFeatureVerification("127.0.0.1:5000/features/tool:1", ociReference{Registry: "127.0.0.1:5000", Repository: "features/tool", Insecure: true}, security.VerificationResult{Ref: "127.0.0.1:5000/features/tool@sha256:abc", Reason: "no signatures found"})
-	if err != nil {
-		t.Fatalf("expected loopback registry to be allowed, got %v", err)
+func TestIsLoopbackHostAcceptsLoopbackLiterals(t *testing.T) {
+	if !isLoopbackHost("localhost") || !isLoopbackHost("127.0.0.1") {
+		t.Fatal("expected loopback hosts to be accepted")
 	}
 }
 
@@ -255,6 +275,27 @@ func TestResolveFeaturesRejectsNonLoopbackHTTPFeatureTarballs(t *testing.T) {
 	_, err := ResolveFeatures(context.Background(), configPath, filepath.Dir(configPath), t.TempDir(), map[string]any{"http://example.com/feature.tgz": true}, featureResolveOpts)
 	if err == nil || !strings.Contains(err.Error(), "must use https or loopback http") {
 		t.Fatalf("expected insecure tarball error, got %v", err)
+	}
+}
+
+func TestValidateTarballRedirectRejectsNonLoopbackHTTPTargets(t *testing.T) {
+	req, err := http.NewRequest(http.MethodGet, "http://example.com/feature.tgz", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	viaReq, err := http.NewRequest(http.MethodGet, "https://example.com/feature.tgz", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validateTarballRedirect(req, []*http.Request{viaReq}); err == nil || !strings.Contains(err.Error(), "must use https or loopback http") {
+		t.Fatalf("expected redirect validation error, got %v", err)
+	}
+}
+
+func TestFetchRegistryBearerTokenRejectsUnexpectedRealmHost(t *testing.T) {
+	_, err := fetchRegistryBearerToken(context.Background(), "https://registry.example/v2/features/tool/manifests/latest", `Bearer realm="https://evil.example/token",service="registry.test"`, 5*time.Second)
+	if err == nil || !strings.Contains(err.Error(), "unexpected host") {
+		t.Fatalf("expected unexpected host error, got %v", err)
 	}
 }
 

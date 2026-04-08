@@ -81,6 +81,7 @@ hatchctl up --json
 hatchctl up
 hatchctl up --dotfiles lauritsk/dotfiles
 hatchctl up --allow-host-lifecycle
+hatchctl up --trust-workspace
 hatchctl up --feature-timeout 2m
 hatchctl build
 hatchctl exec
@@ -108,6 +109,8 @@ Remote feature downloads default to a `90s` HTTP timeout. Override that per comm
 
 Host-side lifecycle commands are gated by default. If a workspace uses `initializeCommand`, rerun with `--allow-host-lifecycle` or set `HATCHCTL_ALLOW_HOST_LIFECYCLE=1` once you trust that repository.
 
+Repo-controlled Docker settings that can expand host access are also gated by default. If a workspace requests custom bind mounts, elevated container privileges, or build paths outside the workspace, review the config first and then rerun with `--trust-workspace` or set `HATCHCTL_TRUST_WORKSPACE=1`.
+
 `--lockfile-policy` controls how remote features are resolved:
 
 - `auto`: use the lockfile when available and refresh it when needed
@@ -121,8 +124,11 @@ Use `--bridge` on macOS when the container needs host-side browser open or local
 ## Security Defaults
 
 - `initializeCommand` does not run on the host unless you explicitly opt in with `--allow-host-lifecycle` or `HATCHCTL_ALLOW_HOST_LIFECYCLE=1`
+- repo-controlled Docker settings that expand host access do not run unless you explicitly opt in with `--trust-workspace` or `HATCHCTL_TRUST_WORKSPACE=1`
 - direct tarball features must use `https`, except loopback `http` sources used for local development and tests
-- unsigned remote OCI features fail by default; set `HATCHCTL_ALLOW_INSECURE_FEATURES=1` only when you intentionally want to bypass that check
+- unsigned images warn by default and prompt on TTY; pressing Enter selects `N`
+- unsigned remote OCI features fail by default in non-interactive runs and prompt on TTY; pressing Enter selects `N`
+- set `HATCHCTL_ALLOW_INSECURE_FEATURES=1` only when you intentionally want to bypass remote OCI feature verification
 - the macOS bridge listener binds to loopback only
 - workspace state and cache files are written with owner-only permissions where possible
 

@@ -37,6 +37,7 @@ type commandDefaults struct {
 	FeatureTimeout time.Duration
 	LockfilePolicy string
 	BridgeEnabled  bool
+	TrustWorkspace bool
 	Dotfiles       dotfilesOptions
 }
 
@@ -116,6 +117,7 @@ func (a *App) newUpCommand(global *globalOptions) *cobra.Command {
 	var featureTimeout time.Duration
 	var recreate bool
 	var bridgeEnabled bool
+	trustWorkspace := envTruthy(runtime.TrustWorkspaceEnvVar)
 	allowHostLifecycle := envTruthy("HATCHCTL_ALLOW_HOST_LIFECYCLE")
 	var jsonOut bool
 	dotfiles := defaultDotfilesOptions()
@@ -125,7 +127,7 @@ func (a *App) newUpCommand(global *globalOptions) *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			renderer := a.newRenderer(jsonOut)
 			defer renderer.Close()
-			defaults, err := a.resolveCommandDefaults(cmd, workspace, configPath, featureTimeout, lockfilePolicy, &bridgeEnabled, dotfiles)
+			defaults, err := a.resolveCommandDefaults(cmd, workspace, configPath, featureTimeout, lockfilePolicy, &bridgeEnabled, &trustWorkspace, dotfiles)
 			if err != nil {
 				return err
 			}
@@ -142,6 +144,7 @@ func (a *App) newUpCommand(global *globalOptions) *cobra.Command {
 				LockfilePolicy:     policy,
 				Dotfiles:           defaults.Dotfiles.runtime(),
 				AllowHostLifecycle: allowHostLifecycle,
+				TrustWorkspace:     defaults.TrustWorkspace,
 				Recreate:           recreate,
 				BridgeEnabled:      defaults.BridgeEnabled,
 				Verbose:            global.Verbose || global.Debug,
@@ -174,6 +177,7 @@ func (a *App) newUpCommand(global *globalOptions) *cobra.Command {
 	cmd.Flags().StringVar(&lockfilePolicy, "lockfile-policy", "auto", "feature lockfile policy: auto, frozen, or update")
 	cmd.Flags().BoolVar(&recreate, "recreate", false, "remove and recreate an existing managed container")
 	cmd.Flags().BoolVar(&bridgeEnabled, "bridge", false, "enable macOS browser-open and localhost callback forwarding")
+	cmd.Flags().BoolVar(&trustWorkspace, "trust-workspace", trustWorkspace, "trust repo-controlled Docker mounts, privilege, and build settings")
 	cmd.Flags().BoolVar(&allowHostLifecycle, "allow-host-lifecycle", allowHostLifecycle, "trust and run host-side lifecycle commands such as initializeCommand")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "emit machine-readable JSON")
 	addDotfilesFlags(cmd, &dotfiles)
@@ -185,6 +189,7 @@ func (a *App) newBuildCommand(global *globalOptions) *cobra.Command {
 	var configPath string
 	var lockfilePolicy string
 	var featureTimeout time.Duration
+	trustWorkspace := envTruthy(runtime.TrustWorkspaceEnvVar)
 	var jsonOut bool
 	cmd := &cobra.Command{
 		Use:   "build",
@@ -192,7 +197,7 @@ func (a *App) newBuildCommand(global *globalOptions) *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			renderer := a.newRenderer(jsonOut)
 			defer renderer.Close()
-			defaults, err := a.resolveCommandDefaults(cmd, workspace, configPath, featureTimeout, lockfilePolicy, nil, dotfilesOptions{})
+			defaults, err := a.resolveCommandDefaults(cmd, workspace, configPath, featureTimeout, lockfilePolicy, nil, &trustWorkspace, dotfilesOptions{})
 			if err != nil {
 				return err
 			}
@@ -207,6 +212,7 @@ func (a *App) newBuildCommand(global *globalOptions) *cobra.Command {
 				CacheDir:       defaults.CacheDir,
 				FeatureTimeout: defaults.FeatureTimeout,
 				LockfilePolicy: policy,
+				TrustWorkspace: defaults.TrustWorkspace,
 				Verbose:        global.Verbose || global.Debug,
 				Debug:          global.Debug,
 				Events:         renderer.Events(),
@@ -229,6 +235,7 @@ func (a *App) newBuildCommand(global *globalOptions) *cobra.Command {
 	cmd.Flags().StringVar(&configPath, "config", "", "path to devcontainer.json")
 	cmd.Flags().DurationVar(&featureTimeout, "feature-timeout", 90*time.Second, "timeout for remote feature HTTP requests")
 	cmd.Flags().StringVar(&lockfilePolicy, "lockfile-policy", "auto", "feature lockfile policy: auto, frozen, or update")
+	cmd.Flags().BoolVar(&trustWorkspace, "trust-workspace", trustWorkspace, "trust repo-controlled Docker mounts, privilege, and build settings")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "emit machine-readable JSON")
 	return cmd
 }
@@ -250,7 +257,7 @@ func (a *App) newExecCommand(global *globalOptions) *cobra.Command {
 			}
 			renderer := a.newRenderer(jsonOut)
 			defer renderer.Close()
-			defaults, err := a.resolveCommandDefaults(cmd, workspace, configPath, featureTimeout, lockfilePolicy, nil, dotfilesOptions{})
+			defaults, err := a.resolveCommandDefaults(cmd, workspace, configPath, featureTimeout, lockfilePolicy, nil, nil, dotfilesOptions{})
 			if err != nil {
 				return err
 			}
@@ -342,7 +349,7 @@ func (a *App) newConfigCommand(global *globalOptions) *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			renderer := a.newRenderer(jsonOut)
 			defer renderer.Close()
-			defaults, err := a.resolveCommandDefaults(cmd, workspace, configPath, featureTimeout, lockfilePolicy, nil, dotfiles)
+			defaults, err := a.resolveCommandDefaults(cmd, workspace, configPath, featureTimeout, lockfilePolicy, nil, nil, dotfiles)
 			if err != nil {
 				return err
 			}
@@ -400,7 +407,7 @@ func (a *App) newRunCommand(global *globalOptions) *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			renderer := a.newRenderer(jsonOut)
 			defer renderer.Close()
-			defaults, err := a.resolveCommandDefaults(cmd, workspace, configPath, featureTimeout, lockfilePolicy, nil, dotfiles)
+			defaults, err := a.resolveCommandDefaults(cmd, workspace, configPath, featureTimeout, lockfilePolicy, nil, nil, dotfiles)
 			if err != nil {
 				return err
 			}
@@ -496,7 +503,7 @@ func (a *App) newBridgeDoctorCommand(global *globalOptions) *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			renderer := a.newRenderer(jsonOut)
 			defer renderer.Close()
-			defaults, err := a.resolveCommandDefaults(cmd, workspace, configPath, featureTimeout, lockfilePolicy, nil, dotfilesOptions{})
+			defaults, err := a.resolveCommandDefaults(cmd, workspace, configPath, featureTimeout, lockfilePolicy, nil, nil, dotfilesOptions{})
 			if err != nil {
 				return err
 			}
@@ -599,7 +606,7 @@ func (o dotfilesOptions) runtime() runtime.DotfilesOptions {
 	return runtime.DotfilesOptions{Repository: o.Repository, InstallCommand: o.InstallCommand, TargetPath: o.TargetPath}
 }
 
-func (a *App) resolveCommandDefaults(cmd *cobra.Command, workspace string, configPath string, featureTimeout time.Duration, lockfilePolicy string, bridgeEnabled *bool, dotfiles dotfilesOptions) (commandDefaults, error) {
+func (a *App) resolveCommandDefaults(cmd *cobra.Command, workspace string, configPath string, featureTimeout time.Duration, lockfilePolicy string, bridgeEnabled *bool, trustWorkspace *bool, dotfiles dotfilesOptions) (commandDefaults, error) {
 	workspaceHint := ""
 	if flagChanged(cmd, "workspace") {
 		workspaceHint = workspace
@@ -623,6 +630,7 @@ func (a *App) resolveCommandDefaults(cmd *cobra.Command, workspace string, confi
 		CacheDir:       config.CacheDir,
 		FeatureTimeout: resolvedTimeout,
 		LockfilePolicy: lockfilePolicy,
+		TrustWorkspace: trustWorkspace != nil && *trustWorkspace,
 		Dotfiles:       dotfiles,
 	}
 	if !flagChanged(cmd, "lockfile-policy") && config.LockfilePolicy != "" {
@@ -642,6 +650,9 @@ func (a *App) resolveCommandDefaults(cmd *cobra.Command, workspace string, confi
 		if !flagChanged(cmd, "bridge") && config.Bridge != nil {
 			resolved.BridgeEnabled = *config.Bridge
 		}
+	}
+	if trustWorkspace != nil {
+		resolved.TrustWorkspace = *trustWorkspace
 	}
 	return resolved, nil
 }

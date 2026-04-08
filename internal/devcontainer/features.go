@@ -436,9 +436,6 @@ func fetchOCIFeature(ctx context.Context, cacheDir string, source string, ref oc
 	verification := security.VerificationResult{}
 	if verifyImage != nil {
 		verification = verifyImage(ctx, ref.Registry+"/"+ref.Repository+"@"+digest)
-		if err := validateOCIFeatureVerification(source, ref, verification); err != nil {
-			return "", "", "", "", verification, err
-		}
 	}
 	featureDir := filepath.Join(baseDir, sanitizeFeatureCacheRef(digest))
 	if _, err := os.Stat(filepath.Join(featureDir, "devcontainer-feature.json")); err == nil {
@@ -526,7 +523,7 @@ func fetchTarballBytes(ctx context.Context, rawURL string, httpTimeout time.Dura
 	if err != nil {
 		return nil, err
 	}
-	resp, err := featureHTTPClient(httpTimeout).Do(req)
+	resp, err := featureHTTPClient(httpTimeout, validateTarballRedirect).Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -573,7 +570,7 @@ func registryURL(ref ociReference, resource string) string {
 }
 
 func registryGET(ctx context.Context, rawURL string, accept string, existingToken string, httpTimeout time.Duration) ([]byte, http.Header, string, error) {
-	client := featureHTTPClient(httpTimeout)
+	client := featureHTTPClient(httpTimeout, nil)
 	request := func(token string) ([]byte, http.Header, int, http.Header, error) {
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 		if err != nil {
@@ -604,7 +601,7 @@ func registryGET(ctx context.Context, rawURL string, accept string, existingToke
 		return nil, nil, existingToken, err
 	}
 	if status == http.StatusUnauthorized {
-		token, err := fetchRegistryBearerToken(ctx, authHeaders.Get("Www-Authenticate"), httpTimeout)
+		token, err := fetchRegistryBearerToken(ctx, rawURL, authHeaders.Get("Www-Authenticate"), httpTimeout)
 		if err != nil {
 			return nil, nil, existingToken, err
 		}
@@ -623,7 +620,7 @@ func registryGET(ctx context.Context, rawURL string, accept string, existingToke
 	return body, headers, existingToken, nil
 }
 
-func fetchRegistryBearerToken(ctx context.Context, challenge string, httpTimeout time.Duration) (string, error) {
+func fetchRegistryBearerToken(ctx context.Context, requestURL string, challenge string, httpTimeout time.Duration) (string, error) {
 	challenge = strings.TrimSpace(challenge)
 	if !strings.HasPrefix(strings.ToLower(challenge), "bearer ") {
 		return "", fmt.Errorf("unsupported registry auth challenge %q", challenge)
@@ -645,6 +642,9 @@ func fetchRegistryBearerToken(ctx context.Context, challenge string, httpTimeout
 	if err != nil {
 		return "", err
 	}
+	if err := validateRegistryTokenRealm(requestURL, u); err != nil {
+		return "", err
+	}
 	query := u.Query()
 	for _, key := range []string{"service", "scope"} {
 		if value := params[key]; value != "" {
@@ -656,7 +656,7 @@ func fetchRegistryBearerToken(ctx context.Context, challenge string, httpTimeout
 	if err != nil {
 		return "", err
 	}
-	resp, err := featureHTTPClient(httpTimeout).Do(req)
+	resp, err := featureHTTPClient(httpTimeout, denyRedirects).Do(req)
 	if err != nil {
 		return "", err
 	}
@@ -688,8 +688,8 @@ func effectiveFeatureHTTPTimeout(timeout time.Duration) time.Duration {
 	return featureHTTPTimeout
 }
 
-func featureHTTPClient(timeout time.Duration) *http.Client {
-	return &http.Client{Timeout: effectiveFeatureHTTPTimeout(timeout)}
+func featureHTTPClient(timeout time.Duration, redirectPolicy func(*http.Request, []*http.Request) error) *http.Client {
+	return &http.Client{Timeout: effectiveFeatureHTTPTimeout(timeout), CheckRedirect: redirectPolicy}
 }
 
 func readHTTPResponseBody(resp *http.Response, limit int64, label string) ([]byte, error) {
@@ -799,22 +799,40 @@ func allowInsecureFeatureSources() bool {
 	}
 }
 
-func validateOCIFeatureVerification(source string, ref ociReference, verification security.VerificationResult) error {
-	if verification.Verified || verification.Reason == "" {
-		return nil
-	}
-	if allowInsecureFeatureSources() || ref.Insecure {
-		return nil
-	}
-	return fmt.Errorf("verify OCI feature %q: %s", source, verification.Error())
-}
-
 func isLoopbackHost(host string) bool {
 	if strings.EqualFold(host, "localhost") {
 		return true
 	}
 	ip := net.ParseIP(host)
 	return ip != nil && ip.IsLoopback()
+}
+
+func denyRedirects(_ *http.Request, _ []*http.Request) error {
+	return http.ErrUseLastResponse
+}
+
+func validateTarballRedirect(req *http.Request, via []*http.Request) error {
+	if len(via) == 0 {
+		return nil
+	}
+	return validateTarballURL(req.URL.String())
+}
+
+func validateRegistryTokenRealm(requestURL string, realm *url.URL) error {
+	requestParsed, err := url.Parse(requestURL)
+	if err != nil {
+		return err
+	}
+	if !strings.EqualFold(realm.Hostname(), requestParsed.Hostname()) {
+		return fmt.Errorf("registry auth challenge points to unexpected host %q", realm.Hostname())
+	}
+	if strings.EqualFold(realm.Scheme, "https") {
+		return nil
+	}
+	if strings.EqualFold(realm.Scheme, "http") && isLoopbackHost(realm.Hostname()) {
+		return nil
+	}
+	return fmt.Errorf("registry auth challenge %q must use https or loopback http", realm.String())
 }
 
 func archivePathHasDotDot(name string) bool {

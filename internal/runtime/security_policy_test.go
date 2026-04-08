@@ -11,9 +11,9 @@ import (
 
 func TestImageVerificationPolicyApplyWarnsWhenNotStrict(t *testing.T) {
 	sink := &recordedSink{}
-	policy := imageVerificationPolicy{}
+	policy := imageVerificationPolicy{trust: map[string]struct{}{}}
 	result := security.VerificationResult{Ref: "example.com/demo/app:latest", Reason: "no signatures found"}
-	if err := policy.Apply(result, sink); err != nil {
+	if err := policy.ApplyImage(result, sink); err != nil {
 		t.Fatalf("apply verification policy: %v", err)
 	}
 	if len(sink.events) != 1 || sink.events[0] != (ui.Event{Kind: ui.EventWarning, Message: result.Error()}) {
@@ -22,15 +22,47 @@ func TestImageVerificationPolicyApplyWarnsWhenNotStrict(t *testing.T) {
 }
 
 func TestImageVerificationPolicyApplyFailsWhenStrict(t *testing.T) {
-	policy := imageVerificationPolicy{strict: true}
+	policy := imageVerificationPolicy{strict: true, trust: map[string]struct{}{}}
 	result := security.VerificationResult{Ref: "example.com/demo/app:latest", Reason: "no signatures found"}
-	if err := policy.Apply(result, nil); err == nil || !strings.Contains(err.Error(), "unable to verify example.com/demo/app:latest") {
+	if err := policy.ApplyImage(result, nil); err == nil || !strings.Contains(err.Error(), "unable to verify example.com/demo/app:latest") {
 		t.Fatalf("unexpected strict verification error %v", err)
 	}
 }
 
+func TestImageVerificationPolicyApplyImageAllowsPromptedTrust(t *testing.T) {
+	policy := imageVerificationPolicy{
+		trust: map[string]struct{}{},
+		prompt: func(prompt string) (bool, bool, error) {
+			if !strings.Contains(prompt, "Continue with unsigned image for this run only") {
+				t.Fatalf("unexpected prompt %q", prompt)
+			}
+			return true, true, nil
+		},
+	}
+	result := security.VerificationResult{Ref: "example.com/demo/app:latest", Reason: "no signatures found"}
+	if err := policy.ApplyImage(result, nil); err != nil {
+		t.Fatalf("apply prompted image verification: %v", err)
+	}
+}
+
+func TestImageVerificationPolicyApplyFeatureRequiresTrust(t *testing.T) {
+	policy := imageVerificationPolicy{
+		trust: map[string]struct{}{},
+		prompt: func(prompt string) (bool, bool, error) {
+			if !strings.Contains(prompt, "Trust unsigned feature for this run only") {
+				t.Fatalf("unexpected prompt %q", prompt)
+			}
+			return false, true, nil
+		},
+	}
+	result := security.VerificationResult{Ref: "ghcr.io/devcontainers/features/go@sha256:abc", Reason: "no signatures found"}
+	if err := policy.ApplyFeature("ghcr.io/devcontainers/features/go:1", result, false, nil); err == nil || !strings.Contains(err.Error(), "user declined") {
+		t.Fatalf("unexpected feature trust error %v", err)
+	}
+}
+
 func TestVerifyResolvedFeaturesAppliesFeatureVerificationPolicy(t *testing.T) {
-	runner := &Runner{imageVerifier: imageVerificationPolicy{strict: true}}
+	runner := &Runner{imageVerifier: imageVerificationPolicy{strict: true, trust: map[string]struct{}{}}}
 	resolved := devcontainer.ResolvedConfig{Features: []devcontainer.ResolvedFeature{{
 		Source:       "ghcr.io/devcontainers/features/go:1",
 		Verification: security.VerificationResult{Ref: "ghcr.io/devcontainers/features/go@sha256:abc", Reason: "no signatures found"},
