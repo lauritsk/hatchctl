@@ -90,6 +90,24 @@ func featureMetadata(features []devcontainer.ResolvedFeature) []devcontainer.Met
 	return result
 }
 
+func mergeManagedImageMetadata(base []devcontainer.MetadataEntry, overlay []devcontainer.MetadataEntry) []devcontainer.MetadataEntry {
+	if len(base) == 0 && len(overlay) == 0 {
+		return nil
+	}
+	merged := make([]devcontainer.MetadataEntry, 0, len(base)+len(overlay))
+	merged = append(merged, base...)
+	merged = append(merged, overlay...)
+	return merged
+}
+
+func (r *Runner) imageMetadata(ctx context.Context, image string) ([]devcontainer.MetadataEntry, error) {
+	inspect, err := r.backend.InspectImage(ctx, image)
+	if err != nil {
+		return nil, err
+	}
+	return devcontainer.MetadataFromLabel(inspect.Config.Labels[devcontainer.ImageMetadataLabel])
+}
+
 func isManagedImage(resolved *devcontainer.ResolvedConfig, image string) bool {
 	return image == resolved.ImageName || strings.HasPrefix(image, resolved.ImageName+"-")
 }
@@ -238,7 +256,17 @@ func (r *Runner) ensureFeaturesImageFromBase(ctx context.Context, resolved devco
 	if err := ensureDir(buildDir); err != nil {
 		return "", err
 	}
-	if err := writeFeatureBuildContext(buildDir, baseImage, resolved.Features, containerUser, remoteUser, resolved.Merged.Metadata); err != nil {
+	managedMetadata := resolved.Merged.Metadata
+	if metadata, err := r.imageMetadata(ctx, baseImage); err == nil {
+		if isManagedImage(&resolved, baseImage) {
+			managedMetadata = metadata
+		} else {
+			managedMetadata = mergeManagedImageMetadata(metadata, managedMetadata)
+		}
+	} else if !docker.IsNotFound(err) {
+		return "", err
+	}
+	if err := writeFeatureBuildContext(buildDir, baseImage, resolved.Features, containerUser, remoteUser, managedMetadata); err != nil {
 		return "", err
 	}
 	if _, err := os.Stat(filepath.Join(buildDir, "Dockerfile")); err != nil {

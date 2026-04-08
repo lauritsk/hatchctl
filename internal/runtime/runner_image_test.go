@@ -54,3 +54,23 @@ func TestWriteFeatureBuildContextUsesOwnerOnlyGeneratedFiles(t *testing.T) {
 		t.Fatalf("expected generated Dockerfile to inline the base image, got %q", string(dockerfile))
 	}
 }
+
+func TestMergeManagedImageMetadataPreservesBaseImageEntries(t *testing.T) {
+	base := []devcontainer.MetadataEntry{{RemoteUser: "vscode"}}
+	overlay := []devcontainer.MetadataEntry{{ID: "mise"}}
+
+	merged := mergeManagedImageMetadata(base, overlay)
+	if len(merged) != 2 {
+		t.Fatalf("expected 2 metadata entries, got %d", len(merged))
+	}
+	if merged[0].RemoteUser != "vscode" {
+		t.Fatalf("expected base metadata first, got %#v", merged[0])
+	}
+	if merged[1].ID != "mise" {
+		t.Fatalf("expected overlay metadata last, got %#v", merged[1])
+	}
+	merged[0].RemoteUser = "root"
+	if base[0].RemoteUser != "vscode" {
+		t.Fatalf("expected base metadata to remain unchanged, got %#v", base[0])
+	}
+}
