@@ -140,8 +140,9 @@ func (r *Runner) installDotfiles(ctx context.Context, containerID string, resolv
 		args = append(args, "-e", key+"="+resolved.Merged.RemoteEnv[key])
 	}
 	args = append(args, containerID, "/bin/sh", "-lc", dotfilesInstallScript(opts))
-	r.emitProgress(events, fmt.Sprintf("Installing dotfiles from %s", opts.Repository))
-	return r.docker.Run(ctx, docker.RunOptions{Args: args, Stdout: r.stdout, Stderr: r.stderr})
+	label := fmt.Sprintf("Installing dotfiles from %s", opts.Repository)
+	r.emitProgress(events, label)
+	return r.docker.Run(ctx, r.progressDockerRunOptions(events, label, docker.RunOptions{Args: args, Stdout: r.stdout, Stderr: r.stderr}))
 }
 
 func dotfilesInstallScript(opts DotfilesOptions) string {

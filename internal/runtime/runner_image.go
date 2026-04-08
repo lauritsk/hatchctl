@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
+	ui "github.com/lauritsk/hatchctl/internal/display"
 	"github.com/lauritsk/hatchctl/internal/docker"
 	"github.com/lauritsk/hatchctl/internal/security"
 )
@@ -35,12 +36,12 @@ func (r *Runner) enrichMergedConfig(ctx context.Context, resolved *devcontainer.
 	return nil
 }
 
-func (r *Runner) ensureImage(ctx context.Context, resolved devcontainer.ResolvedConfig) (string, error) {
+func (r *Runner) ensureImage(ctx context.Context, resolved devcontainer.ResolvedConfig, events ui.Sink) (string, error) {
 	if resolved.SourceKind == "compose" {
-		return r.ensureComposeImage(ctx, resolved)
+		return r.ensureComposeImage(ctx, resolved, events)
 	}
 	if len(resolved.Features) > 0 {
-		return r.ensureImageWithFeatures(ctx, resolved)
+		return r.ensureImageWithFeatures(ctx, resolved, events)
 	}
 	if resolved.Config.Image != "" {
 		if err := security.VerifyImage(ctx, resolved.Config.Image); err != nil {
@@ -48,10 +49,10 @@ func (r *Runner) ensureImage(ctx context.Context, resolved devcontainer.Resolved
 		}
 		return resolved.Config.Image, nil
 	}
-	return resolved.ImageName, r.buildDockerfileImage(ctx, resolved, resolved.ImageName)
+	return resolved.ImageName, r.buildDockerfileImage(ctx, resolved, resolved.ImageName, events)
 }
 
-func (r *Runner) buildDockerfileImage(ctx context.Context, resolved devcontainer.ResolvedConfig, imageName string) error {
+func (r *Runner) buildDockerfileImage(ctx context.Context, resolved devcontainer.ResolvedConfig, imageName string, events ui.Sink) error {
 	dockerfile := resolved.ConfigDir
 	contextDir := resolved.ConfigDir
 	if rel := devcontainer.EffectiveDockerfile(resolved.Config); rel != "" {
@@ -78,23 +79,23 @@ func (r *Runner) buildDockerfileImage(ctx context.Context, resolved devcontainer
 		args = append(args, resolved.Config.Build.Options...)
 	}
 	args = append(args, contextDir)
-	return r.docker.Run(ctx, docker.RunOptions{Args: args, Stdout: r.stdout, Stderr: r.stderr})
+	return r.docker.Run(ctx, r.progressDockerRunOptions(events, "Building container image", docker.RunOptions{Args: args, Stdout: r.stdout, Stderr: r.stderr}))
 }
 
-func (r *Runner) ensureImageWithFeatures(ctx context.Context, resolved devcontainer.ResolvedConfig) (string, error) {
+func (r *Runner) ensureImageWithFeatures(ctx context.Context, resolved devcontainer.ResolvedConfig, events ui.Sink) (string, error) {
 	baseImage := resolved.Config.Image
 	if baseImage == "" {
 		baseImage = resolved.ImageName + "-base"
-		if err := r.buildDockerfileImage(ctx, resolved, baseImage); err != nil {
+		if err := r.buildDockerfileImage(ctx, resolved, baseImage, events); err != nil {
 			return "", err
 		}
 	} else if err := security.VerifyImage(ctx, baseImage); err != nil {
 		return "", err
 	}
-	return r.ensureFeaturesImageFromBase(ctx, resolved, baseImage)
+	return r.ensureFeaturesImageFromBase(ctx, resolved, baseImage, events)
 }
 
-func (r *Runner) ensureFeaturesImageFromBase(ctx context.Context, resolved devcontainer.ResolvedConfig, baseImage string) (string, error) {
+func (r *Runner) ensureFeaturesImageFromBase(ctx context.Context, resolved devcontainer.ResolvedConfig, baseImage string, events ui.Sink) (string, error) {
 	imageUser, err := r.inspectImageUser(ctx, baseImage)
 	if err != nil {
 		return "", err
@@ -120,7 +121,7 @@ func (r *Runner) ensureFeaturesImageFromBase(ctx context.Context, resolved devco
 		"-t", resolved.ImageName,
 		buildDir,
 	}
-	if err := r.docker.Run(ctx, docker.RunOptions{Args: args, Stdout: r.stdout, Stderr: r.stderr}); err != nil {
+	if err := r.docker.Run(ctx, r.progressDockerRunOptions(events, "Building features image", docker.RunOptions{Args: args, Stdout: r.stdout, Stderr: r.stderr})); err != nil {
 		entries, _ := os.ReadDir(buildDir)
 		names := make([]string, 0, len(entries))
 		for _, entry := range entries {
@@ -131,7 +132,7 @@ func (r *Runner) ensureFeaturesImageFromBase(ctx context.Context, resolved devco
 	return resolved.ImageName, nil
 }
 
-func (r *Runner) ensureComposeImage(ctx context.Context, resolved devcontainer.ResolvedConfig) (string, error) {
+func (r *Runner) ensureComposeImage(ctx context.Context, resolved devcontainer.ResolvedConfig, events ui.Sink) (string, error) {
 	config, err := r.readComposeConfig(ctx, resolved)
 	if err != nil {
 		return "", err
@@ -142,7 +143,7 @@ func (r *Runner) ensureComposeImage(ctx context.Context, resolved devcontainer.R
 	}
 	baseImage := service.Image
 	if service.Build.Enabled() {
-		if err := r.docker.Run(ctx, docker.RunOptions{Args: append(r.composeBaseArgs(resolved), "build", resolved.ComposeService), Dir: resolved.ConfigDir, Stdout: r.stdout, Stderr: r.stderr}); err != nil {
+		if err := r.docker.Run(ctx, r.progressDockerRunOptions(events, fmt.Sprintf("Building compose service %s", resolved.ComposeService), docker.RunOptions{Args: append(r.composeBaseArgs(resolved), "build", resolved.ComposeService), Dir: resolved.ConfigDir, Stdout: r.stdout, Stderr: r.stderr})); err != nil {
 			return "", err
 		}
 		if baseImage == "" {
@@ -158,7 +159,7 @@ func (r *Runner) ensureComposeImage(ctx context.Context, resolved devcontainer.R
 		if baseImage == "" {
 			return "", fmt.Errorf("compose service %q needs an image or build result for features", resolved.ComposeService)
 		}
-		return r.ensureFeaturesImageFromBase(ctx, resolved, baseImage)
+		return r.ensureFeaturesImageFromBase(ctx, resolved, baseImage, events)
 	}
 	if baseImage != "" {
 		return baseImage, nil
@@ -166,7 +167,7 @@ func (r *Runner) ensureComposeImage(ctx context.Context, resolved devcontainer.R
 	return resolved.ComposeProject + "-" + resolved.ComposeService, nil
 }
 
-func (r *Runner) ensureUpdatedUIDContainer(ctx context.Context, resolved devcontainer.ResolvedConfig, image string, containerID string) error {
+func (r *Runner) ensureUpdatedUIDContainer(ctx context.Context, resolved devcontainer.ResolvedConfig, image string, containerID string, events ui.Sink) error {
 	if containerID == "" {
 		return nil
 	}
@@ -198,7 +199,7 @@ func (r *Runner) ensureUpdatedUIDContainer(ctx context.Context, resolved devcont
 		fmt.Sprintf("%d", uid),
 		fmt.Sprintf("%d", gid),
 	}
-	if err := r.docker.Run(ctx, docker.RunOptions{Args: args, Stdout: r.stdout, Stderr: r.stderr}); err != nil {
+	if err := r.docker.Run(ctx, r.progressDockerRunOptions(events, "Reconciling container user", docker.RunOptions{Args: args, Stdout: r.stdout, Stderr: r.stderr})); err != nil {
 		return err
 	}
 	return nil

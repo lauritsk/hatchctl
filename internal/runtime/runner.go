@@ -225,12 +225,12 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 
 	if opts.Recreate && state.ContainerID != "" {
 		r.emitProgress(opts.Events, "Recreating managed container")
-		_ = r.removeContainer(ctx, state.ContainerID)
+		_ = r.removeContainer(ctx, state.ContainerID, opts.Events)
 		state = devcontainer.State{}
 	}
 
 	r.emitProgress(opts.Events, "Ensuring container image")
-	image, err := r.ensureImage(ctx, resolved)
+	image, err := r.ensureImage(ctx, resolved, opts.Events)
 	if err != nil {
 		return UpResult{}, err
 	}
@@ -259,12 +259,12 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 	}
 
 	r.emitProgress(opts.Events, "Ensuring managed container")
-	containerID, created, err := r.ensureContainer(ctx, resolved, image, opts.BridgeEnabled, overridePath)
+	containerID, created, err := r.ensureContainer(ctx, resolved, image, opts.BridgeEnabled, overridePath, opts.Events)
 	if err != nil {
 		return UpResult{}, err
 	}
 	r.emitProgress(opts.Events, "Reconciling container user")
-	if err := r.ensureUpdatedUIDContainer(ctx, resolved, image, containerID); err != nil {
+	if err := r.ensureUpdatedUIDContainer(ctx, resolved, image, containerID, opts.Events); err != nil {
 		return UpResult{}, err
 	}
 	if bridgeReport != nil {
@@ -320,7 +320,7 @@ func (r *Runner) Build(ctx context.Context, opts BuildOptions) (BuildResult, err
 	}
 	resolved := prepared.resolved
 	r.emitProgress(opts.Events, "Ensuring container image")
-	image, err := r.ensureImage(ctx, resolved)
+	image, err := r.ensureImage(ctx, resolved, opts.Events)
 	if err != nil {
 		return BuildResult{}, err
 	}

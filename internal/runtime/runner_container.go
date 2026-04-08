@@ -9,12 +9,13 @@ import (
 
 	"github.com/lauritsk/hatchctl/internal/bridge"
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
+	ui "github.com/lauritsk/hatchctl/internal/display"
 	"github.com/lauritsk/hatchctl/internal/docker"
 )
 
 var errManagedContainerNotFound = errors.New("managed container not found")
 
-func (r *Runner) ensureComposeContainer(ctx context.Context, resolved devcontainer.ResolvedConfig, overridePath string) (string, bool, error) {
+func (r *Runner) ensureComposeContainer(ctx context.Context, resolved devcontainer.ResolvedConfig, overridePath string, events ui.Sink) (string, bool, error) {
 	containerID, err := r.findComposeContainer(ctx, resolved)
 	if err == nil && containerID != "" {
 		matches, matchErr := r.containerBridgeModeMatches(ctx, containerID, resolved.Merged.ContainerEnv["DEVCONTAINER_BRIDGE_ENABLED"] == "true")
@@ -22,7 +23,7 @@ func (r *Runner) ensureComposeContainer(ctx context.Context, resolved devcontain
 			return "", false, matchErr
 		}
 		if !matches {
-			if err := r.removeContainer(ctx, containerID); err != nil {
+			if err := r.removeContainer(ctx, containerID, events); err != nil {
 				return "", false, err
 			}
 			containerID = ""
@@ -33,7 +34,7 @@ func (r *Runner) ensureComposeContainer(ctx context.Context, resolved devcontain
 			}
 		}
 	}
-	if err := r.docker.Run(ctx, docker.RunOptions{Args: append(r.composeArgs(resolved, overridePath), "up", "--no-build", "-d", resolved.ComposeService), Dir: resolved.ConfigDir, Stdout: r.stdout, Stderr: r.stderr}); err != nil {
+	if err := r.docker.Run(ctx, r.progressDockerRunOptions(events, fmt.Sprintf("Starting compose service %s", resolved.ComposeService), docker.RunOptions{Args: append(r.composeArgs(resolved, overridePath), "up", "--no-build", "-d", resolved.ComposeService), Dir: resolved.ConfigDir, Stdout: r.stdout, Stderr: r.stderr})); err != nil {
 		return "", false, err
 	}
 	containerID, err = r.findComposeContainer(ctx, resolved)
@@ -43,9 +44,9 @@ func (r *Runner) ensureComposeContainer(ctx context.Context, resolved devcontain
 	return containerID, true, nil
 }
 
-func (r *Runner) ensureContainer(ctx context.Context, resolved devcontainer.ResolvedConfig, image string, bridgeEnabled bool, overridePath string) (string, bool, error) {
+func (r *Runner) ensureContainer(ctx context.Context, resolved devcontainer.ResolvedConfig, image string, bridgeEnabled bool, overridePath string, events ui.Sink) (string, bool, error) {
 	if resolved.SourceKind == "compose" {
-		return r.ensureComposeContainer(ctx, resolved, overridePath)
+		return r.ensureComposeContainer(ctx, resolved, overridePath, events)
 	}
 	containerID, err := r.findContainer(ctx, resolved)
 	if err == nil && containerID != "" {
@@ -54,13 +55,13 @@ func (r *Runner) ensureContainer(ctx context.Context, resolved devcontainer.Reso
 			return "", false, matchErr
 		}
 		if !matches {
-			if err := r.removeContainer(ctx, containerID); err != nil {
+			if err := r.removeContainer(ctx, containerID, events); err != nil {
 				return "", false, err
 			}
 		} else {
 			status, statusErr := r.docker.Output(ctx, "inspect", "--format", "{{.State.Status}}", containerID)
 			if statusErr == nil && status != "running" {
-				if err := r.docker.Run(ctx, docker.RunOptions{Args: []string{"start", containerID}, Stdout: r.stdout, Stderr: r.stderr}); err != nil {
+				if err := r.docker.Run(ctx, r.progressDockerRunOptions(events, fmt.Sprintf("Starting existing container %s", containerID), docker.RunOptions{Args: []string{"start", containerID}, Stdout: r.stdout, Stderr: r.stderr})); err != nil {
 					return "", false, err
 				}
 			}
@@ -137,8 +138,8 @@ func (r *Runner) findContainer(ctx context.Context, resolved devcontainer.Resolv
 	return r.selectBestContainerID(ctx, result)
 }
 
-func (r *Runner) removeContainer(ctx context.Context, containerID string) error {
-	return r.docker.Run(ctx, docker.RunOptions{Args: []string{"rm", "-f", containerID}, Stdout: r.stdout, Stderr: r.stderr})
+func (r *Runner) removeContainer(ctx context.Context, containerID string, events ui.Sink) error {
+	return r.docker.Run(ctx, r.progressDockerRunOptions(events, fmt.Sprintf("Removing managed container %s", containerID), docker.RunOptions{Args: []string{"rm", "-f", containerID}, Stdout: r.stdout, Stderr: r.stderr}))
 }
 
 func (r *Runner) reconcileState(ctx context.Context, resolved devcontainer.ResolvedConfig, state devcontainer.State) (devcontainer.State, error) {

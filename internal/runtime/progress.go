@@ -1,0 +1,82 @@
+package runtime
+
+import (
+	"fmt"
+	"io"
+	"sync"
+
+	ui "github.com/lauritsk/hatchctl/internal/display"
+	"github.com/lauritsk/hatchctl/internal/docker"
+)
+
+func (r *Runner) progressDockerRunOptions(events ui.Sink, label string, opts docker.RunOptions) docker.RunOptions {
+	stdout, stderr := r.progressWriters(events, label, opts.Stdout, opts.Stderr)
+	opts.Stdout = stdout
+	opts.Stderr = stderr
+	return opts
+}
+
+func (r *Runner) progressCommandIO(events ui.Sink, label string, streams commandIO) commandIO {
+	stdout, stderr := r.progressWriters(events, label, streams.Stdout, streams.Stderr)
+	streams.Stdout = stdout
+	streams.Stderr = stderr
+	return streams
+}
+
+func (r *Runner) progressWriters(events ui.Sink, label string, stdout io.Writer, stderr io.Writer) (io.Writer, io.Writer) {
+	if events == nil || label == "" {
+		return stdout, stderr
+	}
+	activate := &progressActivation{
+		runner: r,
+		events: events,
+		label:  label,
+		out:    firstNonNilWriter(stderr, stdout),
+	}
+	return newProgressStreamWriter(stdout, activate), newProgressStreamWriter(stderr, activate)
+}
+
+type progressActivation struct {
+	runner *Runner
+	events ui.Sink
+	label  string
+	out    io.Writer
+	once   sync.Once
+}
+
+func (a *progressActivation) Trigger() {
+	a.once.Do(func() {
+		a.runner.clearProgress(a.events)
+		if a.out != nil {
+			_, _ = fmt.Fprintf(a.out, "==> %s\n", a.label)
+		}
+	})
+}
+
+type progressStreamWriter struct {
+	writer io.Writer
+	start  *progressActivation
+}
+
+func newProgressStreamWriter(writer io.Writer, start *progressActivation) io.Writer {
+	if writer == nil {
+		return nil
+	}
+	return &progressStreamWriter{writer: writer, start: start}
+}
+
+func (w *progressStreamWriter) Write(p []byte) (int, error) {
+	if len(p) > 0 && w.start != nil {
+		w.start.Trigger()
+	}
+	return w.writer.Write(p)
+}
+
+func firstNonNilWriter(writers ...io.Writer) io.Writer {
+	for _, writer := range writers {
+		if writer != nil {
+			return writer
+		}
+	}
+	return nil
+}
