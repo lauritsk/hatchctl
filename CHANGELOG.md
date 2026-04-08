@@ -2,6 +2,52 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## [v0.3.0](https://github.com/lauritsk/hatchctl/compare/83637697ca48684cd6aa7d1d6c53bb0dcfed9107..v0.3.0) - 2026-04-08
+#### Features
+- (**cli**) clarify command UX and runtime copy - ([90caa21](https://github.com/lauritsk/hatchctl/commit/90caa21249de10f766319166572ffb23f3108221)) - Karl Hans Laurits
+- (**config**) add config.toml defaults and platform paths - ([c11ac5d](https://github.com/lauritsk/hatchctl/commit/c11ac5d0d98f80a35fe4b62ad9de20714a31b82a)) - Karl Hans Laurits
+#### Bug Fixes
+- (**config**) make appconfig test honor platform user config paths - ([8f5536b](https://github.com/lauritsk/hatchctl/commit/8f5536b3868758b61b8efc1eba2b4a8383f53920)) - Karl Hans Laurits
+#### Documentation
+- (**agents**) prefer mise tasks for workflows - ([4bf6f5b](https://github.com/lauritsk/hatchctl/commit/4bf6f5b3f7c39e9d425e634bdac287b980561c2b)) - Karl Hans Laurits
+- (**agents**) allow architectural rewrites - ([96743e0](https://github.com/lauritsk/hatchctl/commit/96743e031c6f45e756a2c6400d8b8bc4242f1a81)) - Karl Hans Laurits
+- (**readme**) refine project tagline - ([e790626](https://github.com/lauritsk/hatchctl/commit/e790626837e604ab9420da9ccb79a659a57aca07)) - Karl Hans Laurits
+- (**readme**) switch install instructions to mise - ([78292d0](https://github.com/lauritsk/hatchctl/commit/78292d0cb75c8a32c083f63559384811bb8473c5)) - Karl Hans Laurits
+- (**todo**) mark completed architecture items done - ([7186e51](https://github.com/lauritsk/hatchctl/commit/7186e51a1f164b71d078f4db2a662f4c1667f949)) - Karl Hans Laurits
+- (**todo**) refresh remaining roadmap items - ([d5fe848](https://github.com/lauritsk/hatchctl/commit/d5fe8480ec1e61c6dd0181f1530020b9e6f4d2a0)) - Karl Hans Laurits
+- (**todo**) add display layer refactor item - ([d6b184c](https://github.com/lauritsk/hatchctl/commit/d6b184c73d84de532ddf3b029effbf115c402857)) - Karl Hans Laurits
+#### Tests
+- (**runtime**) disable dotfiles integration coverage in CI - ([d851cde](https://github.com/lauritsk/hatchctl/commit/d851cde098eba2d5a14641a0c33eeedbc60d578f)) - Karl Hans Laurits
+- (**runtime**) re-enable dotfiles integration fixture to avoid CI safe.directory failures - ([548285a](https://github.com/lauritsk/hatchctl/commit/548285ace3ddc34292a0b452a9cefd48388e27ad)) - Karl Hans Laurits
+- (**runtime**) reuse integration fixtures - ([b9d926f](https://github.com/lauritsk/hatchctl/commit/b9d926ff2d6071613db819635b1cb27238ecd435)) - Karl Hans Laurits
+#### Build system
+- (**mise**) move bridge helper workflow into tasks - ([b87db81](https://github.com/lauritsk/hatchctl/commit/b87db8183261d9e4ac5902a1fc45916728f07ad2)) - Karl Hans Laurits
+#### Refactoring
+- (**bridge**) isolate bridge planning from runtime - ([2c41665](https://github.com/lauritsk/hatchctl/commit/2c41665894c61015e8d3eda1edb2624d19a39610)) - Karl Hans Laurits
+- (**devcontainer**) extract resolver persistence helper - ([7af4f48](https://github.com/lauritsk/hatchctl/commit/7af4f484cae8644bf99516a44f798d72a547b8b6)) - Karl Hans Laurits
+- (**devcontainer**) make resolve persistence explicit - ([524296d](https://github.com/lauritsk/hatchctl/commit/524296d6241ebd86c7acc1a6485dc32c09a58326)) - Karl Hans Laurits
+- (**display**) centralize runtime output in display - ([7685630](https://github.com/lauritsk/hatchctl/commit/7685630229d990bb12dd2936b847438604db2236)) - Karl Hans Laurits
+- (**fileutil**) centralize atomic writes for control files - ([0353f25](https://github.com/lauritsk/hatchctl/commit/0353f25a26ed40b51aa580acb1c88cd2a854d94c)) - Karl Hans Laurits
+- (**runtime**) replace assembled runtime shell helpers - ([49fae68](https://github.com/lauritsk/hatchctl/commit/49fae68de286ccdb4ab8781db1285e0f887ca623)) - Karl Hans Laurits
+- (**runtime**) narrow runtime command execution seam - ([6932ebe](https://github.com/lauritsk/hatchctl/commit/6932ebeb78dbe07f5099c246d3a959a0488882c5)) - Karl Hans Laurits
+- (**runtime**) route runtime warnings and progress output through display events - ([878cd6c](https://github.com/lauritsk/hatchctl/commit/878cd6c9e6f9be6855dbc2ea7dc5ea20cccf9107)) - Karl Hans Laurits
+- (**runtime**) centralize command execution backend - ([265544a](https://github.com/lauritsk/hatchctl/commit/265544ab66a1630ee37cb91a9dc5f2be3f05a100)) - Karl Hans Laurits
+- (**runtime**) add engine adapter - ([3cefd52](https://github.com/lauritsk/hatchctl/commit/3cefd52c33c3bfe9302b4a1e6f4224a8642b211d)) - Karl Hans Laurits
+- (**runtime**) centralize process execution - ([6a40c2b](https://github.com/lauritsk/hatchctl/commit/6a40c2be7c3e66c70c78152ac0236629023ac9e9)) - Karl Hans Laurits
+- (**runtime**) inject resolver and state store - ([ca1baa9](https://github.com/lauritsk/hatchctl/commit/ca1baa92a5859ac9381b9ecc64869f206eb87beb)) - Karl Hans Laurits
+- (**runtime**) extract lifecycle manager - ([c814b7e](https://github.com/lauritsk/hatchctl/commit/c814b7e5bc2619a7b771468a1f441c3ad9d92ef6)) - Karl Hans Laurits
+- (**runtime**) extract image and container managers - ([73db225](https://github.com/lauritsk/hatchctl/commit/73db225a3a89e14abd5937bfe63ed252cd73cd50)) - Karl Hans Laurits
+- (**runtime**) extract planning collaborators - ([8363769](https://github.com/lauritsk/hatchctl/commit/83637697ca48684cd6aa7d1d6c53bb0dcfed9107)) - Karl Hans Laurits
+- (**security**) move trust policy to runtime boundary - ([82d5691](https://github.com/lauritsk/hatchctl/commit/82d5691d4cd982a0935f9b633065af9c75205f63)) - Karl Hans Laurits
+- (**security**) move verification policy to runtime - ([7b857ad](https://github.com/lauritsk/hatchctl/commit/7b857adf163cf97af27c547e9ee2cbd8599301f7)) - Karl Hans Laurits
+#### Miscellaneous Chores
+- (**repo**) simplify agent workflow instructions - ([6fb010a](https://github.com/lauritsk/hatchctl/commit/6fb010a37c2ef251b7fb38247ff86f6abfecb9b4)) - Karl Hans Laurits
+- (**repo**) clarify agent workflow instructions - ([4b5f816](https://github.com/lauritsk/hatchctl/commit/4b5f816330c59e05f396001d709f30655044d7a4)) - Karl Hans Laurits
+- (**repo**) require commit and push after verified completion - ([5c3821e](https://github.com/lauritsk/hatchctl/commit/5c3821e7aae703de591ff6f9543f25fd9843b67c)) - Karl Hans Laurits
+- (**repo**) use mise task for cocogitto commits - ([88073ca](https://github.com/lauritsk/hatchctl/commit/88073cae184d0549a000bec7b8782a2a07011bee)) - Karl Hans Laurits
+
+- - -
+
 ## [v0.2.3](https://github.com/lauritsk/hatchctl/compare/a2453c20794cea2e0e5baa61d7570b7f5b0f8306..v0.2.3) - 2026-04-08
 #### Bug Fixes
 - (**runtime**) resolve HOME for exec user - ([0a1b16c](https://github.com/lauritsk/hatchctl/commit/0a1b16cee70937bc426510d299025c75ea406ad2)) - Karl Hans Laurits
