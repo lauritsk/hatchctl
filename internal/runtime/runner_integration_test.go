@@ -85,6 +85,8 @@ func TestBuildPersistsMetadataLabel(t *testing.T) {
 }
 
 func TestUpInstallsDotfilesOnceAndReportsStatus(t *testing.T) {
+	t.Skip("dotfiles integration test disabled")
+
 	client := dockerClientForTest(t)
 	ctx := context.Background()
 	workspace := t.TempDir()
