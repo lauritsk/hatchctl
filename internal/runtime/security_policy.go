@@ -30,15 +30,15 @@ const (
 	verificationDecisionRequireTrust
 )
 
-func newImageVerificationPolicy(stdin io.Reader, stderr io.Writer) imageVerificationPolicy {
-	return imageVerificationPolicy{
+func newImageVerificationPolicy(stdin io.Reader, stderr io.Writer) *imageVerificationPolicy {
+	return &imageVerificationPolicy{
 		strict: envTruthy(security.CosignStrictEnvVar),
 		prompt: newVerificationPrompter(stdin, stderr),
 		trust:  map[string]struct{}{},
 	}
 }
 
-func (p imageVerificationPolicy) Check(ctx context.Context, ref string) security.VerificationResult {
+func (p *imageVerificationPolicy) Check(ctx context.Context, ref string) security.VerificationResult {
 	return security.VerifyImage(ctx, ref)
 }
 

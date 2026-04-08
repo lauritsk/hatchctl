@@ -20,7 +20,7 @@ type Runner struct {
 	stdout        io.Writer
 	stderr        io.Writer
 	backend       runtimeBackend
-	imageVerifier imageVerificationPolicy
+	imageVerifier *imageVerificationPolicy
 	planner       *workspacePlanner
 }
 
