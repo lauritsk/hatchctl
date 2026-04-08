@@ -2,6 +2,16 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## [v0.1.6](https://github.com/lauritsk/hatchctl/compare/7ee076f237d2fba8edc70090308547b88e8a19b7..v0.1.6) - 2026-04-08
+#### Bug Fixes
+- (**display**) stabilize spinner cursor rendering - ([7ee076f](https://github.com/lauritsk/hatchctl/commit/7ee076f237d2fba8edc70090308547b88e8a19b7)) - Karl Hans Laurits
+- (**runtime**) inline feature build base image - ([0d265e0](https://github.com/lauritsk/hatchctl/commit/0d265e0c5a5d55b848e08720d467dd4e88b56cfa)) - Karl Hans Laurits
+- (**runtime**) reduce bridge startup flakes and stop delays - ([d086dbe](https://github.com/lauritsk/hatchctl/commit/d086dbeeead0f5fd4d433a45135ac8228064ff26)) - Karl Hans Laurits
+#### Miscellaneous Chores
+- (**devcontainer**) add local hatchctl setup - ([891f5a4](https://github.com/lauritsk/hatchctl/commit/891f5a478c4be9557e95314e7dfe162fac6a7bda)) - Karl Hans Laurits
+
+- - -
+
 ## [v0.1.5](https://github.com/lauritsk/hatchctl/compare/b890004b4bf5c25f6dd916b56e638ef84331b3ca..v0.1.5) - 2026-04-08
 #### Bug Fixes
 - (**release**) generate embedded bridge helpers during release - ([e23dbf8](https://github.com/lauritsk/hatchctl/commit/e23dbf8a66046b544e15cd924342fe5eee2af19f)) - Karl Hans Laurits
