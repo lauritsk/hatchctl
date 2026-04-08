@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"syscall"
 
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
@@ -205,11 +204,7 @@ func helperBinaryData() ([]byte, error) {
 		}
 		return data, nil
 	}
-
-	if data, ok := embeddedHelperBinary(runtime.GOARCH); ok {
-		return data, nil
-	}
-	return nil, fmt.Errorf("bridge helper not available for host %s/%s; set %s for development builds or use a release build of hatchctl", runtime.GOOS, runtime.GOARCH, helperBinaryEnvVar)
+	return nil, fmt.Errorf("bridge helper not available; set %s to a linux hatchctl binary", helperBinaryEnvVar)
 }
 
 func applySession(session *Session, merged devcontainer.MergedConfig) devcontainer.MergedConfig {
