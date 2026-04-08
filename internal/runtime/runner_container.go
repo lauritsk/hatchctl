@@ -38,7 +38,7 @@ func (r *Runner) findContainer(ctx context.Context, resolved devcontainer.Resolv
 }
 
 func (r *Runner) removeContainer(ctx context.Context, containerID string, events ui.Sink) error {
-	return r.backend.Run(ctx, runtimeCommand{Kind: runtimeCommandDocker, Label: fmt.Sprintf("Removing managed container %s", containerID), Args: []string{"rm", "-f", containerID}, Stdout: r.stdout, Stderr: r.stderr, Events: events})
+	return r.backend.Run(ctx, runtimeCommand{Kind: runtimeCommandDocker, Phase: phaseContainer, Label: fmt.Sprintf("Removing managed container %s", containerID), Args: []string{"rm", "-f", containerID}, Stdout: r.stdout, Stderr: r.stderr, Events: events})
 }
 
 func (r *Runner) reconcileState(ctx context.Context, resolved devcontainer.ResolvedConfig, state devcontainer.State) (devcontainer.State, error) {
@@ -204,7 +204,7 @@ func (r *Runner) ensureContainer(ctx context.Context, resolved devcontainer.Reso
 		} else {
 			status, statusErr := r.backend.Output(ctx, runtimeCommand{Kind: runtimeCommandDocker, Args: []string{"inspect", "--format", "{{.State.Status}}", containerID}})
 			if statusErr == nil && status != "running" {
-				if err := r.backend.Run(ctx, runtimeCommand{Kind: runtimeCommandDocker, Label: fmt.Sprintf("Starting existing container %s", containerID), Args: []string{"start", containerID}, Stdout: r.stdout, Stderr: r.stderr, Events: events}); err != nil {
+				if err := r.backend.Run(ctx, runtimeCommand{Kind: runtimeCommandDocker, Phase: phaseContainer, Label: fmt.Sprintf("Starting existing container %s", containerID), Args: []string{"start", containerID}, Stdout: r.stdout, Stderr: r.stderr, Events: events}); err != nil {
 					return "", false, err
 				}
 			}
@@ -276,7 +276,7 @@ func (r *Runner) ensureComposeContainer(ctx context.Context, resolved devcontain
 			}
 		}
 	}
-	if err := r.backend.Run(ctx, runtimeCommand{Kind: runtimeCommandDocker, Label: fmt.Sprintf("Starting compose service %s", resolved.ComposeService), Args: append(composeArgs(resolved, overridePath), "up", "--no-build", "-d", resolved.ComposeService), Dir: resolved.ConfigDir, Stdout: r.stdout, Stderr: r.stderr, Events: events}); err != nil {
+	if err := r.backend.Run(ctx, runtimeCommand{Kind: runtimeCommandDocker, Phase: phaseContainer, Label: fmt.Sprintf("Starting compose service %s", resolved.ComposeService), Args: append(composeArgs(resolved, overridePath), "up", "--no-build", "-d", resolved.ComposeService), Dir: resolved.ConfigDir, Stdout: r.stdout, Stderr: r.stderr, Events: events}); err != nil {
 		return "", false, err
 	}
 	containerID, err = r.findComposeContainer(ctx, resolved)

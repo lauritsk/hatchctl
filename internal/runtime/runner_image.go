@@ -226,7 +226,7 @@ func (r *Runner) buildDockerfileImage(ctx context.Context, resolved devcontainer
 		args = append(args, resolved.Config.Build.Options...)
 	}
 	args = append(args, contextDir)
-	return r.backend.Run(ctx, runtimeCommand{Kind: runtimeCommandDocker, Label: "Building container image", Args: args, Dir: "", Stdout: r.stdout, Stderr: r.stderr, Events: events})
+	return r.backend.Run(ctx, runtimeCommand{Kind: runtimeCommandDocker, Phase: phaseImage, Label: "Building container image", Args: args, Dir: "", Stdout: r.stdout, Stderr: r.stderr, Events: events})
 }
 
 func (r *Runner) ensureImageWithFeatures(ctx context.Context, resolved devcontainer.ResolvedConfig, events ui.Sink) (string, error) {
@@ -273,7 +273,7 @@ func (r *Runner) ensureFeaturesImageFromBase(ctx context.Context, resolved devco
 		return "", fmt.Errorf("generated feature Dockerfile missing in %s: %w", buildDir, err)
 	}
 	args := []string{"build", "-f", filepath.Join(buildDir, "Dockerfile"), "-t", resolved.ImageName, buildDir}
-	if err := r.backend.Run(ctx, runtimeCommand{Kind: runtimeCommandDocker, Label: "Building features image", Args: args, Dir: "", Stdout: r.stdout, Stderr: r.stderr, Events: events}); err != nil {
+	if err := r.backend.Run(ctx, runtimeCommand{Kind: runtimeCommandDocker, Phase: phaseImage, Label: "Building features image", Args: args, Dir: "", Stdout: r.stdout, Stderr: r.stderr, Events: events}); err != nil {
 		entries, _ := os.ReadDir(buildDir)
 		names := make([]string, 0, len(entries))
 		for _, entry := range entries {
@@ -295,7 +295,7 @@ func (r *Runner) ensureComposeImage(ctx context.Context, resolved devcontainer.R
 	}
 	baseImage := service.Image
 	if service.Build.Enabled() {
-		if err := r.backend.Run(ctx, runtimeCommand{Kind: runtimeCommandDocker, Label: fmt.Sprintf("Building compose service %s", resolved.ComposeService), Args: append(composeBaseArgs(resolved), "build", resolved.ComposeService), Dir: resolved.ConfigDir, Stdout: r.stdout, Stderr: r.stderr, Events: events}); err != nil {
+		if err := r.backend.Run(ctx, runtimeCommand{Kind: runtimeCommandDocker, Phase: phaseImage, Label: fmt.Sprintf("Building compose service %s", resolved.ComposeService), Args: append(composeBaseArgs(resolved), "build", resolved.ComposeService), Dir: resolved.ConfigDir, Stdout: r.stdout, Stderr: r.stderr, Events: events}); err != nil {
 			return "", err
 		}
 		if baseImage == "" {
@@ -344,5 +344,5 @@ func (r *Runner) ensureUpdatedUIDContainer(ctx context.Context, resolved devcont
 		return nil
 	}
 	args := []string{"exec", "-i", "-u", "root", containerID, "sh", "-s", "--", remoteUser, fmt.Sprintf("%d", uid), fmt.Sprintf("%d", gid)}
-	return r.backend.Run(ctx, runtimeCommand{Kind: runtimeCommandDocker, Label: "Reconciling container user", Args: args, Stdin: strings.NewReader(updateUIDScript), Stdout: r.stdout, Stderr: r.stderr, Events: events})
+	return r.backend.Run(ctx, runtimeCommand{Kind: runtimeCommandDocker, Phase: phaseContainer, Label: "Reconciling container user", Args: args, Stdin: strings.NewReader(updateUIDScript), Stdout: r.stdout, Stderr: r.stderr, Events: events})
 }

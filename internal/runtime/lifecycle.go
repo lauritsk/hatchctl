@@ -60,7 +60,7 @@ func (r *Runner) runLifecycleForUp(ctx context.Context, resolved devcontainer.Re
 		if err := ensureHostLifecycleAllowed(resolved.Config.InitializeCommand, allowHostLifecycle); err != nil {
 			return err
 		}
-		if err := runHostLifecycle(ctx, resolved.WorkspaceFolder, resolved.Config.InitializeCommand, r.progressCommandIO(events, lifecycleProgressLabel("initializeCommand"), r.commandIO()), r.backend); err != nil {
+		if err := runHostLifecycle(ctx, resolved.WorkspaceFolder, resolved.Config.InitializeCommand, r.progressCommandIO(events, phaseLifecycle, lifecycleProgressLabel("initializeCommand"), r.commandIO()), r.backend); err != nil {
 			return err
 		}
 		if err := r.runContainerLifecycleList(ctx, containerID, resolved, resolved.Merged.OnCreateCommands, events, lifecycleProgressLabel("onCreateCommand")); err != nil {
@@ -90,7 +90,7 @@ func (r *Runner) runLifecyclePhase(ctx context.Context, resolved devcontainer.Re
 		if err := ensureHostLifecycleAllowed(resolved.Config.InitializeCommand, allowHostLifecycle); err != nil {
 			return err
 		}
-		if err := runHostLifecycle(ctx, resolved.WorkspaceFolder, resolved.Config.InitializeCommand, r.progressCommandIO(events, lifecycleProgressLabel("initializeCommand"), r.commandIO()), r.backend); err != nil {
+		if err := runHostLifecycle(ctx, resolved.WorkspaceFolder, resolved.Config.InitializeCommand, r.progressCommandIO(events, phaseLifecycle, lifecycleProgressLabel("initializeCommand"), r.commandIO()), r.backend); err != nil {
 			return err
 		}
 		if err := r.runContainerLifecycleList(ctx, containerID, resolved, resolved.Merged.OnCreateCommands, events, lifecycleProgressLabel("onCreateCommand")); err != nil {
@@ -115,7 +115,7 @@ func (r *Runner) runLifecyclePhase(ctx context.Context, resolved devcontainer.Re
 		if err := ensureHostLifecycleAllowed(resolved.Config.InitializeCommand, allowHostLifecycle); err != nil {
 			return err
 		}
-		if err := runHostLifecycle(ctx, resolved.WorkspaceFolder, resolved.Config.InitializeCommand, r.progressCommandIO(events, lifecycleProgressLabel("initializeCommand"), r.commandIO()), r.backend); err != nil {
+		if err := runHostLifecycle(ctx, resolved.WorkspaceFolder, resolved.Config.InitializeCommand, r.progressCommandIO(events, phaseLifecycle, lifecycleProgressLabel("initializeCommand"), r.commandIO()), r.backend); err != nil {
 			return err
 		}
 		if err := r.runContainerLifecycleList(ctx, containerID, resolved, resolved.Merged.OnCreateCommands, events, lifecycleProgressLabel("onCreateCommand")); err != nil {
@@ -167,6 +167,6 @@ func (r *Runner) runContainerLifecycle(ctx context.Context, containerID string, 
 		if err != nil {
 			return err
 		}
-		return r.backend.Run(ctx, runtimeCommand{Kind: runtimeCommandDocker, Label: label, Args: dockerArgs, Stdout: r.stdout, Stderr: r.stderr, Events: events})
+		return r.backend.Run(ctx, runtimeCommand{Kind: runtimeCommandDocker, Phase: phaseLifecycle, Label: label, Args: dockerArgs, Stdout: r.stdout, Stderr: r.stderr, Events: events})
 	}, command)
 }

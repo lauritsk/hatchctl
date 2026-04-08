@@ -12,7 +12,7 @@ type workspacePlanner struct {
 }
 
 func (p *workspacePlanner) prepareResolved(ctx context.Context, opts prepareResolveOptions) (devcontainer.ResolvedConfig, error) {
-	p.runner.emitProgress(opts.Events, opts.ProgressLabel)
+	p.runner.emitPhaseProgress(opts.Events, opts.ProgressPhase, opts.ProgressLabel)
 	resolveOpts := devcontainer.ResolveOptions{LockfilePolicy: opts.LockfilePolicy, FeatureHTTPTimeout: opts.FeatureTimeout, ReadPlanCache: true, StateBaseDir: opts.StateDir, CacheBaseDir: opts.CacheDir}
 	resolveOpts.VerifyImage = p.runner.imageVerifier.Check
 	if !opts.ReadOnly {
@@ -49,7 +49,7 @@ func (p *workspacePlanner) prepareWorkspace(ctx context.Context, opts prepareWor
 	}
 	prepared := preparedWorkspace{resolved: resolved, image: preparedImage(resolved)}
 	if opts.enrich {
-		p.runner.emitProgress(opts.resolve.Events, "Applying runtime metadata")
+		p.runner.emitPhaseProgress(opts.resolve.Events, phaseConfig, "Applying runtime metadata")
 		if err := p.runner.enrichMergedConfig(ctx, &prepared.resolved, prepared.image); err != nil {
 			return preparedWorkspace{}, err
 		}
@@ -67,7 +67,7 @@ func (p *workspacePlanner) prepareWorkspace(ctx context.Context, opts prepareWor
 		prepared.containerID = state.ContainerID
 	}
 	if opts.findContainer && prepared.containerID == "" {
-		p.runner.emitProgress(opts.resolve.Events, "Finding managed container")
+		p.runner.emitPhaseProgress(opts.resolve.Events, phaseContainer, "Finding managed container")
 		containerID, err := p.runner.findContainer(ctx, prepared.resolved)
 		if err != nil {
 			if opts.allowMissingContainer && errors.Is(err, errManagedContainerNotFound) {

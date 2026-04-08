@@ -173,6 +173,18 @@ type ManagedContainer struct {
 	BridgeEnabled bool              `json:"bridgeEnabled,omitempty"`
 }
 
+const (
+	phaseResolve   = "Resolve"
+	phaseImage     = "Image"
+	phaseContainer = "Container"
+	phaseBridge    = "Bridge"
+	phaseLifecycle = "Lifecycle"
+	phaseState     = "State"
+	phaseExec      = "Exec"
+	phaseConfig    = "Config"
+	phaseDotfiles  = "Dotfiles"
+)
+
 type RunLifecycleOptions struct {
 	Workspace          string
 	ConfigPath         string
@@ -234,6 +246,7 @@ type prepareResolveOptions struct {
 	FeatureTimeout time.Duration
 	LockfilePolicy devcontainer.FeatureLockfilePolicy
 	ReadOnly       bool
+	ProgressPhase  string
 	ProgressLabel  string
 	Debug          bool
 	Events         ui.Sink
@@ -256,6 +269,7 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 		CacheDir:       opts.CacheDir,
 		FeatureTimeout: opts.FeatureTimeout,
 		LockfilePolicy: opts.LockfilePolicy,
+		ProgressPhase:  phaseResolve,
 		ProgressLabel:  "Resolving development container",
 		Debug:          opts.Debug,
 		Events:         opts.Events,
@@ -270,17 +284,17 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 	state := prepared.state
 
 	if opts.Recreate && state.ContainerID != "" {
-		runner.emitProgress(opts.Events, "Recreating managed container")
+		runner.emitPhaseProgress(opts.Events, phaseContainer, "Recreating managed container")
 		_ = runner.removeContainer(ctx, state.ContainerID, opts.Events)
 		state = devcontainer.State{}
 	}
 
-	runner.emitProgress(opts.Events, "Ensuring container image")
+	runner.emitPhaseProgress(opts.Events, phaseImage, "Ensuring container image")
 	image, err := runner.ensureImage(ctx, resolved, opts.Events)
 	if err != nil {
 		return UpResult{}, err
 	}
-	runner.emitProgress(opts.Events, "Applying runtime metadata")
+	runner.emitPhaseProgress(opts.Events, phaseImage, "Applying runtime metadata")
 	if err := runner.enrichMergedConfig(ctx, &resolved, image); err != nil {
 		return UpResult{}, err
 	}
@@ -289,7 +303,7 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 		return UpResult{}, err
 	}
 	var bridgeSession *bridge.Session
-	runner.emitProgress(opts.Events, "Configuring bridge support")
+	runner.emitPhaseProgress(opts.Events, phaseBridge, "Configuring bridge support")
 	if opts.BridgeEnabled {
 		bridgeSession, err = bridge.Prepare(resolved.StateDir, true, helperArch)
 		if err == nil {
@@ -303,7 +317,7 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 	}
 	overridePath := ""
 	if resolved.SourceKind == "compose" {
-		runner.emitProgress(opts.Events, "Preparing Compose override")
+		runner.emitPhaseProgress(opts.Events, phaseContainer, "Preparing Compose override")
 		overridePath, err = writeComposeOverride(resolved, image)
 		if err != nil {
 			return UpResult{}, err
@@ -311,18 +325,18 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 		defer os.Remove(overridePath)
 	}
 
-	runner.emitProgress(opts.Events, "Ensuring managed container")
+	runner.emitPhaseProgress(opts.Events, phaseContainer, "Ensuring managed container")
 	containerID, created, err := runner.ensureContainer(ctx, resolved, image, opts.BridgeEnabled, overridePath, opts.Events)
 	if err != nil {
 		return UpResult{}, err
 	}
-	runner.emitProgress(opts.Events, "Reconciling container user")
+	runner.emitPhaseProgress(opts.Events, phaseContainer, "Reconciling container user")
 	if err := runner.ensureUpdatedUIDContainer(ctx, resolved, image, containerID, opts.Events); err != nil {
 		return UpResult{}, err
 	}
 	var bridgeReport *bridge.Report
 	if bridgeSession != nil {
-		runner.emitProgress(opts.Events, "Starting bridge session")
+		runner.emitPhaseProgress(opts.Events, phaseBridge, "Starting bridge session")
 		startedBridge, err := bridge.Start(bridgeSession, containerID)
 		if err != nil {
 			return UpResult{}, err
@@ -330,7 +344,7 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 		bridgeReport = bridge.ReportFromSession(startedBridge)
 	}
 
-	runner.emitProgress(opts.Events, "Running lifecycle commands")
+	runner.emitPhaseProgress(opts.Events, phaseLifecycle, "Running lifecycle commands")
 	if err := runner.runLifecycleForUp(ctx, resolved, containerID, created, state, dotfiles, opts.AllowHostLifecycle, opts.Events); err != nil {
 		return UpResult{}, err
 	}
@@ -345,7 +359,7 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 	if bridgeReport != nil {
 		state.BridgeSessionID = bridgeReport.ID
 	}
-	runner.emitProgress(opts.Events, "Writing workspace state")
+	runner.emitPhaseProgress(opts.Events, phaseState, "Writing workspace state")
 	if err := devcontainer.WriteState(resolved.StateDir, state); err != nil {
 		return UpResult{}, err
 	}
@@ -368,6 +382,7 @@ func (r *Runner) Build(ctx context.Context, opts BuildOptions) (BuildResult, err
 		CacheDir:       opts.CacheDir,
 		FeatureTimeout: opts.FeatureTimeout,
 		LockfilePolicy: opts.LockfilePolicy,
+		ProgressPhase:  phaseResolve,
 		ProgressLabel:  "Resolving development container",
 		Debug:          opts.Debug,
 		Events:         opts.Events,
@@ -376,12 +391,12 @@ func (r *Runner) Build(ctx context.Context, opts BuildOptions) (BuildResult, err
 		return BuildResult{}, err
 	}
 	resolved := prepared.resolved
-	runner.emitProgress(opts.Events, "Ensuring container image")
+	runner.emitPhaseProgress(opts.Events, phaseImage, "Ensuring container image")
 	image, err := runner.ensureImage(ctx, resolved, opts.Events)
 	if err != nil {
 		return BuildResult{}, err
 	}
-	runner.emitProgress(opts.Events, "Applying runtime metadata")
+	runner.emitPhaseProgress(opts.Events, phaseImage, "Applying runtime metadata")
 	if err := runner.enrichMergedConfig(ctx, &resolved, image); err != nil {
 		return BuildResult{}, err
 	}
@@ -397,6 +412,7 @@ func (r *Runner) Exec(ctx context.Context, opts ExecOptions) (int, error) {
 		FeatureTimeout: opts.FeatureTimeout,
 		LockfilePolicy: opts.LockfilePolicy,
 		ReadOnly:       true,
+		ProgressPhase:  phaseResolve,
 		ProgressLabel:  "Resolving development container",
 		Debug:          opts.Debug,
 		Events:         opts.Events,
@@ -413,7 +429,7 @@ func (r *Runner) Exec(ctx context.Context, opts ExecOptions) (int, error) {
 	if interactive {
 		r.clearProgress(opts.Events)
 	} else {
-		r.emitProgress(opts.Events, fmt.Sprintf("Executing command in %s", prepared.containerID))
+		r.emitPhaseProgress(opts.Events, phaseExec, fmt.Sprintf("Executing command in %s", prepared.containerID))
 	}
 
 	err = r.backend.Run(ctx, runtimeCommand{Kind: runtimeCommandDocker, Label: "Executing command", Args: args, Stdin: opts.Stdin, Stdout: opts.Stdout, Stderr: opts.Stderr})
@@ -443,6 +459,7 @@ func (r *Runner) ReadConfig(ctx context.Context, opts ReadConfigOptions) (ReadCo
 		FeatureTimeout: opts.FeatureTimeout,
 		LockfilePolicy: opts.LockfilePolicy,
 		ReadOnly:       true,
+		ProgressPhase:  phaseConfig,
 		ProgressLabel:  "Inspecting resolved configuration",
 		Debug:          opts.Debug,
 		Events:         opts.Events,
@@ -528,6 +545,7 @@ func (r *Runner) RunLifecycle(ctx context.Context, opts RunLifecycleOptions) (Ru
 		FeatureTimeout: opts.FeatureTimeout,
 		LockfilePolicy: opts.LockfilePolicy,
 		ReadOnly:       true,
+		ProgressPhase:  phaseResolve,
 		ProgressLabel:  "Resolving development container",
 		Debug:          opts.Debug,
 		Events:         opts.Events,
@@ -541,7 +559,7 @@ func (r *Runner) RunLifecycle(ctx context.Context, opts RunLifecycleOptions) (Ru
 	if phase == "" {
 		phase = "all"
 	}
-	runner.emitProgress(opts.Events, "Running lifecycle commands")
+	runner.emitPhaseProgress(opts.Events, phaseLifecycle, "Running lifecycle commands")
 	runDotfiles := phase == "all" || phase == "create"
 	if err := runner.runLifecyclePhase(ctx, resolved, prepared.containerID, phase, state, dotfiles, runDotfiles, opts.AllowHostLifecycle, opts.Events); err != nil {
 		return RunLifecycleResult{}, err
@@ -568,6 +586,7 @@ func (r *Runner) BridgeDoctor(ctx context.Context, opts BridgeDoctorOptions) (br
 		FeatureTimeout: opts.FeatureTimeout,
 		LockfilePolicy: opts.LockfilePolicy,
 		ReadOnly:       true,
+		ProgressPhase:  phaseBridge,
 		ProgressLabel:  "Inspecting bridge state",
 		Debug:          opts.Debug,
 		Events:         opts.Events,
@@ -587,10 +606,14 @@ func preparedImage(resolved devcontainer.ResolvedConfig) string {
 }
 
 func (r *Runner) emitProgress(events ui.Sink, message string) {
+	r.emitPhaseProgress(events, "", message)
+}
+
+func (r *Runner) emitPhaseProgress(events ui.Sink, phase string, message string) {
 	if events == nil || message == "" {
 		return
 	}
-	events.Emit(ui.Event{Kind: ui.EventProgress, Message: message})
+	events.Emit(ui.Event{Kind: ui.EventProgress, Phase: phase, Message: message})
 }
 
 func (r *Runner) clearProgress(events ui.Sink) {

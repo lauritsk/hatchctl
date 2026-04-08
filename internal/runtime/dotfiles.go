@@ -195,8 +195,8 @@ func (r *Runner) installDotfiles(ctx context.Context, containerID string, resolv
 		return err
 	}
 	label := fmt.Sprintf("Installing dotfiles from %s", opts.Repository)
-	r.emitProgress(events, label)
-	return r.backend.Run(ctx, runtimeCommand{Kind: runtimeCommandDocker, Label: label, Args: args, Stdin: strings.NewReader(dotfilesInstallHelper), Stdout: r.stdout, Stderr: r.stderr, Events: events})
+	r.emitPhaseProgress(events, phaseDotfiles, label)
+	return r.backend.Run(ctx, runtimeCommand{Kind: runtimeCommandDocker, Phase: phaseDotfiles, Label: label, Args: args, Stdin: strings.NewReader(dotfilesInstallHelper), Stdout: r.stdout, Stderr: r.stderr, Events: events})
 }
 
 func (r *Runner) resolveDotfilesTargetPath(ctx context.Context, containerID string, resolved devcontainer.ResolvedConfig, targetPath string) (string, error) {

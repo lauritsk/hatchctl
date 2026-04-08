@@ -8,27 +8,28 @@ import (
 	"github.com/lauritsk/hatchctl/internal/docker"
 )
 
-func (r *Runner) progressDockerRunOptions(events ui.Sink, label string, opts docker.RunOptions) docker.RunOptions {
-	stdout, stderr := r.progressWriters(events, label, opts.Stdout, opts.Stderr)
+func (r *Runner) progressDockerRunOptions(events ui.Sink, phase string, label string, opts docker.RunOptions) docker.RunOptions {
+	stdout, stderr := r.progressWriters(events, phase, label, opts.Stdout, opts.Stderr)
 	opts.Stdout = stdout
 	opts.Stderr = stderr
 	return opts
 }
 
-func (r *Runner) progressCommandIO(events ui.Sink, label string, streams commandIO) commandIO {
-	stdout, stderr := r.progressWriters(events, label, streams.Stdout, streams.Stderr)
+func (r *Runner) progressCommandIO(events ui.Sink, phase string, label string, streams commandIO) commandIO {
+	stdout, stderr := r.progressWriters(events, phase, label, streams.Stdout, streams.Stderr)
 	streams.Stdout = stdout
 	streams.Stderr = stderr
 	return streams
 }
 
-func (r *Runner) progressWriters(events ui.Sink, label string, stdout io.Writer, stderr io.Writer) (io.Writer, io.Writer) {
+func (r *Runner) progressWriters(events ui.Sink, phase string, label string, stdout io.Writer, stderr io.Writer) (io.Writer, io.Writer) {
 	if events == nil || label == "" {
 		return stdout, stderr
 	}
 	activate := &progressActivation{
 		runner: r,
 		events: events,
+		phase:  phase,
 		label:  label,
 	}
 	return newProgressStreamWriter(stdout, activate), newProgressStreamWriter(stderr, activate)
@@ -37,6 +38,7 @@ func (r *Runner) progressWriters(events ui.Sink, label string, stdout io.Writer,
 type progressActivation struct {
 	runner *Runner
 	events ui.Sink
+	phase  string
 	label  string
 	once   sync.Once
 }
@@ -44,7 +46,7 @@ type progressActivation struct {
 func (a *progressActivation) Trigger() {
 	a.once.Do(func() {
 		a.runner.clearProgress(a.events)
-		a.events.Emit(ui.Event{Kind: ui.EventProgressOutput, Message: a.label})
+		a.events.Emit(ui.Event{Kind: ui.EventProgressOutput, Phase: a.phase, Message: a.label})
 	})
 }
 

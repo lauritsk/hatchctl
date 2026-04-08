@@ -85,6 +85,19 @@ func TestRendererProgressOutputDoesNotDuplicateNonTTYProgress(t *testing.T) {
 	}
 }
 
+func TestRendererProgressIncludesPhaseForNonTTY(t *testing.T) {
+	t.Parallel()
+
+	var errBuf bytes.Buffer
+	r := NewRenderer(&bytes.Buffer{}, &errBuf, false)
+
+	r.Emit(Event{Kind: EventProgress, Phase: "Resolve", Message: "Resolving development container"})
+
+	if got := errBuf.String(); got != "==> [Resolve] Resolving development container\n" {
+		t.Fatalf("unexpected phase progress output %q", got)
+	}
+}
+
 func TestRendererStdoutRedirectsToStderrForJSON(t *testing.T) {
 	t.Parallel()
 

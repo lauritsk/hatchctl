@@ -25,6 +25,7 @@ const (
 
 type runtimeCommand struct {
 	Kind   runtimeCommandKind
+	Phase  string
 	Label  string
 	Binary string
 	Dir    string
@@ -52,7 +53,7 @@ func (b *localRuntimeBackend) Run(ctx context.Context, cmd runtimeCommand) error
 		if len(cmd.Args) == 0 {
 			return nil
 		}
-		return b.docker.Run(ctx, b.runner.progressDockerRunOptions(cmd.Events, cmd.Label, docker.RunOptions{Args: cmd.Args, Dir: cmd.Dir, Env: cmd.Env, Stdin: cmd.Stdin, Stdout: cmd.Stdout, Stderr: cmd.Stderr}))
+		return b.docker.Run(ctx, b.runner.progressDockerRunOptions(cmd.Events, cmd.Phase, cmd.Label, docker.RunOptions{Args: cmd.Args, Dir: cmd.Dir, Env: cmd.Env, Stdin: cmd.Stdin, Stdout: cmd.Stdout, Stderr: cmd.Stderr}))
 	case runtimeCommandHost:
 		if cmd.Binary == "" {
 			return nil

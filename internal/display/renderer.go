@@ -25,6 +25,7 @@ const (
 
 type Event struct {
 	Kind    EventKind
+	Phase   string
 	Message string
 }
 
@@ -125,12 +126,12 @@ func (r *Renderer) Emit(event Event) {
 			if event.Message == "" {
 				return
 			}
-			r.spinner.SetMessage(event.Message)
+			r.spinner.SetMessage(r.spinnerProgressMessage(event.Phase, event.Message))
 		case EventProgressOutput:
 			if event.Message == "" {
 				return
 			}
-			r.spinner.WriteLine(r.styleProgress(event.Message))
+			r.spinner.WriteLine(r.styleProgress(event.Phase, event.Message))
 		case EventWarning:
 			if event.Message == "" {
 				return
@@ -151,7 +152,7 @@ func (r *Renderer) Emit(event Event) {
 		if event.Message == "" {
 			return
 		}
-		_, _ = fmt.Fprintf(r.err, "==> %s\n", event.Message)
+		_, _ = fmt.Fprintf(r.err, "%s\n", r.styleProgress(event.Phase, event.Message))
 	case EventWarning:
 		if event.Message == "" {
 			return
@@ -303,11 +304,16 @@ func (r *Renderer) styleDebug(message string) string {
 	return r.styles.debug.Render(message)
 }
 
-func (r *Renderer) styleProgress(message string) string {
+func (r *Renderer) styleProgress(phase string, message string) string {
+	formatted := r.formatProgressMessage(phase, message)
 	if !r.errTTY {
-		return "==> " + message
+		return formatted
 	}
-	return r.styles.frame.Render("[run]") + " " + r.styles.progress.Render(message)
+	phaseLabel := "run"
+	if phase != "" {
+		phaseLabel = strings.ToLower(phase)
+	}
+	return r.styles.frame.Render("["+phaseLabel+"]") + " " + r.styles.progress.Render(message)
 }
 
 func (r *Renderer) styleWarning(message string) string {
@@ -333,6 +339,20 @@ func (r *Renderer) renderKeyValuesBox(title string, values []KeyValue) string {
 		lines = append(lines, key+"  "+r.styles.text.Render(value.Value))
 	}
 	return r.styles.box.Render(strings.Join(lines, "\n"))
+}
+
+func (r *Renderer) formatProgressMessage(phase string, message string) string {
+	if phase == "" {
+		return "==> " + message
+	}
+	return fmt.Sprintf("==> [%s] %s", phase, message)
+}
+
+func (r *Renderer) spinnerProgressMessage(phase string, message string) string {
+	if phase == "" {
+		return message
+	}
+	return fmt.Sprintf("[%s] %s", phase, message)
 }
 
 func isTerminal(w io.Writer) bool {
