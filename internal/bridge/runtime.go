@@ -272,7 +272,8 @@ func (s *bridgeHostService) rewriteNestedLocalURL(raw string) (string, bool, err
 }
 
 func (s *bridgeHostService) rewriteParsedLocalURL(parsed *url.URL) (*url.URL, bool, error) {
-	if parsed.Hostname() != "localhost" && parsed.Hostname() != "127.0.0.1" {
+	host := parsed.Hostname()
+	if host != "localhost" && host != "127.0.0.1" {
 		return parsed, false, nil
 	}
 	portText := parsed.Port()
@@ -292,7 +293,7 @@ func (s *bridgeHostService) rewriteParsedLocalURL(parsed *url.URL) (*url.URL, bo
 		return nil, false, err
 	}
 	rewritten := *parsed
-	rewritten.Host = net.JoinHostPort("127.0.0.1", strconv.Itoa(hostPort))
+	rewritten.Host = net.JoinHostPort(host, strconv.Itoa(hostPort))
 	return &rewritten, true, nil
 }
 

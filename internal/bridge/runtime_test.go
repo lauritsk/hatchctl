@@ -40,7 +40,7 @@ func TestBridgeHostServiceHandlesOpenRequest(t *testing.T) {
 	if !response.OK {
 		t.Fatalf("unexpected response %#v", response)
 	}
-	if opened != "http://127.0.0.1:19090/cb" {
+	if opened != "http://localhost:19090/cb" {
 		t.Fatalf("unexpected rewritten url %q", opened)
 	}
 }
@@ -395,9 +395,10 @@ func TestRewriteLocalURLDefaultsPortsByScheme(t *testing.T) {
 		name string
 		url  string
 		port int
+		want string
 	}{
-		{name: "http", url: "http://localhost/path", port: 80},
-		{name: "https", url: "https://127.0.0.1/cb", port: 443},
+		{name: "http", url: "http://localhost/path", port: 80, want: "http://localhost:19090/path"},
+		{name: "https", url: "https://127.0.0.1/cb", port: 443, want: "https://127.0.0.1:19090/cb"},
 	}
 
 	for _, tt := range tests {
@@ -415,7 +416,7 @@ func TestRewriteLocalURLDefaultsPortsByScheme(t *testing.T) {
 			if err != nil {
 				t.Fatalf("rewrite url: %v", err)
 			}
-			if !strings.Contains(rewritten, "127.0.0.1:19090") {
+			if rewritten != tt.want {
 				t.Fatalf("unexpected rewritten url %q", rewritten)
 			}
 		})
@@ -437,8 +438,44 @@ func TestRewriteLocalURLRewritesEmbeddedLocalhostQueryValues(t *testing.T) {
 	if err != nil {
 		t.Fatalf("rewrite url: %v", err)
 	}
-	if rewritten != "https://github.com/login/oauth/authorize?redirect_uri=http%3A%2F%2F127.0.0.1%3A19090%2Fcallback" {
+	if rewritten != "https://github.com/login/oauth/authorize?redirect_uri=http%3A%2F%2Flocalhost%3A19090%2Fcallback" {
 		t.Fatalf("unexpected rewritten url %q", rewritten)
+	}
+}
+
+func TestRewriteLocalURLPreservesLoopbackHostname(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		url  string
+		want string
+	}{
+		{name: "localhost", url: "http://localhost:8080/callback", want: "http://localhost:19090/callback"},
+		{name: "ipv4", url: "http://127.0.0.1:8080/callback", want: "http://127.0.0.1:19090/callback"},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			service := &bridgeHostService{}
+			service.forwardURL = func(port int) (int, bool, error) {
+				if port != 8080 {
+					t.Fatalf("unexpected port %d", port)
+				}
+				return 19090, false, nil
+			}
+
+			rewritten, err := service.rewriteLocalURL(tt.url)
+			if err != nil {
+				t.Fatalf("rewrite url: %v", err)
+			}
+			if rewritten != tt.want {
+				t.Fatalf("unexpected rewritten url %q", rewritten)
+			}
+		})
 	}
 }
 
