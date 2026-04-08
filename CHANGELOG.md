@@ -2,6 +2,13 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## [v0.2.1](https://github.com/lauritsk/hatchctl/compare/314b223eff8c1b7c60b29cbffeb0ff8807c71110..v0.2.1) - 2026-04-08
+#### Bug Fixes
+- (**bridge**) remove stale unix socket paths - ([314b223](https://github.com/lauritsk/hatchctl/commit/314b223eff8c1b7c60b29cbffeb0ff8807c71110)) - Karl Hans Laurits
+- (**runtime**) disable signing in test git commits - ([2ffdf22](https://github.com/lauritsk/hatchctl/commit/2ffdf223ade14335c97ff0a0c4080c0940bb80bd)) - Karl Hans Laurits
+
+- - -
+
 ## [v0.2.0](https://github.com/lauritsk/hatchctl/compare/97d3761d8083cab0c0a23bd2e84ed734b3d82ae5..v0.2.0) - 2026-04-08
 #### Features
 - (**runtime**) add dotfiles personalization support - ([97d3761](https://github.com/lauritsk/hatchctl/commit/97d3761d8083cab0c0a23bd2e84ed734b3d82ae5)) - Karl Hans Laurits
