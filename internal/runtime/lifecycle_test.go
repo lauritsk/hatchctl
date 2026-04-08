@@ -3,24 +3,25 @@ package runtime
 import (
 	"bytes"
 	"context"
-	"io"
 	"testing"
 
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
-	ui "github.com/lauritsk/hatchctl/internal/display"
 	"github.com/lauritsk/hatchctl/internal/docker"
 )
 
 type hostOnlyBackend struct {
-	runHost func(context.Context, string, []string, commandIO) error
+	run func(context.Context, runtimeCommand) error
 }
 
-func (b hostOnlyBackend) RunDocker(context.Context, string, docker.RunOptions, ui.Sink) error {
-	panic("unexpected RunDocker call")
+func (b hostOnlyBackend) Run(ctx context.Context, cmd runtimeCommand) error {
+	if b.run == nil {
+		panic("unexpected Run call")
+	}
+	return b.run(ctx, cmd)
 }
 
-func (b hostOnlyBackend) DockerOutput(context.Context, docker.RunOptions) (string, error) {
-	panic("unexpected DockerOutput call")
+func (b hostOnlyBackend) Output(context.Context, runtimeCommand) (string, error) {
+	panic("unexpected Output call")
 }
 
 func (b hostOnlyBackend) InspectImage(context.Context, string) (docker.ImageInspect, error) {
@@ -29,42 +30,6 @@ func (b hostOnlyBackend) InspectImage(context.Context, string) (docker.ImageInsp
 
 func (b hostOnlyBackend) InspectContainer(context.Context, string) (docker.ContainerInspect, error) {
 	panic("unexpected InspectContainer call")
-}
-
-func (b hostOnlyBackend) RunHost(ctx context.Context, cwd string, args []string, streams commandIO) error {
-	return b.runHost(ctx, cwd, args, streams)
-}
-
-func (b hostOnlyBackend) BuildImage(context.Context, string, string, []string, ui.Sink) error {
-	panic("unexpected BuildImage call")
-}
-
-func (b hostOnlyBackend) StartContainer(context.Context, string, ui.Sink) error {
-	panic("unexpected StartContainer call")
-}
-
-func (b hostOnlyBackend) RemoveContainer(context.Context, string, ui.Sink) error {
-	panic("unexpected RemoveContainer call")
-}
-
-func (b hostOnlyBackend) ContainerStatus(context.Context, string) (string, error) {
-	panic("unexpected ContainerStatus call")
-}
-
-func (b hostOnlyBackend) RunContainer(context.Context, []string) (string, error) {
-	panic("unexpected RunContainer call")
-}
-
-func (b hostOnlyBackend) ComposeUp(context.Context, devcontainer.ResolvedConfig, string, ui.Sink) error {
-	panic("unexpected ComposeUp call")
-}
-
-func (b hostOnlyBackend) ComposeBuild(context.Context, devcontainer.ResolvedConfig, ui.Sink) error {
-	panic("unexpected ComposeBuild call")
-}
-
-func (b hostOnlyBackend) DockerExec(context.Context, string, []string, io.Reader, io.Writer, io.Writer, ui.Sink) error {
-	panic("unexpected DockerExec call")
 }
 
 func TestRunHostLifecycleUsesInjectedRunnerAndStreams(t *testing.T) {
@@ -78,16 +43,19 @@ func TestRunHostLifecycleUsesInjectedRunnerAndStreams(t *testing.T) {
 		Kind:   "array",
 		Args:   []string{"tool", "arg1"},
 		Exists: true,
-	}, commandIO{Stdin: stdin, Stdout: &stdout, Stderr: &stderr}, hostOnlyBackend{runHost: func(_ context.Context, cwd string, args []string, streams commandIO) error {
+	}, commandIO{Stdin: stdin, Stdout: &stdout, Stderr: &stderr}, hostOnlyBackend{run: func(_ context.Context, cmd runtimeCommand) error {
 		called = true
-		if cwd != "/tmp/workspace" {
-			t.Fatalf("unexpected cwd %q", cwd)
+		if cmd.Kind != runtimeCommandHost {
+			t.Fatalf("unexpected command kind %q", cmd.Kind)
 		}
-		if len(args) != 2 || args[0] != "tool" || args[1] != "arg1" {
-			t.Fatalf("unexpected args %#v", args)
+		if cmd.Dir != "/tmp/workspace" {
+			t.Fatalf("unexpected cwd %q", cmd.Dir)
 		}
-		if streams.Stdin != stdin || streams.Stdout != &stdout || streams.Stderr != &stderr {
-			t.Fatalf("unexpected command streams %#v", streams)
+		if cmd.Binary != "tool" || len(cmd.Args) != 1 || cmd.Args[0] != "arg1" {
+			t.Fatalf("unexpected command %#v", cmd)
+		}
+		if cmd.Stdin != stdin || cmd.Stdout != &stdout || cmd.Stderr != &stderr {
+			t.Fatalf("unexpected command streams %#v", cmd)
 		}
 		return nil
 	}})

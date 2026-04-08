@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
-	"github.com/lauritsk/hatchctl/internal/docker"
 	"github.com/lauritsk/hatchctl/internal/fileutil"
 	"go.yaml.in/yaml/v3"
 )
@@ -97,7 +96,7 @@ func composeArgs(resolved devcontainer.ResolvedConfig, overridePath string) []st
 
 func (r *Runner) readComposeConfig(ctx context.Context, resolved devcontainer.ResolvedConfig) (composeConfig, error) {
 	args := append(composeBaseArgs(resolved), "config", "--format", "json")
-	output, err := r.backend.DockerOutput(ctx, docker.RunOptions{Args: args, Dir: resolved.ConfigDir})
+	output, err := r.backend.Output(ctx, runtimeCommand{Kind: runtimeCommandDocker, Args: args, Dir: resolved.ConfigDir})
 	if err != nil {
 		return composeConfig{}, err
 	}
@@ -121,7 +120,7 @@ func (r *Runner) findComposeContainer(ctx context.Context, resolved devcontainer
 		project = firstNonEmpty(config.Name, resolved.ComposeProject)
 	}
 	args := []string{"ps", "-aq", "--filter", "label=com.docker.compose.project=" + project, "--filter", "label=com.docker.compose.service=" + resolved.ComposeService}
-	result, err := r.backend.DockerOutput(ctx, docker.RunOptions{Args: args})
+	result, err := r.backend.Output(ctx, runtimeCommand{Kind: runtimeCommandDocker, Args: args})
 	if err != nil {
 		return "", err
 	}

@@ -136,7 +136,7 @@ func (r *Runner) installDotfiles(ctx context.Context, containerID string, resolv
 	}
 	label := fmt.Sprintf("Installing dotfiles from %s", opts.Repository)
 	r.emitProgress(events, label)
-	return r.backend.DockerExec(ctx, label, args, nil, r.stdout, r.stderr, events)
+	return r.backend.Run(ctx, runtimeCommand{Kind: runtimeCommandDocker, Label: label, Args: args, Stdout: r.stdout, Stderr: r.stderr, Events: events})
 }
 
 func dotfilesInstallScript(opts DotfilesOptions) string {

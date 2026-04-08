@@ -57,7 +57,7 @@ func (m *runtimeImageManager) buildDockerfileImage(ctx context.Context, resolved
 		args = append(args, resolved.Config.Build.Options...)
 	}
 	args = append(args, contextDir)
-	return m.runner.backend.BuildImage(ctx, "Building container image", "", args, events)
+	return m.runner.backend.Run(ctx, runtimeCommand{Kind: runtimeCommandDocker, Label: "Building container image", Args: args, Dir: "", Stdout: m.runner.stdout, Stderr: m.runner.stderr, Events: events})
 }
 
 func (m *runtimeImageManager) ensureImageWithFeatures(ctx context.Context, resolved devcontainer.ResolvedConfig, events ui.Sink) (string, error) {
@@ -94,7 +94,7 @@ func (m *runtimeImageManager) ensureFeaturesImageFromBase(ctx context.Context, r
 		return "", fmt.Errorf("generated feature Dockerfile missing in %s: %w", buildDir, err)
 	}
 	args := []string{"build", "-f", filepath.Join(buildDir, "Dockerfile"), "-t", resolved.ImageName, buildDir}
-	if err := m.runner.backend.BuildImage(ctx, "Building features image", "", args, events); err != nil {
+	if err := m.runner.backend.Run(ctx, runtimeCommand{Kind: runtimeCommandDocker, Label: "Building features image", Args: args, Dir: "", Stdout: m.runner.stdout, Stderr: m.runner.stderr, Events: events}); err != nil {
 		entries, _ := os.ReadDir(buildDir)
 		names := make([]string, 0, len(entries))
 		for _, entry := range entries {
@@ -116,7 +116,7 @@ func (m *runtimeImageManager) ensureComposeImage(ctx context.Context, resolved d
 	}
 	baseImage := service.Image
 	if service.Build.Enabled() {
-		if err := m.runner.backend.ComposeBuild(ctx, resolved, events); err != nil {
+		if err := m.runner.backend.Run(ctx, runtimeCommand{Kind: runtimeCommandDocker, Label: fmt.Sprintf("Building compose service %s", resolved.ComposeService), Args: append(composeBaseArgs(resolved), "build", resolved.ComposeService), Dir: resolved.ConfigDir, Stdout: m.runner.stdout, Stderr: m.runner.stderr, Events: events}); err != nil {
 			return "", err
 		}
 		if baseImage == "" {
@@ -165,5 +165,5 @@ func (m *runtimeImageManager) EnsureUpdatedUIDContainer(ctx context.Context, res
 		return nil
 	}
 	args := []string{"exec", "-u", "root", containerID, "sh", "-lc", updateUIDCommand, "sh", remoteUser, fmt.Sprintf("%d", uid), fmt.Sprintf("%d", gid)}
-	return m.runner.backend.DockerExec(ctx, "Reconciling container user", args, nil, m.runner.stdout, m.runner.stderr, events)
+	return m.runner.backend.Run(ctx, runtimeCommand{Kind: runtimeCommandDocker, Label: "Reconciling container user", Args: args, Stdout: m.runner.stdout, Stderr: m.runner.stderr, Events: events})
 }

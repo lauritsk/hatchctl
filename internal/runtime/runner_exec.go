@@ -78,7 +78,7 @@ func (r *Runner) resolveExecHome(ctx context.Context, containerID string, user s
 		args = append(args, "-u", user)
 	}
 	args = append(args, containerID, "sh", "-lc", resolveHomeCommand)
-	home, err := r.backend.DockerOutput(ctx, docker.RunOptions{Args: args})
+	home, err := r.backend.Output(ctx, runtimeCommand{Kind: runtimeCommandDocker, Args: args})
 	if err != nil {
 		return "", fmt.Errorf("resolve home for container user %q: %w", firstNonEmpty(user, "default"), err)
 	}

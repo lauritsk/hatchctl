@@ -19,7 +19,10 @@ func runHostLifecycle(ctx context.Context, cwd string, command devcontainer.Life
 		return nil
 	}
 	return runCommand(ctx, func(ctx context.Context, args []string) error {
-		return backend.RunHost(ctx, cwd, args, streams)
+		if len(args) == 0 {
+			return nil
+		}
+		return backend.Run(ctx, runtimeCommand{Kind: runtimeCommandHost, Binary: args[0], Args: args[1:], Dir: cwd, Stdin: streams.Stdin, Stdout: streams.Stdout, Stderr: streams.Stderr})
 	}, command)
 }
 

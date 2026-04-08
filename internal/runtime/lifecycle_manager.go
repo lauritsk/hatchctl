@@ -108,6 +108,6 @@ func (m *runtimeLifecycleManager) runContainerLifecycle(ctx context.Context, con
 		if err != nil {
 			return err
 		}
-		return m.runner.backend.DockerExec(ctx, label, dockerArgs, nil, m.runner.stdout, m.runner.stderr, events)
+		return m.runner.backend.Run(ctx, runtimeCommand{Kind: runtimeCommandDocker, Label: label, Args: dockerArgs, Stdout: m.runner.stdout, Stderr: m.runner.stderr, Events: events})
 	}, command)
 }

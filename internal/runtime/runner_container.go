@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sort"
 	"strings"
 
@@ -29,7 +30,7 @@ func (r *Runner) findContainer(ctx context.Context, resolved devcontainer.Resolv
 	for key, value := range resolved.Labels {
 		args = append(args, "--filter", "label="+key+"="+value)
 	}
-	result, err := r.backend.DockerOutput(ctx, docker.RunOptions{Args: args})
+	result, err := r.backend.Output(ctx, runtimeCommand{Kind: runtimeCommandDocker, Args: args})
 	if err != nil {
 		return "", err
 	}
@@ -37,7 +38,7 @@ func (r *Runner) findContainer(ctx context.Context, resolved devcontainer.Resolv
 }
 
 func (r *Runner) removeContainer(ctx context.Context, containerID string, events ui.Sink) error {
-	return r.backend.RemoveContainer(ctx, containerID, events)
+	return r.backend.Run(ctx, runtimeCommand{Kind: runtimeCommandDocker, Label: fmt.Sprintf("Removing managed container %s", containerID), Args: []string{"rm", "-f", containerID}, Stdout: r.stdout, Stderr: r.stderr, Events: events})
 }
 
 func (r *Runner) reconcileState(ctx context.Context, resolved devcontainer.ResolvedConfig, state devcontainer.State) (devcontainer.State, error) {

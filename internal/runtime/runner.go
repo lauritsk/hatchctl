@@ -395,7 +395,7 @@ func (r *Runner) Exec(ctx context.Context, opts ExecOptions) (int, error) {
 		r.emitProgress(opts.Events, fmt.Sprintf("Executing command in %s", prepared.containerID))
 	}
 
-	err = r.backend.DockerExec(ctx, "Executing command", args, opts.Stdin, opts.Stdout, opts.Stderr, nil)
+	err = r.backend.Run(ctx, runtimeCommand{Kind: runtimeCommandDocker, Label: "Executing command", Args: args, Stdin: opts.Stdin, Stdout: opts.Stdout, Stderr: opts.Stderr})
 	if err == nil {
 		return 0, nil
 	}
