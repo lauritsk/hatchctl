@@ -18,6 +18,8 @@ Do not keep compatibility shims unless there is a concrete current need.
 
 Prefer using configured `mise` tasks to run repository workflows whenever one is available.
 
+When creating commits, use the configured `mise` task: `mise run commit ...` so commits go through `cog commit` rather than calling `git commit` directly.
+
 For Go formatting, use `gofumpt` via the configured `mise` task instead of running `gofmt` directly.
 
 Prefer the smallest change that materially improves the system, but feel free to do larger structural rewrites when they are the clearest path to a better result.
