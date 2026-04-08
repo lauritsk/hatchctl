@@ -9,7 +9,11 @@ import (
 func TestLoadForWorkspaceMergesUserAndWorkspaceConfig(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	userDir := filepath.Join(home, "Library", "Application Support", "hatchctl")
+	configRoot, err := os.UserConfigDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	userDir := filepath.Join(configRoot, "hatchctl")
 	if err := os.MkdirAll(userDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
