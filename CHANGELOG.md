@@ -2,6 +2,14 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## [v0.5.1](https://github.com/lauritsk/hatchctl/compare/3ab1fa875bfff4a591e963c231101378fa3bfd12..v0.5.1) - 2026-04-08
+#### Bug Fixes
+- (**runtime**) Harden untrusted workspace and artifact trust checks - ([3ab1fa8](https://github.com/lauritsk/hatchctl/commit/3ab1fa875bfff4a591e963c231101378fa3bfd12)) - Karl Hans Laurits
+#### Miscellaneous Chores
+- (**mise**) Update hatchctl tool version - ([8d91533](https://github.com/lauritsk/hatchctl/commit/8d915335305ca211c05c1a147523d88661baf2c3)) - Karl Hans Laurits
+
+- - -
+
 ## [v0.5.0](https://github.com/lauritsk/hatchctl/compare/35ff158842fb2509ce86fa65c58fec49588b63db..v0.5.0) - 2026-04-08
 #### Features
 - (**runtime**) Add structured runtime phases to progress output - ([35ff158](https://github.com/lauritsk/hatchctl/commit/35ff158842fb2509ce86fa65c58fec49588b63db)) - Karl Hans Laurits
