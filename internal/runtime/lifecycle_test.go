@@ -3,10 +3,69 @@ package runtime
 import (
 	"bytes"
 	"context"
+	"io"
 	"testing"
 
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
+	ui "github.com/lauritsk/hatchctl/internal/display"
+	"github.com/lauritsk/hatchctl/internal/docker"
 )
+
+type hostOnlyBackend struct {
+	runHost func(context.Context, string, []string, commandIO) error
+}
+
+func (b hostOnlyBackend) RunDocker(context.Context, string, docker.RunOptions, ui.Sink) error {
+	panic("unexpected RunDocker call")
+}
+
+func (b hostOnlyBackend) DockerOutput(context.Context, docker.RunOptions) (string, error) {
+	panic("unexpected DockerOutput call")
+}
+
+func (b hostOnlyBackend) InspectImage(context.Context, string) (docker.ImageInspect, error) {
+	panic("unexpected InspectImage call")
+}
+
+func (b hostOnlyBackend) InspectContainer(context.Context, string) (docker.ContainerInspect, error) {
+	panic("unexpected InspectContainer call")
+}
+
+func (b hostOnlyBackend) RunHost(ctx context.Context, cwd string, args []string, streams commandIO) error {
+	return b.runHost(ctx, cwd, args, streams)
+}
+
+func (b hostOnlyBackend) BuildImage(context.Context, string, string, []string, ui.Sink) error {
+	panic("unexpected BuildImage call")
+}
+
+func (b hostOnlyBackend) StartContainer(context.Context, string, ui.Sink) error {
+	panic("unexpected StartContainer call")
+}
+
+func (b hostOnlyBackend) RemoveContainer(context.Context, string, ui.Sink) error {
+	panic("unexpected RemoveContainer call")
+}
+
+func (b hostOnlyBackend) ContainerStatus(context.Context, string) (string, error) {
+	panic("unexpected ContainerStatus call")
+}
+
+func (b hostOnlyBackend) RunContainer(context.Context, []string) (string, error) {
+	panic("unexpected RunContainer call")
+}
+
+func (b hostOnlyBackend) ComposeUp(context.Context, devcontainer.ResolvedConfig, string, ui.Sink) error {
+	panic("unexpected ComposeUp call")
+}
+
+func (b hostOnlyBackend) ComposeBuild(context.Context, devcontainer.ResolvedConfig, ui.Sink) error {
+	panic("unexpected ComposeBuild call")
+}
+
+func (b hostOnlyBackend) DockerExec(context.Context, string, []string, io.Reader, io.Writer, io.Writer, ui.Sink) error {
+	panic("unexpected DockerExec call")
+}
 
 func TestRunHostLifecycleUsesInjectedRunnerAndStreams(t *testing.T) {
 	t.Parallel()
@@ -19,7 +78,7 @@ func TestRunHostLifecycleUsesInjectedRunnerAndStreams(t *testing.T) {
 		Kind:   "array",
 		Args:   []string{"tool", "arg1"},
 		Exists: true,
-	}, commandIO{Stdin: stdin, Stdout: &stdout, Stderr: &stderr}, func(_ context.Context, cwd string, args []string, streams commandIO) error {
+	}, commandIO{Stdin: stdin, Stdout: &stdout, Stderr: &stderr}, hostOnlyBackend{runHost: func(_ context.Context, cwd string, args []string, streams commandIO) error {
 		called = true
 		if cwd != "/tmp/workspace" {
 			t.Fatalf("unexpected cwd %q", cwd)
@@ -31,7 +90,7 @@ func TestRunHostLifecycleUsesInjectedRunnerAndStreams(t *testing.T) {
 			t.Fatalf("unexpected command streams %#v", streams)
 		}
 		return nil
-	})
+	}})
 	if err != nil {
 		t.Fatalf("run host lifecycle: %v", err)
 	}

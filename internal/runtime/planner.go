@@ -89,7 +89,7 @@ func (p *workspacePlanner) prepareWorkspace(ctx context.Context, opts prepareWor
 		prepared.containerID = containerID
 	}
 	if opts.inspectContainer && prepared.containerID != "" {
-		inspect, err := p.runner.docker.InspectContainer(ctx, prepared.containerID)
+		inspect, err := p.runner.backend.InspectContainer(ctx, prepared.containerID)
 		if err != nil {
 			return preparedWorkspace{}, err
 		}

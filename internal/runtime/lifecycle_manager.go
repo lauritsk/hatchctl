@@ -6,7 +6,6 @@ import (
 
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	ui "github.com/lauritsk/hatchctl/internal/display"
-	"github.com/lauritsk/hatchctl/internal/docker"
 )
 
 type runtimeLifecycleManager struct {
@@ -15,7 +14,7 @@ type runtimeLifecycleManager struct {
 
 func (m *runtimeLifecycleManager) RunForUp(ctx context.Context, resolved devcontainer.ResolvedConfig, containerID string, created bool, state devcontainer.State, dotfiles DotfilesOptions, events ui.Sink) error {
 	if created || !state.LifecycleReady {
-		if err := runHostLifecycle(ctx, resolved.WorkspaceFolder, resolved.Config.InitializeCommand, m.runner.progressCommandIO(events, "Running initializeCommand", m.runner.commandIO()), m.runner.hostCommandRunner); err != nil {
+		if err := runHostLifecycle(ctx, resolved.WorkspaceFolder, resolved.Config.InitializeCommand, m.runner.progressCommandIO(events, "Running initializeCommand", m.runner.commandIO()), m.runner.backend); err != nil {
 			return err
 		}
 		if err := m.runContainerLifecycleList(ctx, containerID, resolved, resolved.Merged.OnCreateCommands, events, "Running onCreateCommand"); err != nil {
@@ -42,7 +41,7 @@ func (m *runtimeLifecycleManager) RunForUp(ctx context.Context, resolved devcont
 func (m *runtimeLifecycleManager) RunPhase(ctx context.Context, resolved devcontainer.ResolvedConfig, containerID string, phase string, state devcontainer.State, dotfiles DotfilesOptions, runDotfiles bool, events ui.Sink) error {
 	switch phase {
 	case "all":
-		if err := runHostLifecycle(ctx, resolved.WorkspaceFolder, resolved.Config.InitializeCommand, m.runner.progressCommandIO(events, "Running initializeCommand", m.runner.commandIO()), m.runner.hostCommandRunner); err != nil {
+		if err := runHostLifecycle(ctx, resolved.WorkspaceFolder, resolved.Config.InitializeCommand, m.runner.progressCommandIO(events, "Running initializeCommand", m.runner.commandIO()), m.runner.backend); err != nil {
 			return err
 		}
 		if err := m.runContainerLifecycleList(ctx, containerID, resolved, resolved.Merged.OnCreateCommands, events, "Running onCreateCommand"); err != nil {
@@ -64,7 +63,7 @@ func (m *runtimeLifecycleManager) RunPhase(ctx context.Context, resolved devcont
 		}
 		return m.runContainerLifecycleList(ctx, containerID, resolved, resolved.Merged.PostAttachCommands, events, "Running postAttachCommand")
 	case "create":
-		if err := runHostLifecycle(ctx, resolved.WorkspaceFolder, resolved.Config.InitializeCommand, m.runner.progressCommandIO(events, "Running initializeCommand", m.runner.commandIO()), m.runner.hostCommandRunner); err != nil {
+		if err := runHostLifecycle(ctx, resolved.WorkspaceFolder, resolved.Config.InitializeCommand, m.runner.progressCommandIO(events, "Running initializeCommand", m.runner.commandIO()), m.runner.backend); err != nil {
 			return err
 		}
 		if err := m.runContainerLifecycleList(ctx, containerID, resolved, resolved.Merged.OnCreateCommands, events, "Running onCreateCommand"); err != nil {
@@ -109,6 +108,6 @@ func (m *runtimeLifecycleManager) runContainerLifecycle(ctx context.Context, con
 		if err != nil {
 			return err
 		}
-		return m.runner.docker.Run(ctx, m.runner.progressDockerRunOptions(events, label, docker.RunOptions{Args: dockerArgs, Stdout: m.runner.stdout, Stderr: m.runner.stderr}))
+		return m.runner.backend.DockerExec(ctx, label, dockerArgs, nil, m.runner.stdout, m.runner.stderr, events)
 	}, command)
 }

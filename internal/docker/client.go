@@ -8,12 +8,12 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/lauritsk/hatchctl/internal/process"
+	"github.com/lauritsk/hatchctl/internal/command"
 )
 
 type Client struct {
 	Binary string
-	runner process.Runner
+	runner command.Runner
 }
 
 type RunOptions struct {
@@ -61,11 +61,11 @@ func IsNotFound(err error) bool {
 }
 
 func NewClient(binary string) *Client {
-	return &Client{Binary: binary, runner: process.Runner{}}
+	return &Client{Binary: binary, runner: command.Local{}}
 }
 
 func (c *Client) Run(ctx context.Context, opts RunOptions) error {
-	if err := c.runner.Run(ctx, c.Binary, opts.Args, process.RunOptions{Dir: opts.Dir, Env: opts.Env, Stdin: opts.Stdin, Stdout: opts.Stdout, Stderr: opts.Stderr}); err != nil {
+	if err := c.runner.Run(ctx, command.Command{Binary: c.Binary, Args: opts.Args, Dir: opts.Dir, Env: opts.Env, Stdin: opts.Stdin, Stdout: opts.Stdout, Stderr: opts.Stderr}); err != nil {
 		return &Error{Args: append([]string(nil), opts.Args...), Err: err}
 	}
 	return nil
@@ -76,7 +76,7 @@ func (c *Client) Output(ctx context.Context, args ...string) (string, error) {
 }
 
 func (c *Client) OutputOptions(ctx context.Context, opts RunOptions) (string, error) {
-	stdout, stderr, err := c.runner.Output(ctx, c.Binary, opts.Args, process.RunOptions{Dir: opts.Dir, Env: opts.Env, Stdin: opts.Stdin})
+	stdout, stderr, err := c.runner.Output(ctx, command.Command{Binary: c.Binary, Args: opts.Args, Dir: opts.Dir, Env: opts.Env, Stdin: opts.Stdin})
 	if err != nil {
 		var dockerErr *Error
 		if errors.As(err, &dockerErr) {
@@ -89,7 +89,7 @@ func (c *Client) OutputOptions(ctx context.Context, opts RunOptions) (string, er
 }
 
 func (c *Client) CombinedOutput(ctx context.Context, args ...string) (string, error) {
-	data, err := c.runner.CombinedOutput(ctx, c.Binary, args, process.RunOptions{})
+	data, err := c.runner.CombinedOutput(ctx, command.Command{Binary: c.Binary, Args: args})
 	if err != nil {
 		return "", &Error{Args: append([]string(nil), args...), Stderr: data, Err: err}
 	}

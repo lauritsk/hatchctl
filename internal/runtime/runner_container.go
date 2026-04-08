@@ -14,7 +14,7 @@ import (
 var errManagedContainerNotFound = errors.New("managed container not found")
 
 func (r *Runner) containerBridgeModeMatches(ctx context.Context, containerID string, bridgeEnabled bool) (bool, error) {
-	inspect, err := r.docker.InspectContainer(ctx, containerID)
+	inspect, err := r.backend.InspectContainer(ctx, containerID)
 	if err != nil {
 		return false, err
 	}
@@ -29,7 +29,7 @@ func (r *Runner) findContainer(ctx context.Context, resolved devcontainer.Resolv
 	for key, value := range resolved.Labels {
 		args = append(args, "--filter", "label="+key+"="+value)
 	}
-	result, err := r.docker.Output(ctx, args...)
+	result, err := r.backend.DockerOutput(ctx, docker.RunOptions{Args: args})
 	if err != nil {
 		return "", err
 	}
@@ -37,12 +37,12 @@ func (r *Runner) findContainer(ctx context.Context, resolved devcontainer.Resolv
 }
 
 func (r *Runner) removeContainer(ctx context.Context, containerID string, events ui.Sink) error {
-	return r.engineAdapter.RemoveContainer(ctx, containerID, events)
+	return r.backend.RemoveContainer(ctx, containerID, events)
 }
 
 func (r *Runner) reconcileState(ctx context.Context, resolved devcontainer.ResolvedConfig, state devcontainer.State) (devcontainer.State, error) {
 	if state.ContainerID != "" {
-		if _, err := r.docker.InspectContainer(ctx, state.ContainerID); err == nil {
+		if _, err := r.backend.InspectContainer(ctx, state.ContainerID); err == nil {
 			return state, nil
 		} else if !docker.IsNotFound(err) {
 			return devcontainer.State{}, err
@@ -65,7 +65,7 @@ func (r *Runner) effectiveRemoteUser(ctx context.Context, prepared preparedWorks
 		return user, nil
 	}
 	if prepared.containerID != "" {
-		inspect, err := r.docker.InspectContainer(ctx, prepared.containerID)
+		inspect, err := r.backend.InspectContainer(ctx, prepared.containerID)
 		if err != nil {
 			return "", err
 		}
@@ -153,7 +153,7 @@ func (r *Runner) selectBestContainerID(ctx context.Context, output string) (stri
 	}
 	candidates := make([]candidate, 0, len(ids))
 	for _, id := range ids {
-		inspect, err := r.docker.InspectContainer(ctx, id)
+		inspect, err := r.backend.InspectContainer(ctx, id)
 		if err != nil {
 			if docker.IsNotFound(err) {
 				continue

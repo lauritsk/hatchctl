@@ -13,7 +13,7 @@ import (
 )
 
 func (r *Runner) enrichMergedConfig(ctx context.Context, resolved *devcontainer.ResolvedConfig, image string) error {
-	inspect, err := r.docker.InspectImage(ctx, image)
+	inspect, err := r.backend.InspectImage(ctx, image)
 	if err != nil {
 		if resolved.SourceKind == "compose" || isManagedImage(resolved, image) {
 			resolved.Merged = devcontainer.MergeMetadata(resolved.Config, featureMetadata(resolved.Features))
@@ -35,7 +35,7 @@ func (r *Runner) enrichMergedConfig(ctx context.Context, resolved *devcontainer.
 }
 
 func (r *Runner) inspectImageUser(ctx context.Context, image string) (string, error) {
-	inspect, err := r.docker.InspectImage(ctx, image)
+	inspect, err := r.backend.InspectImage(ctx, image)
 	if err != nil {
 		if docker.IsNotFound(err) {
 			return "", nil
@@ -46,7 +46,7 @@ func (r *Runner) inspectImageUser(ctx context.Context, image string) (string, er
 }
 
 func (r *Runner) inspectImageArchitecture(ctx context.Context, image string) (string, error) {
-	inspect, err := r.docker.InspectImage(ctx, image)
+	inspect, err := r.backend.InspectImage(ctx, image)
 	if err != nil {
 		if docker.IsNotFound(err) {
 			return runtime.GOARCH, nil

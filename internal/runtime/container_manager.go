@@ -27,9 +27,9 @@ func (m *runtimeContainerManager) EnsureContainer(ctx context.Context, resolved 
 				return "", false, err
 			}
 		} else {
-			status, statusErr := m.runner.engineAdapter.ContainerStatus(ctx, containerID)
+			status, statusErr := m.runner.backend.ContainerStatus(ctx, containerID)
 			if statusErr == nil && status != "running" {
-				if err := m.runner.engineAdapter.StartContainer(ctx, containerID, events); err != nil {
+				if err := m.runner.backend.StartContainer(ctx, containerID, events); err != nil {
 					return "", false, err
 				}
 			}
@@ -75,7 +75,7 @@ func (m *runtimeContainerManager) EnsureContainer(ctx context.Context, resolved 
 	args = append(args, image)
 	args = append(args, devcontainer.ContainerCommand(resolved.Config)...)
 
-	containerID, err = m.runner.engineAdapter.RunContainer(ctx, args)
+	containerID, err = m.runner.backend.RunContainer(ctx, args)
 	if err != nil {
 		return "", false, err
 	}
@@ -95,13 +95,13 @@ func (m *runtimeContainerManager) ensureComposeContainer(ctx context.Context, re
 			}
 			containerID = ""
 		} else {
-			status, statusErr := m.runner.engineAdapter.ContainerStatus(ctx, containerID)
+			status, statusErr := m.runner.backend.ContainerStatus(ctx, containerID)
 			if statusErr == nil && status == "running" {
 				return containerID, false, nil
 			}
 		}
 	}
-	if err := m.runner.engineAdapter.ComposeUp(ctx, resolved, overridePath, events); err != nil {
+	if err := m.runner.backend.ComposeUp(ctx, resolved, overridePath, events); err != nil {
 		return "", false, err
 	}
 	containerID, err = m.runner.findComposeContainer(ctx, resolved)

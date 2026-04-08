@@ -75,7 +75,7 @@ func (b *composeBuild) Enabled() bool {
 	return b != nil && b.Context != ""
 }
 
-func (r *Runner) composeBaseArgs(resolved devcontainer.ResolvedConfig) []string {
+func composeBaseArgs(resolved devcontainer.ResolvedConfig) []string {
 	args := []string{"compose"}
 	for _, file := range resolved.ComposeFiles {
 		args = append(args, "-f", file)
@@ -86,8 +86,8 @@ func (r *Runner) composeBaseArgs(resolved devcontainer.ResolvedConfig) []string 
 	return args
 }
 
-func (r *Runner) composeArgs(resolved devcontainer.ResolvedConfig, overridePath string) []string {
-	args := r.composeBaseArgs(resolved)
+func composeArgs(resolved devcontainer.ResolvedConfig, overridePath string) []string {
+	args := composeBaseArgs(resolved)
 	if overridePath != "" {
 		args = append(args, "-f", overridePath)
 	}
@@ -95,8 +95,8 @@ func (r *Runner) composeArgs(resolved devcontainer.ResolvedConfig, overridePath 
 }
 
 func (r *Runner) readComposeConfig(ctx context.Context, resolved devcontainer.ResolvedConfig) (composeConfig, error) {
-	args := append(r.composeBaseArgs(resolved), "config", "--format", "json")
-	output, err := r.docker.OutputOptions(ctx, docker.RunOptions{Args: args, Dir: resolved.ConfigDir})
+	args := append(composeBaseArgs(resolved), "config", "--format", "json")
+	output, err := r.backend.DockerOutput(ctx, docker.RunOptions{Args: args, Dir: resolved.ConfigDir})
 	if err != nil {
 		return composeConfig{}, err
 	}
@@ -120,7 +120,7 @@ func (r *Runner) findComposeContainer(ctx context.Context, resolved devcontainer
 		project = firstNonEmpty(config.Name, resolved.ComposeProject)
 	}
 	args := []string{"ps", "-aq", "--filter", "label=com.docker.compose.project=" + project, "--filter", "label=com.docker.compose.service=" + resolved.ComposeService}
-	result, err := r.docker.Output(ctx, args...)
+	result, err := r.backend.DockerOutput(ctx, docker.RunOptions{Args: args})
 	if err != nil {
 		return "", err
 	}

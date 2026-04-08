@@ -8,7 +8,6 @@ import (
 
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	ui "github.com/lauritsk/hatchctl/internal/display"
-	"github.com/lauritsk/hatchctl/internal/docker"
 )
 
 var dotfilesInstallCandidates = []string{
@@ -137,7 +136,7 @@ func (r *Runner) installDotfiles(ctx context.Context, containerID string, resolv
 	}
 	label := fmt.Sprintf("Installing dotfiles from %s", opts.Repository)
 	r.emitProgress(events, label)
-	return r.docker.Run(ctx, r.progressDockerRunOptions(events, label, docker.RunOptions{Args: args, Stdout: r.stdout, Stderr: r.stderr}))
+	return r.backend.DockerExec(ctx, label, args, nil, r.stdout, r.stderr, events)
 }
 
 func dotfilesInstallScript(opts DotfilesOptions) string {

@@ -8,7 +8,6 @@ import (
 
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	ui "github.com/lauritsk/hatchctl/internal/display"
-	"github.com/lauritsk/hatchctl/internal/docker"
 )
 
 type runtimeImageManager struct {
@@ -58,7 +57,7 @@ func (m *runtimeImageManager) buildDockerfileImage(ctx context.Context, resolved
 		args = append(args, resolved.Config.Build.Options...)
 	}
 	args = append(args, contextDir)
-	return m.runner.engineAdapter.BuildImage(ctx, "Building container image", "", args, events)
+	return m.runner.backend.BuildImage(ctx, "Building container image", "", args, events)
 }
 
 func (m *runtimeImageManager) ensureImageWithFeatures(ctx context.Context, resolved devcontainer.ResolvedConfig, events ui.Sink) (string, error) {
@@ -95,7 +94,7 @@ func (m *runtimeImageManager) ensureFeaturesImageFromBase(ctx context.Context, r
 		return "", fmt.Errorf("generated feature Dockerfile missing in %s: %w", buildDir, err)
 	}
 	args := []string{"build", "-f", filepath.Join(buildDir, "Dockerfile"), "-t", resolved.ImageName, buildDir}
-	if err := m.runner.engineAdapter.BuildImage(ctx, "Building features image", "", args, events); err != nil {
+	if err := m.runner.backend.BuildImage(ctx, "Building features image", "", args, events); err != nil {
 		entries, _ := os.ReadDir(buildDir)
 		names := make([]string, 0, len(entries))
 		for _, entry := range entries {
@@ -117,7 +116,7 @@ func (m *runtimeImageManager) ensureComposeImage(ctx context.Context, resolved d
 	}
 	baseImage := service.Image
 	if service.Build.Enabled() {
-		if err := m.runner.engineAdapter.ComposeBuild(ctx, resolved, events); err != nil {
+		if err := m.runner.backend.ComposeBuild(ctx, resolved, events); err != nil {
 			return "", err
 		}
 		if baseImage == "" {
@@ -153,7 +152,7 @@ func (m *runtimeImageManager) EnsureUpdatedUIDContainer(ctx context.Context, res
 	if uid <= 0 || gid <= 0 {
 		return nil
 	}
-	inspect, err := m.runner.docker.InspectImage(ctx, image)
+	inspect, err := m.runner.backend.InspectImage(ctx, image)
 	if err != nil {
 		return err
 	}
@@ -166,5 +165,5 @@ func (m *runtimeImageManager) EnsureUpdatedUIDContainer(ctx context.Context, res
 		return nil
 	}
 	args := []string{"exec", "-u", "root", containerID, "sh", "-lc", updateUIDCommand, "sh", remoteUser, fmt.Sprintf("%d", uid), fmt.Sprintf("%d", gid)}
-	return m.runner.engineAdapter.Run(ctx, "Reconciling container user", docker.RunOptions{Args: args, Stdout: m.runner.stdout, Stderr: m.runner.stderr}, events)
+	return m.runner.backend.DockerExec(ctx, "Reconciling container user", args, nil, m.runner.stdout, m.runner.stderr, events)
 }

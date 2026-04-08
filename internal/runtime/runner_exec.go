@@ -44,7 +44,7 @@ func (r *Runner) effectiveExecUser(ctx context.Context, containerID string, reso
 	if containerID == "" {
 		return "", nil
 	}
-	inspect, err := r.docker.InspectContainer(ctx, containerID)
+	inspect, err := r.backend.InspectContainer(ctx, containerID)
 	if err != nil {
 		return "", err
 	}
@@ -78,7 +78,7 @@ func (r *Runner) resolveExecHome(ctx context.Context, containerID string, user s
 		args = append(args, "-u", user)
 	}
 	args = append(args, containerID, "sh", "-lc", resolveHomeCommand)
-	home, err := r.docker.Output(ctx, args...)
+	home, err := r.backend.DockerOutput(ctx, docker.RunOptions{Args: args})
 	if err != nil {
 		return "", fmt.Errorf("resolve home for container user %q: %w", firstNonEmpty(user, "default"), err)
 	}

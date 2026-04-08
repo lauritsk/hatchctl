@@ -16,20 +16,18 @@ import (
 )
 
 type Runner struct {
-	docker            containerEngine
-	stdin             io.Reader
-	stdout            io.Writer
-	stderr            io.Writer
-	hostCommandRunner hostCommandRunner
-	resolver          workspaceResolver
-	imageVerifier     imageVerificationPolicy
-	planner           *workspacePlanner
-	stateStore        workspaceStateStore
-	bridgeManager     runtimeBridgeManager
-	imageManager      *runtimeImageManager
-	containerManager  *runtimeContainerManager
-	lifecycleManager  *runtimeLifecycleManager
-	engineAdapter     *runtimeEngineAdapter
+	stdin            io.Reader
+	stdout           io.Writer
+	stderr           io.Writer
+	backend          runtimeBackend
+	resolver         workspaceResolver
+	imageVerifier    imageVerificationPolicy
+	planner          *workspacePlanner
+	stateStore       workspaceStateStore
+	bridgeManager    runtimeBridgeManager
+	imageManager     *runtimeImageManager
+	containerManager *runtimeContainerManager
+	lifecycleManager *runtimeLifecycleManager
 }
 
 func NewRunner(client *docker.Client) *Runner {
@@ -38,20 +36,18 @@ func NewRunner(client *docker.Client) *Runner {
 
 func NewRunnerWithIO(client *docker.Client, stdin io.Reader, stdout io.Writer, stderr io.Writer) *Runner {
 	runner := &Runner{
-		docker:            client,
-		stdin:             stdin,
-		stdout:            stdout,
-		stderr:            stderr,
-		hostCommandRunner: defaultHostCommandRunner,
-		imageVerifier:     newImageVerificationPolicy(stderr),
-		resolver:          devcontainerResolver{},
-		stateStore:        devcontainerStateStore{},
+		stdin:         stdin,
+		stdout:        stdout,
+		stderr:        stderr,
+		imageVerifier: newImageVerificationPolicy(stderr),
+		resolver:      devcontainerResolver{},
+		stateStore:    devcontainerStateStore{},
 	}
+	runner.backend = newLocalRuntimeBackend(runner, client)
 	runner.planner = &workspacePlanner{runner: runner, resolver: runner.resolver}
 	runner.imageManager = &runtimeImageManager{runner: runner}
 	runner.containerManager = &runtimeContainerManager{runner: runner}
 	runner.lifecycleManager = &runtimeLifecycleManager{runner: runner}
-	runner.engineAdapter = &runtimeEngineAdapter{runner: runner}
 	return runner
 }
 
@@ -374,12 +370,7 @@ func (r *Runner) Exec(ctx context.Context, opts ExecOptions) (int, error) {
 		r.emitProgress(opts.Events, fmt.Sprintf("Executing command in %s", prepared.containerID))
 	}
 
-	err = r.docker.Run(ctx, docker.RunOptions{
-		Args:   args,
-		Stdin:  opts.Stdin,
-		Stdout: opts.Stdout,
-		Stderr: opts.Stderr,
-	})
+	err = r.backend.DockerExec(ctx, "Executing command", args, opts.Stdin, opts.Stdout, opts.Stderr, nil)
 	if err == nil {
 		return 0, nil
 	}
