@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/lauritsk/hatchctl/internal/fileutil"
 	"github.com/tailscale/hujson"
 )
 
@@ -41,7 +42,7 @@ func ImageName(workspace string, configPath string) string {
 
 func ReadState(stateDir string) (State, error) {
 	path := filepath.Join(stateDir, "state.json")
-	data, err := os.ReadFile(path)
+	data, err := fileutil.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return State{}, nil
@@ -68,7 +69,7 @@ func WriteState(stateDir string, state State) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0o644)
+	return fileutil.WriteFile(path, data, 0o644)
 }
 
 func hashKey(input string) string {

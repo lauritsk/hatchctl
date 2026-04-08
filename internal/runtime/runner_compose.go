@@ -9,6 +9,7 @@ import (
 
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	"github.com/lauritsk/hatchctl/internal/docker"
+	"github.com/lauritsk/hatchctl/internal/fileutil"
 	"go.yaml.in/yaml/v3"
 )
 
@@ -136,7 +137,7 @@ func writeComposeOverride(resolved devcontainer.ResolvedConfig, image string) (s
 	if err != nil {
 		return "", err
 	}
-	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+	if err := fileutil.WriteFile(path, []byte(contents), 0o600); err != nil {
 		return "", err
 	}
 	return path, nil

@@ -10,6 +10,8 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+
+	"github.com/lauritsk/hatchctl/internal/fileutil"
 )
 
 const resolvedPlanCacheVersion = 1
@@ -21,7 +23,7 @@ type resolvedPlanCache struct {
 }
 
 func readResolvedPlanCache(stateDir string, key string) (ResolvedConfig, bool, error) {
-	data, err := os.ReadFile(filepath.Join(stateDir, "resolved-plan.json"))
+	data, err := fileutil.ReadFile(filepath.Join(stateDir, "resolved-plan.json"))
 	if err != nil {
 		if os.IsNotExist(err) {
 			return ResolvedConfig{}, false, nil
@@ -50,7 +52,7 @@ func writeResolvedPlanCache(stateDir string, key string, resolved ResolvedConfig
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(stateDir, "resolved-plan.json"), data, 0o644)
+	return fileutil.WriteFile(filepath.Join(stateDir, "resolved-plan.json"), data, 0o644)
 }
 
 func resolvedPlanCacheKey(configPath string, configDir string, config Config, composeFiles []string) (string, error) {

@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/lauritsk/hatchctl/internal/fileutil"
 )
 
 type FeatureLockFile map[string]FeatureLockEntry
@@ -60,7 +62,7 @@ func FeatureLockFilePath(configPath string) string {
 
 func ReadFeatureLockFile(configPath string) (FeatureLockFile, bool, error) {
 	path := FeatureLockFilePath(configPath)
-	data, err := os.ReadFile(path)
+	data, err := fileutil.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, false, nil
@@ -96,7 +98,7 @@ func WriteFeatureLockFile(configPath string, features []ResolvedFeature) error {
 		lock[feature.Source] = entry
 	}
 	if len(lock) == 0 {
-		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		if err := fileutil.RemoveFile(path); err != nil {
 			return err
 		}
 		return nil
@@ -108,13 +110,13 @@ func WriteFeatureLockFile(configPath string, features []ResolvedFeature) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0o644)
+	return fileutil.WriteFile(path, data, 0o644)
 }
 
 func WriteFeatureStateFile(stateDir string, features []ResolvedFeature) error {
 	path := filepath.Join(stateDir, "features-lock.json")
 	if len(features) == 0 {
-		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		if err := fileutil.RemoveFile(path); err != nil {
 			return err
 		}
 		return nil
@@ -142,5 +144,5 @@ func WriteFeatureStateFile(stateDir string, features []ResolvedFeature) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0o644)
+	return fileutil.WriteFile(path, data, 0o644)
 }

@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+
+	"github.com/lauritsk/hatchctl/internal/fileutil"
 )
 
 type bridgeFileStore interface {
@@ -22,7 +24,7 @@ type filesystemBridgeStore struct{}
 var fileStore bridgeFileStore = filesystemBridgeStore{}
 
 func (filesystemBridgeStore) ReadSession(bridgeDir string) (*Session, error) {
-	data, err := os.ReadFile(filepath.Join(bridgeDir, "session.json"))
+	data, err := fileutil.ReadFile(filepath.Join(bridgeDir, "session.json"))
 	if err != nil {
 		return nil, err
 	}
@@ -38,11 +40,11 @@ func (filesystemBridgeStore) SaveSession(bridgeDir string, session *Session) err
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(bridgeDir, "session.json"), data, 0o600)
+	return fileutil.WriteFile(filepath.Join(bridgeDir, "session.json"), data, 0o600)
 }
 
 func (filesystemBridgeStore) ReadPID(pidPath string) (int, error) {
-	data, err := os.ReadFile(pidPath)
+	data, err := fileutil.ReadFile(pidPath)
 	if err != nil {
 		return 0, err
 	}
@@ -54,7 +56,7 @@ func (filesystemBridgeStore) ReadPID(pidPath string) (int, error) {
 }
 
 func (filesystemBridgeStore) WritePID(pidPath string, pid int) error {
-	return os.WriteFile(pidPath, []byte(strconv.Itoa(pid)), 0o600)
+	return fileutil.WriteFile(pidPath, []byte(strconv.Itoa(pid)), 0o600)
 }
 
 func (filesystemBridgeStore) WriteConfig(session *Session, containerID string) error {
@@ -70,7 +72,7 @@ func (filesystemBridgeStore) WriteConfig(session *Session, containerID string) e
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(session.ConfigPath, data, 0o600)
+	return fileutil.WriteFile(session.ConfigPath, data, 0o600)
 }
 
 func (filesystemBridgeStore) WriteStatus(session *Session, status statusFile) error {
@@ -81,11 +83,11 @@ func (filesystemBridgeStore) WriteStatus(session *Session, status statusFile) er
 	if err := os.MkdirAll(filepath.Dir(session.StatusPath), 0o700); err != nil {
 		return err
 	}
-	return os.WriteFile(session.StatusPath, data, 0o600)
+	return fileutil.WriteFile(session.StatusPath, data, 0o600)
 }
 
 func (filesystemBridgeStore) ReadStatus(statusPath string) ([]byte, error) {
-	return os.ReadFile(statusPath)
+	return fileutil.ReadFile(statusPath)
 }
 
 func bytesTrimSpace(data []byte) string {

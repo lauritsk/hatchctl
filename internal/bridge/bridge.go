@@ -15,6 +15,7 @@ import (
 	"syscall"
 
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
+	"github.com/lauritsk/hatchctl/internal/fileutil"
 )
 
 type Session struct {
@@ -69,10 +70,10 @@ func Prepare(stateDir string, enabled bool, helperArch string) (*Session, error)
 	if session.Token == "" {
 		session.Token = randomToken(18)
 	}
-	if err := os.WriteFile(helperPath, []byte(openShim(session)), 0o755); err != nil {
+	if err := fileutil.WriteFile(helperPath, []byte(openShim(session)), 0o755); err != nil {
 		return nil, err
 	}
-	if err := os.WriteFile(filepath.Join(binPath, "xdg-open"), []byte(xdgOpenShim()), 0o755); err != nil {
+	if err := fileutil.WriteFile(filepath.Join(binPath, "xdg-open"), []byte(xdgOpenShim()), 0o755); err != nil {
 		return nil, err
 	}
 	resolvedHelperArch := normalizeHelperArch(helperArch)
@@ -205,10 +206,7 @@ func installHelperBinary(binPath string, helperArch string) error {
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(helperPath, data, 0o755); err != nil {
-		return err
-	}
-	return os.Chmod(helperPath, 0o755)
+	return fileutil.WriteFile(helperPath, data, 0o755)
 }
 
 func helperBinaryData(helperArch string) ([]byte, error) {
