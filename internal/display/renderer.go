@@ -16,9 +16,11 @@ import (
 type EventKind string
 
 const (
-	EventProgress EventKind = "progress"
-	EventDebug    EventKind = "debug"
-	EventClear    EventKind = "clear"
+	EventProgress       EventKind = "progress"
+	EventProgressOutput EventKind = "progress_output"
+	EventWarning        EventKind = "warning"
+	EventDebug          EventKind = "debug"
+	EventClear          EventKind = "clear"
 )
 
 type Event struct {
@@ -94,6 +96,16 @@ func (r *Renderer) Emit(event Event) {
 				return
 			}
 			r.spinner.SetMessage(event.Message)
+		case EventProgressOutput:
+			if event.Message == "" {
+				return
+			}
+			r.spinner.WriteLine(r.styleProgress(event.Message))
+		case EventWarning:
+			if event.Message == "" {
+				return
+			}
+			r.spinner.WriteLine(r.styleWarning(event.Message))
 		case EventDebug:
 			if event.Message == "" {
 				return
@@ -110,6 +122,11 @@ func (r *Renderer) Emit(event Event) {
 			return
 		}
 		_, _ = fmt.Fprintf(r.err, "==> %s\n", event.Message)
+	case EventWarning:
+		if event.Message == "" {
+			return
+		}
+		_, _ = fmt.Fprintf(r.err, "warning: %s\n", event.Message)
 	case EventDebug:
 		if event.Message == "" {
 			return
@@ -166,6 +183,20 @@ func (r *Renderer) styleDebug(message string) string {
 		return message
 	}
 	return r.styles.debug.Render(message)
+}
+
+func (r *Renderer) styleProgress(message string) string {
+	if !r.errTTY {
+		return "==> " + message
+	}
+	return r.styles.progress.Render("==> " + message)
+}
+
+func (r *Renderer) styleWarning(message string) string {
+	if !r.errTTY {
+		return "warning: " + message
+	}
+	return r.styles.debug.Render("warning: " + message)
 }
 
 func isTerminal(w io.Writer) bool {

@@ -39,7 +39,7 @@ func NewRunnerWithIO(client *docker.Client, stdin io.Reader, stdout io.Writer, s
 		stdin:         stdin,
 		stdout:        stdout,
 		stderr:        stderr,
-		imageVerifier: newImageVerificationPolicy(stderr),
+		imageVerifier: newImageVerificationPolicy(),
 		resolver:      devcontainerResolver{},
 		stateStore:    devcontainerStateStore{},
 	}
@@ -185,13 +185,13 @@ type RunLifecycleResult struct {
 	Phase       string `json:"phase"`
 }
 
-func (r *Runner) verifyImageReference(ctx context.Context, ref string) error {
-	return r.imageVerifier.Apply(r.imageVerifier.Check(ctx, ref))
+func (r *Runner) verifyImageReference(ctx context.Context, ref string, events ui.Sink) error {
+	return r.imageVerifier.Apply(r.imageVerifier.Check(ctx, ref), events)
 }
 
-func (r *Runner) verifyResolvedFeatures(resolved devcontainer.ResolvedConfig) error {
+func (r *Runner) verifyResolvedFeatures(resolved devcontainer.ResolvedConfig, events ui.Sink) error {
 	for _, feature := range resolved.Features {
-		if err := r.imageVerifier.Apply(feature.Verification); err != nil {
+		if err := r.imageVerifier.Apply(feature.Verification, events); err != nil {
 			return fmt.Errorf("verify feature %q: %w", feature.Source, err)
 		}
 	}

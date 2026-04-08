@@ -1,7 +1,6 @@
 package runtime
 
 import (
-	"fmt"
 	"io"
 	"sync"
 
@@ -31,7 +30,6 @@ func (r *Runner) progressWriters(events ui.Sink, label string, stdout io.Writer,
 		runner: r,
 		events: events,
 		label:  label,
-		out:    firstNonNilWriter(stderr, stdout),
 	}
 	return newProgressStreamWriter(stdout, activate), newProgressStreamWriter(stderr, activate)
 }
@@ -40,16 +38,13 @@ type progressActivation struct {
 	runner *Runner
 	events ui.Sink
 	label  string
-	out    io.Writer
 	once   sync.Once
 }
 
 func (a *progressActivation) Trigger() {
 	a.once.Do(func() {
 		a.runner.clearProgress(a.events)
-		if a.out != nil {
-			_, _ = fmt.Fprintf(a.out, "==> %s\n", a.label)
-		}
+		a.events.Emit(ui.Event{Kind: ui.EventProgressOutput, Message: a.label})
 	})
 }
 
@@ -70,13 +65,4 @@ func (w *progressStreamWriter) Write(p []byte) (int, error) {
 		w.start.Trigger()
 	}
 	return w.writer.Write(p)
-}
-
-func firstNonNilWriter(writers ...io.Writer) io.Writer {
-	for _, writer := range writers {
-		if writer != nil {
-			return writer
-		}
-	}
-	return nil
 }

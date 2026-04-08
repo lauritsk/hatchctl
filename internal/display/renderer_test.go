@@ -56,3 +56,30 @@ func TestRendererClearEventStopsSpinner(t *testing.T) {
 		t.Fatal("expected clear event to stop spinner")
 	}
 }
+
+func TestRendererWarningEventPrintsWarningPrefix(t *testing.T) {
+	t.Parallel()
+
+	var errBuf bytes.Buffer
+	r := NewRenderer(&bytes.Buffer{}, &errBuf, false)
+
+	r.Emit(Event{Kind: EventWarning, Message: "be careful"})
+
+	if got := errBuf.String(); got != "warning: be careful\n" {
+		t.Fatalf("unexpected warning output %q", got)
+	}
+}
+
+func TestRendererProgressOutputDoesNotDuplicateNonTTYProgress(t *testing.T) {
+	t.Parallel()
+
+	var errBuf bytes.Buffer
+	r := NewRenderer(&bytes.Buffer{}, &errBuf, false)
+
+	r.Emit(Event{Kind: EventProgress, Message: "Installing dotfiles"})
+	r.Emit(Event{Kind: EventProgressOutput, Message: "Installing dotfiles"})
+
+	if got := errBuf.String(); got != "==> Installing dotfiles\n" {
+		t.Fatalf("unexpected progress output %q", got)
+	}
+}

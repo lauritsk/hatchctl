@@ -35,10 +35,10 @@ func TestProgressDockerRunOptionsPrintsHeaderOnceOnFirstOutput(t *testing.T) {
 	if got := stdout.String(); got != "hello\n" {
 		t.Fatalf("unexpected stdout %q", got)
 	}
-	if got := stderr.String(); got != "==> Installing dotfiles\nwarning\n" {
+	if got := stderr.String(); got != "warning\n" {
 		t.Fatalf("unexpected stderr %q", got)
 	}
-	if len(sink.events) != 1 || sink.events[0].Kind != ui.EventClear {
+	if len(sink.events) != 2 || sink.events[0].Kind != ui.EventClear || sink.events[1].Kind != ui.EventProgressOutput || sink.events[1].Message != "Installing dotfiles" {
 		t.Fatalf("unexpected events %#v", sink.events)
 	}
 }
@@ -75,10 +75,10 @@ func TestProgressCommandIOFallsBackToStdoutForHeader(t *testing.T) {
 		t.Fatalf("write stdout: %v", err)
 	}
 
-	if got := stdout.String(); got != "==> Running initializeCommand\noutput\n" {
+	if got := stdout.String(); got != "output\n" {
 		t.Fatalf("unexpected stdout %q", got)
 	}
-	if len(sink.events) != 1 || sink.events[0].Kind != ui.EventClear {
+	if len(sink.events) != 2 || sink.events[0].Kind != ui.EventClear || sink.events[1].Kind != ui.EventProgressOutput || sink.events[1].Message != "Running initializeCommand" {
 		t.Fatalf("unexpected events %#v", sink.events)
 	}
 }

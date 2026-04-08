@@ -34,7 +34,7 @@ func (p *workspacePlanner) prepareResolved(ctx context.Context, opts prepareReso
 	if err != nil {
 		return devcontainer.ResolvedConfig{}, err
 	}
-	if err := p.runner.verifyResolvedFeatures(resolved); err != nil {
+	if err := p.runner.verifyResolvedFeatures(resolved, opts.Events); err != nil {
 		return devcontainer.ResolvedConfig{}, err
 	}
 	if opts.Debug {

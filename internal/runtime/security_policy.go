@@ -3,42 +3,40 @@ package runtime
 import (
 	"context"
 	"errors"
-	"fmt"
-	"io"
 	"os"
 	"strings"
 
+	ui "github.com/lauritsk/hatchctl/internal/display"
 	"github.com/lauritsk/hatchctl/internal/security"
 )
 
 type imageVerificationPolicy struct {
 	strict bool
-	stderr io.Writer
 }
 
-func newImageVerificationPolicy(stderr io.Writer) imageVerificationPolicy {
-	return imageVerificationPolicy{strict: envTruthy(security.CosignStrictEnvVar), stderr: stderr}
+func newImageVerificationPolicy() imageVerificationPolicy {
+	return imageVerificationPolicy{strict: envTruthy(security.CosignStrictEnvVar)}
 }
 
 func (p imageVerificationPolicy) Check(ctx context.Context, ref string) security.VerificationResult {
 	return security.VerifyImage(ctx, ref)
 }
 
-func (p imageVerificationPolicy) Apply(result security.VerificationResult) error {
+func (p imageVerificationPolicy) Apply(result security.VerificationResult, events ui.Sink) error {
 	if result.Verified || result.Reason == "" {
 		return nil
 	}
 	if p.strict {
 		return errors.New(result.Error())
 	}
-	if p.stderr != nil {
-		_, _ = fmt.Fprintf(p.stderr, "warning: %s\n", result.Error())
+	if events != nil {
+		events.Emit(ui.Event{Kind: ui.EventWarning, Message: result.Error()})
 	}
 	return nil
 }
 
-func (p imageVerificationPolicy) Verify(ctx context.Context, ref string) error {
-	return p.Apply(p.Check(ctx, ref))
+func (p imageVerificationPolicy) Verify(ctx context.Context, ref string, events ui.Sink) error {
+	return p.Apply(p.Check(ctx, ref), events)
 }
 
 func envTruthy(name string) bool {
