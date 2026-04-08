@@ -11,12 +11,21 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/lauritsk/hatchctl/internal/bridge"
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	"github.com/lauritsk/hatchctl/internal/docker"
 )
+
+var cachedIntegrationFixtures struct {
+	mu                sync.Mutex
+	plainImage        string
+	plainWithCMDImage string
+	appUserImage      string
+	bridgeHelperPath  string
+}
 
 func TestBuildPersistsMetadataLabel(t *testing.T) {
 	client := dockerClientForTest(t)
@@ -159,11 +168,8 @@ func TestUpPersistsMergedMetadataAndHonorsMergedRuntimeConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	baseImage := "hatchctl-runtime-test-" + sanitizeName(filepath.Base(workspace))
-	baseDockerfileDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(baseDockerfileDir, "Dockerfile"), []byte("FROM alpine:3.20\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	baseImage := sharedAlpineBaseImage(t, client, ctx)
+	metadataImage := metadataImageTagForKey(filepath.Base(workspace))
 	imageMetadata, err := devcontainer.MetadataLabelValue([]devcontainer.MetadataEntry{{
 		RemoteUser:        "root",
 		ForwardPorts:      devcontainer.ForwardPorts{"localhost:7000", "api:9000"},
@@ -177,10 +183,11 @@ func TestUpPersistsMergedMetadataAndHonorsMergedRuntimeConfig(t *testing.T) {
 		t.Fatalf("marshal image metadata: %v", err)
 	}
 	if err := client.Run(ctx, docker.RunOptions{
-		Args: []string{"build", "-t", baseImage, "--label", devcontainer.ImageMetadataLabel + "=" + imageMetadata, baseDockerfileDir},
+		Args: []string{"build", "-t", metadataImage, "--label", devcontainer.ImageMetadataLabel + "=" + imageMetadata, sharedDockerBuildContext(t, "FROM "+baseImage+"\n")},
 	}); err != nil {
 		t.Fatalf("build base image: %v", err)
 	}
+	baseImage = metadataImage
 	t.Cleanup(func() {
 		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rmi", "-f", baseImage}})
 	})
@@ -387,17 +394,7 @@ func TestReadConfigAndExecFallBackToImageUser(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	baseImage := "hatchctl-image-user-test-" + sanitizeName(filepath.Base(workspace))
-	baseDockerfileDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(baseDockerfileDir, "Dockerfile"), []byte("FROM alpine:3.20\nRUN adduser -D -u 1000 app\nUSER app\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := client.Run(ctx, docker.RunOptions{Args: []string{"build", "-t", baseImage, baseDockerfileDir}}); err != nil {
-		t.Fatalf("build base image: %v", err)
-	}
-	t.Cleanup(func() {
-		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rmi", "-f", baseImage}})
-	})
+	baseImage := sharedAppUserImage(t, client, ctx)
 
 	configPath := filepath.Join(configDir, "devcontainer.json")
 	config := `{
@@ -465,17 +462,7 @@ func TestLifecycleAndExecUseResolvedHomeForImageUser(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	baseImage := "hatchctl-home-test-" + sanitizeName(filepath.Base(workspace))
-	baseDockerfileDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(baseDockerfileDir, "Dockerfile"), []byte("FROM alpine:3.20\nRUN adduser -D -u 1000 app\nUSER app\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := client.Run(ctx, docker.RunOptions{Args: []string{"build", "-t", baseImage, baseDockerfileDir}}); err != nil {
-		t.Fatalf("build base image: %v", err)
-	}
-	t.Cleanup(func() {
-		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rmi", "-f", baseImage}})
-	})
+	baseImage := sharedAppUserImage(t, client, ctx)
 
 	config := `{
 		"name": "home-fallback-test",
@@ -531,17 +518,7 @@ func TestExecStreamsStdinWithoutTTYAndReturnsExitCode(t *testing.T) {
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	baseImage := "hatchctl-exec-test-" + sanitizeName(filepath.Base(workspace))
-	baseDockerfileDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(baseDockerfileDir, "Dockerfile"), []byte("FROM alpine:3.20\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := client.Run(ctx, docker.RunOptions{Args: []string{"build", "-t", baseImage, baseDockerfileDir}}); err != nil {
-		t.Fatalf("build base image: %v", err)
-	}
-	t.Cleanup(func() {
-		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rmi", "-f", baseImage}})
-	})
+	baseImage := sharedAlpineBaseImage(t, client, ctx)
 
 	configPath := filepath.Join(configDir, "devcontainer.json")
 	if err := os.WriteFile(configPath, []byte(`{"image":"`+baseImage+`","workspaceFolder":"/workspaces/demo"}`), 0o644); err != nil {
@@ -707,17 +684,7 @@ func TestUpReconcilesMissingStateContainerToExistingManagedContainer(t *testing.
 		t.Fatal(err)
 	}
 
-	baseImage := "hatchctl-reconcile-test-" + sanitizeName(filepath.Base(workspace))
-	baseDockerfileDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(baseDockerfileDir, "Dockerfile"), []byte("FROM alpine:3.20\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := client.Run(ctx, docker.RunOptions{Args: []string{"build", "-t", baseImage, baseDockerfileDir}}); err != nil {
-		t.Fatalf("build base image: %v", err)
-	}
-	t.Cleanup(func() {
-		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rmi", "-f", baseImage}})
-	})
+	baseImage := sharedAlpineBaseImage(t, client, ctx)
 	if err := os.WriteFile(configPath, []byte(strings.ReplaceAll(config, "alpine:3.20", baseImage)), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -780,17 +747,7 @@ func TestUpRecreateRemovesReconciledManagedContainer(t *testing.T) {
 		t.Fatal(err)
 	}
 	configPath := filepath.Join(configDir, "devcontainer.json")
-	baseImage := "hatchctl-recreate-test-" + sanitizeName(filepath.Base(workspace))
-	baseDockerfileDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(baseDockerfileDir, "Dockerfile"), []byte("FROM alpine:3.20\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := client.Run(ctx, docker.RunOptions{Args: []string{"build", "-t", baseImage, baseDockerfileDir}}); err != nil {
-		t.Fatalf("build base image: %v", err)
-	}
-	t.Cleanup(func() {
-		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rmi", "-f", baseImage}})
-	})
+	baseImage := sharedAlpineBaseImage(t, client, ctx)
 	if err := os.WriteFile(configPath, []byte(`{"image":"`+baseImage+`","workspaceFolder":"/workspaces/demo"}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -840,17 +797,7 @@ func TestUpStartsBridgeOnFirstRunAndReusesSession(t *testing.T) {
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	baseImage := "hatchctl-bridge-test-" + sanitizeName(filepath.Base(workspace))
-	baseDockerfileDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(baseDockerfileDir, "Dockerfile"), []byte("FROM alpine:3.20\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := client.Run(ctx, docker.RunOptions{Args: []string{"build", "-t", baseImage, baseDockerfileDir}}); err != nil {
-		t.Fatalf("build base image: %v", err)
-	}
-	t.Cleanup(func() {
-		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rmi", "-f", baseImage}})
-	})
+	baseImage := sharedAlpineBaseImage(t, client, ctx)
 	configPath := filepath.Join(configDir, "devcontainer.json")
 	if err := os.WriteFile(configPath, []byte(`{"image":"`+baseImage+`","workspaceFolder":"/workspaces/demo"}`), 0o644); err != nil {
 		t.Fatal(err)
@@ -931,17 +878,7 @@ func TestUpEnablingBridgeRecreatesExistingManagedContainer(t *testing.T) {
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	baseImage := "hatchctl-bridge-toggle-test-" + sanitizeName(filepath.Base(workspace))
-	baseDockerfileDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(baseDockerfileDir, "Dockerfile"), []byte("FROM alpine:3.20\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := client.Run(ctx, docker.RunOptions{Args: []string{"build", "-t", baseImage, baseDockerfileDir}}); err != nil {
-		t.Fatalf("build base image: %v", err)
-	}
-	t.Cleanup(func() {
-		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rmi", "-f", baseImage}})
-	})
+	baseImage := sharedAlpineBaseImage(t, client, ctx)
 	configPath := filepath.Join(configDir, "devcontainer.json")
 	if err := os.WriteFile(configPath, []byte(`{"image":"`+baseImage+`","workspaceFolder":"/workspaces/demo"}`), 0o644); err != nil {
 		t.Fatal(err)
@@ -991,14 +928,7 @@ func TestUpEnablingBridgeRecreatesExistingManagedContainer(t *testing.T) {
 
 func setBridgeHelperEnv(t *testing.T) {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "hatchctl")
-	cmd := exec.Command("go", "build", "-o", path, "./cmd/hatchctl")
-	cmd.Dir = filepath.Join("..", "..")
-	cmd.Env = append(os.Environ(), "CGO_ENABLED=0", "GOOS=linux", "GOARCH="+runtime.GOARCH)
-	if output, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("build bridge helper: %v: %s", err, strings.TrimSpace(string(output)))
-	}
-	t.Setenv("HATCHCTL_BRIDGE_HELPER", path)
+	t.Setenv("HATCHCTL_BRIDGE_HELPER", sharedBridgeHelperPath(t))
 }
 
 func TestBuildConsumesLocalFeaturesFromImageSource(t *testing.T) {
@@ -1009,16 +939,8 @@ func TestBuildConsumesLocalFeaturesFromImageSource(t *testing.T) {
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	baseImage := "hatchctl-feature-image-test-" + sanitizeName(filepath.Base(workspace))
-	baseDockerfileDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(baseDockerfileDir, "Dockerfile"), []byte("FROM alpine:3.20\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := client.Run(ctx, docker.RunOptions{Args: []string{"build", "-t", baseImage, baseDockerfileDir}}); err != nil {
-		t.Fatalf("build base image: %v", err)
-	}
+	baseImage := sharedAlpineBaseImage(t, client, ctx)
 	t.Cleanup(func() {
-		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rmi", "-f", baseImage}})
 		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rmi", "-f", devcontainer.ImageName(workspace, filepath.Join(configDir, "devcontainer.json"))}})
 	})
 	writeLocalFeature(t, filepath.Join(configDir, "feature-a"), `{
@@ -1073,18 +995,10 @@ func TestBuildTreatsFeatureOptionValuesAsData(t *testing.T) {
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	baseImage := "hatchctl-feature-data-test-" + sanitizeName(filepath.Base(workspace))
-	baseDockerfileDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(baseDockerfileDir, "Dockerfile"), []byte("FROM alpine:3.20\nRUN mkdir -p /usr/local/share\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := client.Run(ctx, docker.RunOptions{Args: []string{"build", "-t", baseImage, baseDockerfileDir}}); err != nil {
-		t.Fatalf("build base image: %v", err)
-	}
+	baseImage := sharedDataDirBaseImage(t, client, ctx)
 	derivedImage := devcontainer.ImageName(workspace, filepath.Join(configDir, "devcontainer.json"))
 	t.Cleanup(func() {
 		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rmi", "-f", derivedImage}})
-		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rmi", "-f", baseImage}})
 	})
 	writeLocalFeature(t, filepath.Join(configDir, "feature-a"), `{
 		"id": "feature-a",
@@ -1302,14 +1216,7 @@ func TestComposeUpStartsBridgeAndReusesSession(t *testing.T) {
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	baseImage := "hatchctl-compose-bridge-test-" + sanitizeName(filepath.Base(workspace))
-	baseDockerfileDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(baseDockerfileDir, "Dockerfile"), []byte("FROM alpine:3.20\nCMD [\"/bin/sh\",\"-lc\",\"trap 'exit 0' TERM INT; while sleep 1000; do :; done\"]\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := client.Run(ctx, docker.RunOptions{Args: []string{"build", "-t", baseImage, baseDockerfileDir}}); err != nil {
-		t.Fatalf("build base image: %v", err)
-	}
+	baseImage := sharedAlpineWithCommandImage(t, client, ctx)
 	composePath := filepath.Join(configDir, "docker-compose.yml")
 	composeYAML := "services:\n  app:\n    image: " + baseImage + "\n    working_dir: /workspaces/demo\n    volumes:\n      - ..:/workspaces/demo\n"
 	if err := os.WriteFile(composePath, []byte(composeYAML), 0o644); err != nil {
@@ -1327,7 +1234,6 @@ func TestComposeUpStartsBridgeAndReusesSession(t *testing.T) {
 	}
 	t.Cleanup(func() {
 		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rm", "-f", first.ContainerID}})
-		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rmi", "-f", baseImage}})
 		_ = bridge.Stop(first.StateDir)
 	})
 	expectedBridgeStatus := "scaffolded"
@@ -1380,14 +1286,7 @@ func TestComposeUpEnablingBridgeRecreatesExistingManagedContainer(t *testing.T) 
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	baseImage := "hatchctl-compose-bridge-toggle-test-" + sanitizeName(filepath.Base(workspace))
-	baseDockerfileDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(baseDockerfileDir, "Dockerfile"), []byte("FROM alpine:3.20\nCMD [\"/bin/sh\",\"-lc\",\"trap 'exit 0' TERM INT; while sleep 1000; do :; done\"]\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := client.Run(ctx, docker.RunOptions{Args: []string{"build", "-t", baseImage, baseDockerfileDir}}); err != nil {
-		t.Fatalf("build base image: %v", err)
-	}
+	baseImage := sharedAlpineWithCommandImage(t, client, ctx)
 	composePath := filepath.Join(configDir, "docker-compose.yml")
 	composeYAML := "services:\n  app:\n    image: " + baseImage + "\n    working_dir: /workspaces/demo\n    volumes:\n      - ..:/workspaces/demo\n"
 	if err := os.WriteFile(composePath, []byte(composeYAML), 0o644); err != nil {
@@ -1405,7 +1304,6 @@ func TestComposeUpEnablingBridgeRecreatesExistingManagedContainer(t *testing.T) 
 	}
 	t.Cleanup(func() {
 		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rm", "-f", first.ContainerID}})
-		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rmi", "-f", baseImage}})
 	})
 
 	second, err := runner.Up(ctx, UpOptions{Workspace: workspace, BridgeEnabled: true})
@@ -1577,14 +1475,7 @@ func TestComposeImageServiceConsumesLocalFeatures(t *testing.T) {
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	baseImage := "hatchctl-compose-feature-image-" + sanitizeName(filepath.Base(workspace))
-	baseDockerfileDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(baseDockerfileDir, "Dockerfile"), []byte("FROM alpine:3.20\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := client.Run(ctx, docker.RunOptions{Args: []string{"build", "-t", baseImage, baseDockerfileDir}}); err != nil {
-		t.Fatalf("build base image: %v", err)
-	}
+	baseImage := sharedAlpineBaseImage(t, client, ctx)
 	composeYAML := "services:\n  app:\n    image: " + baseImage + "\n    working_dir: /workspaces/demo\n    volumes:\n      - ..:/workspaces/demo\n    command: [\"/bin/sh\",\"-lc\",\"echo base-compose && exit 0\"]\n"
 	if err := os.WriteFile(filepath.Join(configDir, "compose.yaml"), []byte(composeYAML), 0o644); err != nil {
 		t.Fatal(err)
@@ -1623,7 +1514,6 @@ func TestComposeImageServiceConsumesLocalFeatures(t *testing.T) {
 	t.Cleanup(func() {
 		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rm", "-f", upResult.ContainerID}})
 		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rmi", "-f", upResult.Image}})
-		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rmi", "-f", baseImage}})
 	})
 	if upResult.Image != devcontainer.ImageName(workspace, filepath.Join(configDir, "devcontainer.json")) {
 		t.Fatalf("unexpected derived image %q", upResult.Image)
@@ -1740,6 +1630,85 @@ func dockerClientForTest(t *testing.T) *docker.Client {
 		t.Skipf("docker unavailable: %v", err)
 	}
 	return client
+}
+
+func sharedAlpineBaseImage(t *testing.T, client *docker.Client, ctx context.Context) string {
+	t.Helper()
+	return sharedTaggedImage(t, client, ctx, &cachedIntegrationFixtures.plainImage, "base", "FROM alpine:3.20\n")
+}
+
+func sharedAlpineWithCommandImage(t *testing.T, client *docker.Client, ctx context.Context) string {
+	t.Helper()
+	return sharedTaggedImage(t, client, ctx, &cachedIntegrationFixtures.plainWithCMDImage, "base-cmd", "FROM alpine:3.20\nCMD [\"/bin/sh\",\"-lc\",\"trap 'exit 0' TERM INT; while sleep 1000; do :; done\"]\n")
+}
+
+func sharedAppUserImage(t *testing.T, client *docker.Client, ctx context.Context) string {
+	t.Helper()
+	return sharedTaggedImage(t, client, ctx, &cachedIntegrationFixtures.appUserImage, "app-user", "FROM alpine:3.20\nRUN adduser -D -u 1000 app\nUSER app\n")
+}
+
+func sharedDataDirBaseImage(t *testing.T, client *docker.Client, ctx context.Context) string {
+	t.Helper()
+	return sharedTaggedImage(t, client, ctx, nil, metadataImageTagForKey("data-dir"), "FROM alpine:3.20\nRUN mkdir -p /usr/local/share\n")
+}
+
+func sharedTaggedImage(t *testing.T, client *docker.Client, ctx context.Context, slot *string, key string, dockerfile string) string {
+	t.Helper()
+	tag := metadataImageTagForKey(key)
+	if slot != nil {
+		cachedIntegrationFixtures.mu.Lock()
+		if *slot == "" {
+			*slot = tag
+		}
+		tag = *slot
+		cachedIntegrationFixtures.mu.Unlock()
+	}
+	buildImageIfMissing(t, client, ctx, tag, dockerfile)
+	return tag
+}
+
+func buildImageIfMissing(t *testing.T, client *docker.Client, ctx context.Context, tag string, dockerfile string) {
+	t.Helper()
+	if _, err := client.InspectImage(ctx, tag); err == nil {
+		return
+	}
+	if err := client.Run(ctx, docker.RunOptions{Args: []string{"build", "-t", tag, sharedDockerBuildContext(t, dockerfile)}}); err != nil {
+		t.Fatalf("build shared image %q: %v", tag, err)
+	}
+}
+
+func sharedDockerBuildContext(t *testing.T, dockerfile string) string {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "Dockerfile"), []byte(dockerfile), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+func sharedBridgeHelperPath(t *testing.T) string {
+	t.Helper()
+	cachedIntegrationFixtures.mu.Lock()
+	path := cachedIntegrationFixtures.bridgeHelperPath
+	if path == "" {
+		path = filepath.Join(os.TempDir(), "hatchctl-bridge-helper-"+sanitizeName(runtime.GOARCH))
+		cachedIntegrationFixtures.bridgeHelperPath = path
+	}
+	cachedIntegrationFixtures.mu.Unlock()
+	if _, err := os.Stat(path); err == nil {
+		return path
+	}
+	cmd := exec.Command("go", "build", "-o", path, "./cmd/hatchctl")
+	cmd.Dir = filepath.Join("..", "..")
+	cmd.Env = append(os.Environ(), "CGO_ENABLED=0", "GOOS=linux", "GOARCH="+runtime.GOARCH)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("build bridge helper: %v: %s", err, strings.TrimSpace(string(output)))
+	}
+	return path
+}
+
+func metadataImageTagForKey(key string) string {
+	return "hatchctl-test-" + sanitizeName(key)
 }
 
 func readJSONFile(t *testing.T, path string, dest any) {

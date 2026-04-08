@@ -72,4 +72,4 @@ depends = ["release:publish"]
 
 [tasks.check]
 description = "Run project checks"
-depends = ["lint", "test", "build", "secrets", "audit", "commits", "release:check"]
+depends = ["setup", "lint", "test", "build", "secrets", "audit", "commits", "release:check"]
