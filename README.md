@@ -17,11 +17,10 @@ A Development Containers CLI in Go.
 
 ## Install
 
-After downloading a release archive for your platform:
+Install with `mise`:
 
 ```sh
-tar -xzf hatchctl_<version>_<os>_<arch>.tar.gz
-install ./hatchctl /usr/local/bin/hatchctl
+mise use github:lauritsk/hatchctl@latest
 ```
 
 ## Requirements
