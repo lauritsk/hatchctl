@@ -2,6 +2,15 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## [v0.3.5](https://github.com/lauritsk/hatchctl/compare/03a85dfe35b3b185c768034597144688962fc2a0..v0.3.5) - 2026-04-08
+#### Bug Fixes
+- (**bridge**) Preserve loopback host in bridge auth callbacks - ([03f8bd8](https://github.com/lauritsk/hatchctl/commit/03f8bd871b6aec05baa265c02d4ac657625fe5c9)) - Karl Hans Laurits
+- (**runtime**) Start exec in the workspace shell by default - ([03a85df](https://github.com/lauritsk/hatchctl/commit/03a85dfe35b3b185c768034597144688962fc2a0)) - Karl Hans Laurits
+#### Miscellaneous Chores
+- (**mise**) Update hatchctl tool version - ([7d68629](https://github.com/lauritsk/hatchctl/commit/7d68629a8bc5af1b1268b6de12aac4541d6945cc)) - Karl Hans Laurits
+
+- - -
+
 ## [v0.3.4](https://github.com/lauritsk/hatchctl/compare/00a3a29cffcc21090fbab4f1910d2e47a5ea42b9..v0.3.4) - 2026-04-08
 #### Bug Fixes
 - (**bridge**) Rewrite embedded callback URLs for browser auth - ([00a3a29](https://github.com/lauritsk/hatchctl/commit/00a3a29cffcc21090fbab4f1910d2e47a5ea42b9)) - Karl Hans Laurits
