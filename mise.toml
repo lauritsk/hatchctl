@@ -55,7 +55,7 @@ run = "goreleaser check"
 tools.cosign = "3.0.5"
 tools.goreleaser = "2.15.0"
 description = "Publish release artifacts for the current tag"
-depends = ["release:check"]
+depends = ["check"]
 run = "goreleaser release --clean"
 
 [tasks.release]
