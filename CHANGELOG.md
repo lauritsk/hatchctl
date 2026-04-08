@@ -2,6 +2,15 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## [v0.4.0](https://github.com/lauritsk/hatchctl/compare/e0c2f22da0817b9ef0ea3cce60009e73d90feb6a..v0.4.0) - 2026-04-08
+#### Features
+- (**cli**) Improve inline terminal summaries - ([e0c2f22](https://github.com/lauritsk/hatchctl/commit/e0c2f22da0817b9ef0ea3cce60009e73d90feb6a)) - Karl Hans Laurits
+#### Bug Fixes
+- (**cli**) Clarify CLI error wording and display - ([de052ff](https://github.com/lauritsk/hatchctl/commit/de052ffbd521cc3c20998efcbc3cb0e09643e344)) - Karl Hans Laurits
+- (**runtime**) Support chezmoi-style dotfiles repo guessing - ([d0a9165](https://github.com/lauritsk/hatchctl/commit/d0a91655720c6eccea4ef531542f761d34528d79)) - Karl Hans Laurits
+
+- - -
+
 ## [v0.3.6](https://github.com/lauritsk/hatchctl/compare/e092ae72c14ff50a6b1c4320e375f8da9d31edef..v0.3.6) - 2026-04-08
 #### Bug Fixes
 - (**cli**) Preserve terminal access for interactive exec tools - ([9e7e81a](https://github.com/lauritsk/hatchctl/commit/9e7e81a15d1d00195a2899630766305a5ddc362c)) - Karl Hans Laurits
