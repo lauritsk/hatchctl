@@ -24,6 +24,8 @@ type Runner struct {
 	planner           *workspacePlanner
 	stateStore        workspaceStateStore
 	bridgeManager     runtimeBridgeManager
+	imageManager      *runtimeImageManager
+	containerManager  *runtimeContainerManager
 }
 
 func NewRunner(client *docker.Client) *Runner {
@@ -39,6 +41,8 @@ func NewRunnerWithIO(client *docker.Client, stdin io.Reader, stdout io.Writer, s
 		hostCommandRunner: defaultHostCommandRunner,
 	}
 	runner.planner = &workspacePlanner{runner: runner}
+	runner.imageManager = &runtimeImageManager{runner: runner}
+	runner.containerManager = &runtimeContainerManager{runner: runner}
 	return runner
 }
 
@@ -235,7 +239,7 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 	}
 
 	r.emitProgress(opts.Events, "Ensuring container image")
-	image, err := r.ensureImage(ctx, resolved, opts.Events)
+	image, err := r.imageManager.EnsureImage(ctx, resolved, opts.Events)
 	if err != nil {
 		return UpResult{}, err
 	}
@@ -264,12 +268,12 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 	}
 
 	r.emitProgress(opts.Events, "Ensuring managed container")
-	containerID, created, err := r.ensureContainer(ctx, resolved, image, opts.BridgeEnabled, overridePath, opts.Events)
+	containerID, created, err := r.containerManager.EnsureContainer(ctx, resolved, image, opts.BridgeEnabled, overridePath, opts.Events)
 	if err != nil {
 		return UpResult{}, err
 	}
 	r.emitProgress(opts.Events, "Reconciling container user")
-	if err := r.ensureUpdatedUIDContainer(ctx, resolved, image, containerID, opts.Events); err != nil {
+	if err := r.imageManager.EnsureUpdatedUIDContainer(ctx, resolved, image, containerID, opts.Events); err != nil {
 		return UpResult{}, err
 	}
 	if bridgeReport != nil {
@@ -325,7 +329,7 @@ func (r *Runner) Build(ctx context.Context, opts BuildOptions) (BuildResult, err
 	}
 	resolved := prepared.resolved
 	r.emitProgress(opts.Events, "Ensuring container image")
-	image, err := r.ensureImage(ctx, resolved, opts.Events)
+	image, err := r.imageManager.EnsureImage(ctx, resolved, opts.Events)
 	if err != nil {
 		return BuildResult{}, err
 	}
