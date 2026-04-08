@@ -16,7 +16,7 @@ import (
 )
 
 type Runner struct {
-	docker            *docker.Client
+	docker            containerEngine
 	stdin             io.Reader
 	stdout            io.Writer
 	stderr            io.Writer

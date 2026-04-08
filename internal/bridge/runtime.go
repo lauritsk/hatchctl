@@ -9,7 +9,6 @@ import (
 	"net"
 	"net/url"
 	"os"
-	"os/exec"
 	"runtime"
 	"sort"
 	"strconv"
@@ -17,6 +16,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/lauritsk/hatchctl/internal/process"
 )
 
 const containerHelperBin = "/var/run/hatchctl/bridge/bin/hatchctl"
@@ -26,6 +27,8 @@ const bridgeStartupTimeout = 5 * time.Second
 type containerConnectRunner func(string, int, io.Reader, io.Writer) error
 
 var runContainerConnect containerConnectRunner = defaultContainerConnectRunner
+
+var hostProcessRunner = process.Runner{}
 
 type statusFile struct {
 	SessionID   string          `json:"sessionId"`
@@ -105,15 +108,16 @@ func Start(stateDir string, enabled bool, helperArch string, containerID string)
 		}
 		return session, nil
 	}
-	cmd := exec.Command(exe, "bridge", "serve", "--state-dir", stateDir, "--container-id", containerID)
-	cmd.Env = os.Environ()
-	cmd.Stdout = nil
-	cmd.Stderr = nil
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
-	if err := cmd.Start(); err != nil {
+	proc, err := hostProcessRunner.Start(process.StartOptions{
+		Binary:      exe,
+		Args:        []string{"bridge", "serve", "--state-dir", stateDir, "--container-id", containerID},
+		Env:         os.Environ(),
+		SysProcAttr: &syscall.SysProcAttr{Setsid: true},
+	})
+	if err != nil {
 		return nil, err
 	}
-	_ = cmd.Process.Release()
+	_ = proc.Release()
 	if err := waitForBridgeTCP(session.Port, bridgeStartupTimeout); err != nil {
 		return nil, err
 	}
@@ -322,11 +326,9 @@ func forwardEvent(containerPort int, hostPort int) string {
 
 func defaultOpen(target string) error {
 	if command := os.Getenv("HATCHCTL_BRIDGE_OPEN_COMMAND"); command != "" {
-		cmd := exec.Command("/bin/sh", "-lc", command)
-		cmd.Env = append(os.Environ(), "HATCHCTL_BRIDGE_URL="+target)
-		return cmd.Run()
+		return hostProcessRunner.Run(context.Background(), "/bin/sh", []string{"-lc", command}, process.RunOptions{Env: append(os.Environ(), "HATCHCTL_BRIDGE_URL="+target)})
 	}
-	return exec.Command("open", target).Run()
+	return hostProcessRunner.Run(context.Background(), "open", []string{target}, process.RunOptions{})
 }
 
 func stopExisting(session *Session) error {
@@ -388,15 +390,8 @@ func waitForBridgeTCP(port int, timeout time.Duration) error {
 
 func defaultContainerConnectRunner(containerID string, port int, stdin io.Reader, stdout io.Writer) error {
 	var stderr strings.Builder
-	cmd := exec.Command(
-		"docker", "exec", "-i", containerID,
-		containerHelperBin, "bridge", "helper", "connect",
-		"--port", strconv.Itoa(port),
-	)
-	cmd.Stdin = stdin
-	cmd.Stdout = stdout
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
+	err := hostProcessRunner.Run(context.Background(), "docker", []string{"exec", "-i", containerID, containerHelperBin, "bridge", "helper", "connect", "--port", strconv.Itoa(port)}, process.RunOptions{Stdin: stdin, Stdout: stdout, Stderr: &stderr})
+	if err != nil {
 		message := strings.TrimSpace(stderr.String())
 		if message == "" {
 			message = err.Error()

@@ -1,17 +1,19 @@
 package docker
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"os/exec"
 	"strings"
+
+	"github.com/lauritsk/hatchctl/internal/process"
 )
 
 type Client struct {
 	Binary string
+	runner process.Runner
 }
 
 type RunOptions struct {
@@ -59,17 +61,11 @@ func IsNotFound(err error) bool {
 }
 
 func NewClient(binary string) *Client {
-	return &Client{Binary: binary}
+	return &Client{Binary: binary, runner: process.Runner{}}
 }
 
 func (c *Client) Run(ctx context.Context, opts RunOptions) error {
-	cmd := exec.CommandContext(ctx, c.Binary, opts.Args...)
-	cmd.Dir = opts.Dir
-	cmd.Env = opts.Env
-	cmd.Stdin = opts.Stdin
-	cmd.Stdout = opts.Stdout
-	cmd.Stderr = opts.Stderr
-	if err := cmd.Run(); err != nil {
+	if err := c.runner.Run(ctx, c.Binary, opts.Args, process.RunOptions{Dir: opts.Dir, Env: opts.Env, Stdin: opts.Stdin, Stdout: opts.Stdout, Stderr: opts.Stderr}); err != nil {
 		return &Error{Args: append([]string(nil), opts.Args...), Err: err}
 	}
 	return nil
@@ -80,25 +76,22 @@ func (c *Client) Output(ctx context.Context, args ...string) (string, error) {
 }
 
 func (c *Client) OutputOptions(ctx context.Context, opts RunOptions) (string, error) {
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	err := c.Run(ctx, RunOptions{Args: opts.Args, Dir: opts.Dir, Env: opts.Env, Stdin: opts.Stdin, Stdout: &stdout, Stderr: &stderr})
+	stdout, stderr, err := c.runner.Output(ctx, c.Binary, opts.Args, process.RunOptions{Dir: opts.Dir, Env: opts.Env, Stdin: opts.Stdin})
 	if err != nil {
 		var dockerErr *Error
 		if errors.As(err, &dockerErr) {
-			dockerErr.Stderr = stderr.String()
+			dockerErr.Stderr = stderr
 			return "", dockerErr
 		}
-		return "", err
+		return "", &Error{Args: append([]string(nil), opts.Args...), Stderr: stderr, Err: err}
 	}
-	return strings.TrimSpace(stdout.String()), nil
+	return stdout, nil
 }
 
 func (c *Client) CombinedOutput(ctx context.Context, args ...string) (string, error) {
-	cmd := exec.CommandContext(ctx, c.Binary, args...)
-	data, err := cmd.CombinedOutput()
+	data, err := c.runner.CombinedOutput(ctx, c.Binary, args, process.RunOptions{})
 	if err != nil {
-		return "", &Error{Args: append([]string(nil), args...), Stderr: string(data), Err: err}
+		return "", &Error{Args: append([]string(nil), args...), Stderr: data, Err: err}
 	}
-	return strings.TrimSpace(string(data)), nil
+	return data, nil
 }

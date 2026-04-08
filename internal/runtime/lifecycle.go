@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"os/exec"
 
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
+	"github.com/lauritsk/hatchctl/internal/process"
 )
 
 type hostCommandRunner func(context.Context, string, []string, commandIO) error
@@ -18,12 +18,7 @@ type commandIO struct {
 }
 
 func defaultHostCommandRunner(ctx context.Context, cwd string, args []string, streams commandIO) error {
-	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
-	cmd.Dir = cwd
-	cmd.Stdout = streams.Stdout
-	cmd.Stderr = streams.Stderr
-	cmd.Stdin = streams.Stdin
-	return cmd.Run()
+	return process.Runner{}.Run(ctx, args[0], args[1:], process.RunOptions{Dir: cwd, Stdin: streams.Stdin, Stdout: streams.Stdout, Stderr: streams.Stderr})
 }
 
 func runHostLifecycle(ctx context.Context, cwd string, command devcontainer.LifecycleCommand, streams commandIO, runner hostCommandRunner) error {
