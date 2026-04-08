@@ -28,6 +28,7 @@ type Runner struct {
 	imageManager      *runtimeImageManager
 	containerManager  *runtimeContainerManager
 	lifecycleManager  *runtimeLifecycleManager
+	engineAdapter     *runtimeEngineAdapter
 }
 
 func NewRunner(client *docker.Client) *Runner {
@@ -48,6 +49,7 @@ func NewRunnerWithIO(client *docker.Client, stdin io.Reader, stdout io.Writer, s
 	runner.imageManager = &runtimeImageManager{runner: runner}
 	runner.containerManager = &runtimeContainerManager{runner: runner}
 	runner.lifecycleManager = &runtimeLifecycleManager{runner: runner}
+	runner.engineAdapter = &runtimeEngineAdapter{runner: runner}
 	return runner
 }
 

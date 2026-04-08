@@ -3,7 +3,6 @@ package runtime
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sort"
 	"strings"
 
@@ -38,7 +37,7 @@ func (r *Runner) findContainer(ctx context.Context, resolved devcontainer.Resolv
 }
 
 func (r *Runner) removeContainer(ctx context.Context, containerID string, events ui.Sink) error {
-	return r.docker.Run(ctx, r.progressDockerRunOptions(events, fmt.Sprintf("Removing managed container %s", containerID), docker.RunOptions{Args: []string{"rm", "-f", containerID}, Stdout: r.stdout, Stderr: r.stderr}))
+	return r.engineAdapter.RemoveContainer(ctx, containerID, events)
 }
 
 func (r *Runner) reconcileState(ctx context.Context, resolved devcontainer.ResolvedConfig, state devcontainer.State) (devcontainer.State, error) {

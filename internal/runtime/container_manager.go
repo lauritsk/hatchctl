@@ -6,7 +6,6 @@ import (
 
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	ui "github.com/lauritsk/hatchctl/internal/display"
-	"github.com/lauritsk/hatchctl/internal/docker"
 )
 
 type runtimeContainerManager struct {
@@ -28,9 +27,9 @@ func (m *runtimeContainerManager) EnsureContainer(ctx context.Context, resolved 
 				return "", false, err
 			}
 		} else {
-			status, statusErr := m.runner.docker.Output(ctx, "inspect", "--format", "{{.State.Status}}", containerID)
+			status, statusErr := m.runner.engineAdapter.ContainerStatus(ctx, containerID)
 			if statusErr == nil && status != "running" {
-				if err := m.runner.docker.Run(ctx, m.runner.progressDockerRunOptions(events, fmt.Sprintf("Starting existing container %s", containerID), docker.RunOptions{Args: []string{"start", containerID}, Stdout: m.runner.stdout, Stderr: m.runner.stderr})); err != nil {
+				if err := m.runner.engineAdapter.StartContainer(ctx, containerID, events); err != nil {
 					return "", false, err
 				}
 			}
@@ -76,7 +75,7 @@ func (m *runtimeContainerManager) EnsureContainer(ctx context.Context, resolved 
 	args = append(args, image)
 	args = append(args, devcontainer.ContainerCommand(resolved.Config)...)
 
-	containerID, err = m.runner.docker.Output(ctx, args...)
+	containerID, err = m.runner.engineAdapter.RunContainer(ctx, args)
 	if err != nil {
 		return "", false, err
 	}
@@ -96,13 +95,13 @@ func (m *runtimeContainerManager) ensureComposeContainer(ctx context.Context, re
 			}
 			containerID = ""
 		} else {
-			status, statusErr := m.runner.docker.Output(ctx, "inspect", "--format", "{{.State.Status}}", containerID)
+			status, statusErr := m.runner.engineAdapter.ContainerStatus(ctx, containerID)
 			if statusErr == nil && status == "running" {
 				return containerID, false, nil
 			}
 		}
 	}
-	if err := m.runner.docker.Run(ctx, m.runner.progressDockerRunOptions(events, fmt.Sprintf("Starting compose service %s", resolved.ComposeService), docker.RunOptions{Args: append(m.runner.composeArgs(resolved, overridePath), "up", "--no-build", "-d", resolved.ComposeService), Dir: resolved.ConfigDir, Stdout: m.runner.stdout, Stderr: m.runner.stderr})); err != nil {
+	if err := m.runner.engineAdapter.ComposeUp(ctx, resolved, overridePath, events); err != nil {
 		return "", false, err
 	}
 	containerID, err = m.runner.findComposeContainer(ctx, resolved)
