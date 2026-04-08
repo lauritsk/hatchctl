@@ -20,6 +20,8 @@ Prefer using configured `mise` tasks to run repository workflows whenever one is
 
 When creating commits, use the configured `mise` task: `mise run commit ...` so commits go through `cog commit` rather than calling `git commit` directly.
 
+When a task is finished, and the agent is confident nothing else broke and nothing was left undone, commit and push the work.
+
 For Go formatting, use `gofumpt` via the configured `mise` task instead of running `gofmt` directly.
 
 Prefer the smallest change that materially improves the system, but feel free to do larger structural rewrites when they are the clearest path to a better result.
