@@ -9,6 +9,8 @@ import (
 func TestLoadForWorkspaceMergesUserAndWorkspaceConfig(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("APPDATA", filepath.Join(home, "AppData", "Roaming"))
 	configRoot, err := os.UserConfigDir()
 	if err != nil {
 		t.Fatal(err)

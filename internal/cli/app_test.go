@@ -25,6 +25,14 @@ type stubRunner struct {
 	bridgeDoctor func(context.Context, runtime.BridgeDoctorOptions) (bridge.Report, error)
 }
 
+func isolateConfigHome(t *testing.T) {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("APPDATA", filepath.Join(home, "AppData", "Roaming"))
+}
+
 func (s stubRunner) Up(ctx context.Context, opts runtime.UpOptions) (runtime.UpResult, error) {
 	if s.up != nil {
 		return s.up(ctx, opts)
@@ -68,7 +76,7 @@ func (s stubRunner) BridgeDoctor(ctx context.Context, opts runtime.BridgeDoctorO
 }
 
 func TestParseGlobalOptionsStripsLeadingVerboseFlags(t *testing.T) {
-	t.Parallel()
+	isolateConfigHome(t)
 
 	var out bytes.Buffer
 	var errOut bytes.Buffer
@@ -93,7 +101,7 @@ func TestParseGlobalOptionsStripsLeadingVerboseFlags(t *testing.T) {
 }
 
 func TestRunUpPassesFeatureTimeoutFlag(t *testing.T) {
-	t.Parallel()
+	isolateConfigHome(t)
 
 	var out bytes.Buffer
 	var errOut bytes.Buffer
@@ -112,7 +120,7 @@ func TestRunUpPassesFeatureTimeoutFlag(t *testing.T) {
 }
 
 func TestRunUpPassesDotfilesFlags(t *testing.T) {
-	t.Parallel()
+	isolateConfigHome(t)
 
 	var out bytes.Buffer
 	var errOut bytes.Buffer
@@ -131,7 +139,7 @@ func TestRunUpPassesDotfilesFlags(t *testing.T) {
 }
 
 func TestRunUpAcceptsExplicitDotfilesRepositoryFlag(t *testing.T) {
-	t.Parallel()
+	isolateConfigHome(t)
 
 	var out bytes.Buffer
 	var errOut bytes.Buffer
@@ -150,7 +158,7 @@ func TestRunUpAcceptsExplicitDotfilesRepositoryFlag(t *testing.T) {
 }
 
 func TestRunBuildRejectsDotfilesFlags(t *testing.T) {
-	t.Parallel()
+	isolateConfigHome(t)
 
 	var out bytes.Buffer
 	var errOut bytes.Buffer
@@ -163,7 +171,7 @@ func TestRunBuildRejectsDotfilesFlags(t *testing.T) {
 }
 
 func TestRunUpUsesGlobalDebugForProgressAndPlan(t *testing.T) {
-	t.Parallel()
+	isolateConfigHome(t)
 
 	var out bytes.Buffer
 	var errOut bytes.Buffer
@@ -196,7 +204,7 @@ func TestRunUpUsesGlobalDebugForProgressAndPlan(t *testing.T) {
 }
 
 func TestRunUpPrintsSuggestedExecCommands(t *testing.T) {
-	t.Parallel()
+	isolateConfigHome(t)
 
 	var out bytes.Buffer
 	var errOut bytes.Buffer
@@ -224,7 +232,7 @@ func TestRunUpPrintsSuggestedExecCommands(t *testing.T) {
 }
 
 func TestRunUpJSONDisablesProgressOutput(t *testing.T) {
-	t.Parallel()
+	isolateConfigHome(t)
 
 	var out bytes.Buffer
 	var errOut bytes.Buffer
@@ -247,7 +255,7 @@ func TestRunUpJSONDisablesProgressOutput(t *testing.T) {
 }
 
 func TestRunExecRequiresCommand(t *testing.T) {
-	t.Parallel()
+	isolateConfigHome(t)
 
 	var out bytes.Buffer
 	var errOut bytes.Buffer
@@ -260,7 +268,7 @@ func TestRunExecRequiresCommand(t *testing.T) {
 }
 
 func TestRunExecJSONCapturesOutputAndEnv(t *testing.T) {
-	t.Parallel()
+	isolateConfigHome(t)
 
 	var out bytes.Buffer
 	var errOut bytes.Buffer
@@ -300,7 +308,7 @@ func TestRunExecJSONCapturesOutputAndEnv(t *testing.T) {
 }
 
 func TestRunBuildJSONKeepsStdoutClean(t *testing.T) {
-	t.Parallel()
+	isolateConfigHome(t)
 
 	var out bytes.Buffer
 	var errOut bytes.Buffer
@@ -332,7 +340,7 @@ func TestRunBuildJSONKeepsStdoutClean(t *testing.T) {
 }
 
 func TestRunExecReturnsExitErrorForNonZeroCode(t *testing.T) {
-	t.Parallel()
+	isolateConfigHome(t)
 
 	var out bytes.Buffer
 	var errOut bytes.Buffer
@@ -348,7 +356,7 @@ func TestRunExecReturnsExitErrorForNonZeroCode(t *testing.T) {
 }
 
 func TestRunConfigUsesFrozenLockfilePolicy(t *testing.T) {
-	t.Parallel()
+	isolateConfigHome(t)
 
 	var out bytes.Buffer
 	var errOut bytes.Buffer
@@ -373,7 +381,7 @@ func TestRunConfigUsesFrozenLockfilePolicy(t *testing.T) {
 }
 
 func TestRunLifecyclePassesPhase(t *testing.T) {
-	t.Parallel()
+	isolateConfigHome(t)
 
 	var out bytes.Buffer
 	var errOut bytes.Buffer
@@ -393,7 +401,7 @@ func TestRunLifecyclePassesPhase(t *testing.T) {
 }
 
 func TestRunBridgeDoctorUsesFrozenLockfilePolicy(t *testing.T) {
-	t.Parallel()
+	isolateConfigHome(t)
 
 	var out bytes.Buffer
 	var errOut bytes.Buffer
@@ -418,7 +426,7 @@ func TestRunBridgeDoctorUsesFrozenLockfilePolicy(t *testing.T) {
 }
 
 func TestRunBridgeServeRequiresFlags(t *testing.T) {
-	t.Parallel()
+	isolateConfigHome(t)
 
 	var out bytes.Buffer
 	var errOut bytes.Buffer
@@ -431,6 +439,7 @@ func TestRunBridgeServeRequiresFlags(t *testing.T) {
 }
 
 func TestRunUpLoadsWorkspaceConfigTomlDefaults(t *testing.T) {
+	isolateConfigHome(t)
 	var out bytes.Buffer
 	var errOut bytes.Buffer
 	workspace := t.TempDir()
@@ -464,7 +473,7 @@ func TestRunUpLoadsWorkspaceConfigTomlDefaults(t *testing.T) {
 }
 
 func TestRunRejectsInvalidLockfilePolicy(t *testing.T) {
-	t.Parallel()
+	isolateConfigHome(t)
 
 	var out bytes.Buffer
 	var errOut bytes.Buffer
