@@ -26,7 +26,7 @@ func TestLoadForWorkspaceMergesUserAndWorkspaceConfig(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(userDir, "config.toml"), []byte("workspace = \"/user/workspace\"\nlockfile_policy = \"update\"\nfeature_timeout = \"45s\"\n[dotfiles]\nrepository = \"github.com/example/user\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(workspace, ".hatchctl", "config.toml"), []byte("config = \"../custom/devcontainer.json\"\nbridge = true\n[dotfiles]\ntarget_path = \"~/dotfiles\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(workspace, ".hatchctl", "config.toml"), []byte("config = \"../custom/devcontainer.json\"\nbridge = true\nssh = true\n[dotfiles]\ntarget_path = \"~/dotfiles\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -45,6 +45,9 @@ func TestLoadForWorkspaceMergesUserAndWorkspaceConfig(t *testing.T) {
 	}
 	if config.Bridge == nil || !*config.Bridge {
 		t.Fatalf("expected workspace bridge override, got %#v", config.Bridge)
+	}
+	if config.SSHAgent == nil || !*config.SSHAgent {
+		t.Fatalf("expected workspace ssh override, got %#v", config.SSHAgent)
 	}
 	if config.Dotfiles.Repository != "github.com/example/user" || config.Dotfiles.TargetPath != "~/dotfiles" {
 		t.Fatalf("unexpected merged dotfiles %#v", config.Dotfiles)

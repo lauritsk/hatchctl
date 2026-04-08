@@ -22,6 +22,20 @@ func (r *Runner) containerBridgeModeMatches(ctx context.Context, containerID str
 	return (inspect.Config.Labels[devcontainer.BridgeEnabledLabel] == "true") == bridgeEnabled, nil
 }
 
+func (r *Runner) containerSSHAgentMatches(ctx context.Context, containerID string, sshAgent bool) (bool, error) {
+	inspect, err := r.backend.InspectContainer(ctx, containerID)
+	if err != nil {
+		return false, err
+	}
+	if inspect.Config.Labels[devcontainer.SSHAgentLabel] == "true" {
+		return sshAgent, nil
+	}
+	if sshAgent {
+		return containerHasMountTarget(inspect, sshAgentContainerSocketPath), nil
+	}
+	return !containerHasMountTarget(inspect, sshAgentContainerSocketPath), nil
+}
+
 func (r *Runner) findContainer(ctx context.Context, resolved devcontainer.ResolvedConfig) (string, error) {
 	if resolved.SourceKind == "compose" {
 		return r.findComposeContainer(ctx, resolved)
@@ -187,7 +201,7 @@ func isNumericUser(value string) bool {
 	return true
 }
 
-func (r *Runner) ensureContainer(ctx context.Context, resolved devcontainer.ResolvedConfig, image string, bridgeEnabled bool, overridePath string, events ui.Sink) (string, bool, error) {
+func (r *Runner) ensureContainer(ctx context.Context, resolved devcontainer.ResolvedConfig, image string, bridgeEnabled bool, sshAgent bool, overridePath string, events ui.Sink) (string, bool, error) {
 	if resolved.SourceKind == "compose" {
 		return r.ensureComposeContainer(ctx, resolved, overridePath, events)
 	}
@@ -202,13 +216,23 @@ func (r *Runner) ensureContainer(ctx context.Context, resolved devcontainer.Reso
 				return "", false, err
 			}
 		} else {
-			status, statusErr := r.backend.Output(ctx, runtimeCommand{Kind: runtimeCommandDocker, Args: []string{"inspect", "--format", "{{.State.Status}}", containerID}})
-			if statusErr == nil && status != "running" {
-				if err := r.backend.Run(ctx, runtimeCommand{Kind: runtimeCommandDocker, Phase: phaseContainer, Label: fmt.Sprintf("Starting existing container %s", containerID), Args: []string{"start", containerID}, Stdout: r.stdout, Stderr: r.stderr, Events: events}); err != nil {
+			sshMatches, sshMatchErr := r.containerSSHAgentMatches(ctx, containerID, sshAgent)
+			if sshMatchErr != nil {
+				return "", false, sshMatchErr
+			}
+			if !sshMatches {
+				if err := r.removeContainer(ctx, containerID, events); err != nil {
 					return "", false, err
 				}
+			} else {
+				status, statusErr := r.backend.Output(ctx, runtimeCommand{Kind: runtimeCommandDocker, Args: []string{"inspect", "--format", "{{.State.Status}}", containerID}})
+				if statusErr == nil && status != "running" {
+					if err := r.backend.Run(ctx, runtimeCommand{Kind: runtimeCommandDocker, Phase: phaseContainer, Label: fmt.Sprintf("Starting existing container %s", containerID), Args: []string{"start", containerID}, Stdout: r.stdout, Stderr: r.stderr, Events: events}); err != nil {
+						return "", false, err
+					}
+				}
+				return containerID, false, nil
 			}
-			return containerID, false, nil
 		}
 	}
 
@@ -226,6 +250,9 @@ func (r *Runner) ensureContainer(ctx context.Context, resolved devcontainer.Reso
 	}
 	if bridgeEnabled {
 		args = append(args, "--label", devcontainer.BridgeEnabledLabel+"=true")
+	}
+	if sshAgent {
+		args = append(args, "--label", devcontainer.SSHAgentLabel+"=true")
 	}
 	args = append(args, "--mount", resolved.WorkspaceMount, "--mount", stateMount)
 	if resolved.Merged.Init {

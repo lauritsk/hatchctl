@@ -18,6 +18,7 @@ type Config struct {
 	FeatureTimeout string         `toml:"feature_timeout"`
 	LockfilePolicy string         `toml:"lockfile_policy"`
 	Bridge         *bool          `toml:"bridge"`
+	SSHAgent       *bool          `toml:"ssh"`
 	Dotfiles       DotfilesConfig `toml:"dotfiles"`
 	loadedFrom     string
 }
@@ -120,6 +121,10 @@ func merge(base Config, override Config) Config {
 	if override.Bridge != nil {
 		value := *override.Bridge
 		merged.Bridge = &value
+	}
+	if override.SSHAgent != nil {
+		value := *override.SSHAgent
+		merged.SSHAgent = &value
 	}
 	if override.Dotfiles.Repository != "" {
 		merged.Dotfiles.Repository = override.Dotfiles.Repository

@@ -81,6 +81,7 @@ hatchctl up --json
 hatchctl up
 hatchctl up --dotfiles lauritsk/dotfiles
 hatchctl up --allow-host-lifecycle
+hatchctl up --ssh
 hatchctl up --trust-workspace
 hatchctl up --feature-timeout 2m
 hatchctl build
@@ -104,6 +105,8 @@ hatchctl bridge doctor
 Use `--` with `exec` to separate `hatchctl` flags from the command you want to run in the container.
 
 Dotfiles are configured outside `devcontainer.json`, matching how editor tooling treats them. Most users only need `--dotfiles <repo>`. Use `--dotfiles-install-command` or `--dotfiles-target-path` only when the repository needs a custom install step or checkout location. Matching `HATCHCTL_DOTFILES_*` environment variables are also supported.
+
+Use `--ssh` when you want the container to see the host `ssh-agent` socket. This applies a runtime bind mount plus `SSH_AUTH_SOCK` wiring equivalent to adding ssh-agent passthrough in `devcontainer.json`. You can persist that preference in `.hatchctl/config.toml` with `ssh = true`.
 
 Remote feature downloads default to a `90s` HTTP timeout. Override that per command with `--feature-timeout`, for example `hatchctl up --feature-timeout 2m`.
 

@@ -231,6 +231,26 @@ func TestRunUpPrintsSuggestedExecCommands(t *testing.T) {
 	}
 }
 
+func TestRunUpWithSSHPrintsSuggestedExecCommandsWithSSH(t *testing.T) {
+	isolateConfigHome(t)
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	app := NewWithRunner(&out, &errOut, stubRunner{up: func(_ context.Context, opts runtime.UpOptions) (runtime.UpResult, error) {
+		if !opts.SSHAgent {
+			t.Fatal("expected ssh-agent passthrough to be enabled")
+		}
+		return runtime.UpResult{ContainerID: "abc123", Image: "hatchctl-demo", RemoteWorkspaceFolder: "/workspace", StateDir: "/tmp/state"}, nil
+	}})
+
+	if err := app.Run(context.Background(), []string{"up", "--ssh"}); err != nil {
+		t.Fatalf("run app: %v", err)
+	}
+	if got := out.String(); !strings.Contains(got, "hatchctl exec --ssh") {
+		t.Fatalf("expected suggested ssh exec commands, got %q", got)
+	}
+}
+
 func TestRunUpJSONDisablesProgressOutput(t *testing.T) {
 	isolateConfigHome(t)
 
@@ -326,6 +346,23 @@ func TestRunExecJSONCapturesOutputAndEnv(t *testing.T) {
 	}
 	if gotOut := out.String(); !strings.Contains(gotOut, `"args": [`) || !strings.Contains(gotOut, `"echo hi"`) {
 		t.Fatalf("expected command in json output, got %q", gotOut)
+	}
+}
+
+func TestRunExecPassesSSHFlag(t *testing.T) {
+	isolateConfigHome(t)
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	app := NewWithRunner(&out, &errOut, stubRunner{exec: func(_ context.Context, opts runtime.ExecOptions) (int, error) {
+		if !opts.SSHAgent {
+			t.Fatal("expected ssh-agent passthrough flag")
+		}
+		return 0, nil
+	}})
+
+	if err := app.Run(context.Background(), []string{"exec", "--ssh", "--", "pwd"}); err != nil {
+		t.Fatalf("run app: %v", err)
 	}
 }
 
@@ -463,6 +500,23 @@ func TestRunConfigUsesFrozenLockfilePolicy(t *testing.T) {
 	}
 }
 
+func TestRunConfigPassesSSHFlag(t *testing.T) {
+	isolateConfigHome(t)
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	app := NewWithRunner(&out, &errOut, stubRunner{readConfig: func(_ context.Context, opts runtime.ReadConfigOptions) (runtime.ReadConfigResult, error) {
+		if !opts.SSHAgent {
+			t.Fatal("expected ssh-agent passthrough flag")
+		}
+		return runtime.ReadConfigResult{ConfigPath: "/tmp/devcontainer.json", WorkspaceFolder: "/workspace", WorkspaceMount: "type=bind", SourceKind: "image"}, nil
+	}})
+
+	if err := app.Run(context.Background(), []string{"config", "--ssh"}); err != nil {
+		t.Fatalf("run app: %v", err)
+	}
+}
+
 func TestRunLifecyclePassesPhase(t *testing.T) {
 	isolateConfigHome(t)
 
@@ -529,7 +583,7 @@ func TestRunUpLoadsWorkspaceConfigTomlDefaults(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(workspace, ".hatchctl"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(workspace, ".hatchctl", "config.toml"), []byte("config = \"../.devcontainer/devcontainer.json\"\nfeature_timeout = \"45s\"\nlockfile_policy = \"update\"\nbridge = true\n[dotfiles]\nrepository = \"github.com/example/dotfiles\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(workspace, ".hatchctl", "config.toml"), []byte("config = \"../.devcontainer/devcontainer.json\"\nfeature_timeout = \"45s\"\nlockfile_policy = \"update\"\nbridge = true\nssh = true\n[dotfiles]\nrepository = \"github.com/example/dotfiles\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	var got runtime.UpOptions
@@ -547,7 +601,7 @@ func TestRunUpLoadsWorkspaceConfigTomlDefaults(t *testing.T) {
 	if got.FeatureTimeout != 45*time.Second || got.LockfilePolicy != devcontainer.FeatureLockfilePolicyUpdate {
 		t.Fatalf("unexpected config defaults %#v", got)
 	}
-	if !got.BridgeEnabled || got.Dotfiles.Repository != "github.com/example/dotfiles" {
+	if !got.BridgeEnabled || !got.SSHAgent || got.Dotfiles.Repository != "github.com/example/dotfiles" {
 		t.Fatalf("unexpected merged workspace config %#v", got)
 	}
 	if got.Workspace != workspace {

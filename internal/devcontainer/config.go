@@ -20,6 +20,7 @@ const (
 	ManagedByLabel     = "devcontainer.managed_by"
 	ManagedByValue     = "hatchctl"
 	BridgeEnabledLabel = "devcontainer.bridge.enabled"
+	SSHAgentLabel      = "devcontainer.ssh_agent.enabled"
 )
 
 type Config struct {

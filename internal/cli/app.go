@@ -38,6 +38,7 @@ type commandDefaults struct {
 	LockfilePolicy string
 	BridgeEnabled  bool
 	TrustWorkspace bool
+	SSHAgent       bool
 	Dotfiles       dotfilesOptions
 }
 
@@ -117,6 +118,7 @@ func (a *App) newUpCommand(global *globalOptions) *cobra.Command {
 	var featureTimeout time.Duration
 	var recreate bool
 	var bridgeEnabled bool
+	var sshAgent bool
 	trustWorkspace := envTruthy(runtime.TrustWorkspaceEnvVar)
 	allowHostLifecycle := envTruthy("HATCHCTL_ALLOW_HOST_LIFECYCLE")
 	var jsonOut bool
@@ -127,7 +129,7 @@ func (a *App) newUpCommand(global *globalOptions) *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			renderer := a.newRenderer(jsonOut)
 			defer renderer.Close()
-			defaults, err := a.resolveCommandDefaults(cmd, workspace, configPath, featureTimeout, lockfilePolicy, &bridgeEnabled, &trustWorkspace, dotfiles)
+			defaults, err := a.resolveCommandDefaults(cmd, workspace, configPath, featureTimeout, lockfilePolicy, &bridgeEnabled, &trustWorkspace, &sshAgent, dotfiles)
 			if err != nil {
 				return err
 			}
@@ -145,6 +147,7 @@ func (a *App) newUpCommand(global *globalOptions) *cobra.Command {
 				Dotfiles:           defaults.Dotfiles.runtime(),
 				AllowHostLifecycle: allowHostLifecycle,
 				TrustWorkspace:     defaults.TrustWorkspace,
+				SSHAgent:           defaults.SSHAgent,
 				Recreate:           recreate,
 				BridgeEnabled:      defaults.BridgeEnabled,
 				Verbose:            global.Verbose || global.Debug,
@@ -163,12 +166,12 @@ func (a *App) newUpCommand(global *globalOptions) *cobra.Command {
 				if err := renderer.PrintSummary("Devcontainer Ready", upResultFields(result)); err != nil {
 					return err
 				}
-				return renderer.PrintCommandList("Next", upSuggestedCommands(defaults.Workspace, defaults.ConfigPath, defaults.FeatureTimeout, policy))
+				return renderer.PrintCommandList("Next", upSuggestedCommands(defaults.Workspace, defaults.ConfigPath, defaults.FeatureTimeout, policy, defaults.SSHAgent))
 			}
 			if err := renderer.PrintKeyValues(upResultFields(result)); err != nil {
 				return err
 			}
-			return renderer.PrintText("\nNext:\n  " + strings.Join(upSuggestedCommands(defaults.Workspace, defaults.ConfigPath, defaults.FeatureTimeout, policy), "\n  "))
+			return renderer.PrintText("\nNext:\n  " + strings.Join(upSuggestedCommands(defaults.Workspace, defaults.ConfigPath, defaults.FeatureTimeout, policy, defaults.SSHAgent), "\n  "))
 		},
 	}
 	cmd.Flags().StringVar(&workspace, "workspace", "", "workspace folder (defaults to current directory)")
@@ -177,6 +180,7 @@ func (a *App) newUpCommand(global *globalOptions) *cobra.Command {
 	cmd.Flags().StringVar(&lockfilePolicy, "lockfile-policy", "auto", "feature lockfile policy: auto, frozen, or update")
 	cmd.Flags().BoolVar(&recreate, "recreate", false, "remove and recreate an existing managed container")
 	cmd.Flags().BoolVar(&bridgeEnabled, "bridge", false, "enable macOS browser-open and localhost callback forwarding")
+	cmd.Flags().BoolVar(&sshAgent, "ssh", false, "mount the host ssh-agent socket into the container")
 	cmd.Flags().BoolVar(&trustWorkspace, "trust-workspace", trustWorkspace, "trust repo-controlled Docker mounts, privilege, and build settings")
 	cmd.Flags().BoolVar(&allowHostLifecycle, "allow-host-lifecycle", allowHostLifecycle, "trust and run host-side lifecycle commands such as initializeCommand")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "emit machine-readable JSON")
@@ -197,7 +201,7 @@ func (a *App) newBuildCommand(global *globalOptions) *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			renderer := a.newRenderer(jsonOut)
 			defer renderer.Close()
-			defaults, err := a.resolveCommandDefaults(cmd, workspace, configPath, featureTimeout, lockfilePolicy, nil, &trustWorkspace, dotfilesOptions{})
+			defaults, err := a.resolveCommandDefaults(cmd, workspace, configPath, featureTimeout, lockfilePolicy, nil, &trustWorkspace, nil, dotfilesOptions{})
 			if err != nil {
 				return err
 			}
@@ -247,6 +251,7 @@ func (a *App) newExecCommand(global *globalOptions) *cobra.Command {
 	var featureTimeout time.Duration
 	var jsonOut bool
 	var remoteEnv []string
+	var sshAgent bool
 	cmd := &cobra.Command{
 		Use:                "exec [-- COMMAND [ARG...]]",
 		Short:              "Run a command inside the devcontainer",
@@ -257,7 +262,7 @@ func (a *App) newExecCommand(global *globalOptions) *cobra.Command {
 			}
 			renderer := a.newRenderer(jsonOut)
 			defer renderer.Close()
-			defaults, err := a.resolveCommandDefaults(cmd, workspace, configPath, featureTimeout, lockfilePolicy, nil, nil, dotfilesOptions{})
+			defaults, err := a.resolveCommandDefaults(cmd, workspace, configPath, featureTimeout, lockfilePolicy, nil, nil, &sshAgent, dotfilesOptions{})
 			if err != nil {
 				return err
 			}
@@ -281,6 +286,7 @@ func (a *App) newExecCommand(global *globalOptions) *cobra.Command {
 				CacheDir:       defaults.CacheDir,
 				FeatureTimeout: defaults.FeatureTimeout,
 				LockfilePolicy: policy,
+				SSHAgent:       sshAgent,
 				Verbose:        global.Verbose || global.Debug,
 				Debug:          global.Debug,
 				Events:         renderer.Events(),
@@ -313,6 +319,7 @@ func (a *App) newExecCommand(global *globalOptions) *cobra.Command {
 	cmd.Flags().StringVar(&configPath, "config", "", "path to devcontainer.json")
 	cmd.Flags().DurationVar(&featureTimeout, "feature-timeout", 90*time.Second, "timeout for remote feature HTTP requests")
 	cmd.Flags().StringVar(&lockfilePolicy, "lockfile-policy", "auto", "feature lockfile policy: auto, frozen, or update")
+	cmd.Flags().BoolVar(&sshAgent, "ssh", false, "require host ssh-agent passthrough for the managed container")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "emit machine-readable JSON")
 	cmd.Flags().StringArrayVar(&remoteEnv, "env", nil, "set container environment variables as KEY=VALUE; repeat as needed")
 	return cmd
@@ -342,6 +349,7 @@ func (a *App) newConfigCommand(global *globalOptions) *cobra.Command {
 	var lockfilePolicy string
 	var featureTimeout time.Duration
 	var jsonOut bool
+	var sshAgent bool
 	dotfiles := defaultDotfilesOptions()
 	cmd := &cobra.Command{
 		Use:   "config",
@@ -349,7 +357,7 @@ func (a *App) newConfigCommand(global *globalOptions) *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			renderer := a.newRenderer(jsonOut)
 			defer renderer.Close()
-			defaults, err := a.resolveCommandDefaults(cmd, workspace, configPath, featureTimeout, lockfilePolicy, nil, nil, dotfiles)
+			defaults, err := a.resolveCommandDefaults(cmd, workspace, configPath, featureTimeout, lockfilePolicy, nil, nil, &sshAgent, dotfiles)
 			if err != nil {
 				return err
 			}
@@ -364,6 +372,7 @@ func (a *App) newConfigCommand(global *globalOptions) *cobra.Command {
 				CacheDir:       defaults.CacheDir,
 				FeatureTimeout: defaults.FeatureTimeout,
 				LockfilePolicy: policy,
+				SSHAgent:       sshAgent,
 				Dotfiles:       defaults.Dotfiles.runtime(),
 				Verbose:        global.Verbose || global.Debug,
 				Debug:          global.Debug,
@@ -387,6 +396,7 @@ func (a *App) newConfigCommand(global *globalOptions) *cobra.Command {
 	cmd.Flags().StringVar(&configPath, "config", "", "path to devcontainer.json")
 	cmd.Flags().DurationVar(&featureTimeout, "feature-timeout", 90*time.Second, "timeout for remote feature HTTP requests")
 	cmd.Flags().StringVar(&lockfilePolicy, "lockfile-policy", "frozen", "feature lockfile policy: auto, frozen, or update")
+	cmd.Flags().BoolVar(&sshAgent, "ssh", false, "show config with host ssh-agent passthrough applied")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "emit machine-readable JSON")
 	addDotfilesFlags(cmd, &dotfiles)
 	return cmd
@@ -407,7 +417,7 @@ func (a *App) newRunCommand(global *globalOptions) *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			renderer := a.newRenderer(jsonOut)
 			defer renderer.Close()
-			defaults, err := a.resolveCommandDefaults(cmd, workspace, configPath, featureTimeout, lockfilePolicy, nil, nil, dotfiles)
+			defaults, err := a.resolveCommandDefaults(cmd, workspace, configPath, featureTimeout, lockfilePolicy, nil, nil, nil, dotfiles)
 			if err != nil {
 				return err
 			}
@@ -503,7 +513,7 @@ func (a *App) newBridgeDoctorCommand(global *globalOptions) *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			renderer := a.newRenderer(jsonOut)
 			defer renderer.Close()
-			defaults, err := a.resolveCommandDefaults(cmd, workspace, configPath, featureTimeout, lockfilePolicy, nil, nil, dotfilesOptions{})
+			defaults, err := a.resolveCommandDefaults(cmd, workspace, configPath, featureTimeout, lockfilePolicy, nil, nil, nil, dotfilesOptions{})
 			if err != nil {
 				return err
 			}
@@ -606,7 +616,7 @@ func (o dotfilesOptions) runtime() runtime.DotfilesOptions {
 	return runtime.DotfilesOptions{Repository: o.Repository, InstallCommand: o.InstallCommand, TargetPath: o.TargetPath}
 }
 
-func (a *App) resolveCommandDefaults(cmd *cobra.Command, workspace string, configPath string, featureTimeout time.Duration, lockfilePolicy string, bridgeEnabled *bool, trustWorkspace *bool, dotfiles dotfilesOptions) (commandDefaults, error) {
+func (a *App) resolveCommandDefaults(cmd *cobra.Command, workspace string, configPath string, featureTimeout time.Duration, lockfilePolicy string, bridgeEnabled *bool, trustWorkspace *bool, sshAgent *bool, dotfiles dotfilesOptions) (commandDefaults, error) {
 	workspaceHint := ""
 	if flagChanged(cmd, "workspace") {
 		workspaceHint = workspace
@@ -631,6 +641,7 @@ func (a *App) resolveCommandDefaults(cmd *cobra.Command, workspace string, confi
 		FeatureTimeout: resolvedTimeout,
 		LockfilePolicy: lockfilePolicy,
 		TrustWorkspace: trustWorkspace != nil && *trustWorkspace,
+		SSHAgent:       sshAgent != nil && *sshAgent,
 		Dotfiles:       dotfiles,
 	}
 	if !flagChanged(cmd, "lockfile-policy") && config.LockfilePolicy != "" {
@@ -649,6 +660,12 @@ func (a *App) resolveCommandDefaults(cmd *cobra.Command, workspace string, confi
 		resolved.BridgeEnabled = *bridgeEnabled
 		if !flagChanged(cmd, "bridge") && config.Bridge != nil {
 			resolved.BridgeEnabled = *config.Bridge
+		}
+	}
+	if sshAgent != nil {
+		resolved.SSHAgent = *sshAgent
+		if !flagChanged(cmd, "ssh") && config.SSHAgent != nil {
+			resolved.SSHAgent = *config.SSHAgent
 		}
 	}
 	if trustWorkspace != nil {
@@ -722,7 +739,7 @@ func upResultFields(result runtime.UpResult) []ui.KeyValue {
 	return fields
 }
 
-func upSuggestedCommands(workspace string, configPath string, featureTimeout time.Duration, policy devcontainer.FeatureLockfilePolicy) []string {
+func upSuggestedCommands(workspace string, configPath string, featureTimeout time.Duration, policy devcontainer.FeatureLockfilePolicy, sshAgent bool) []string {
 	base := []string{"hatchctl", "exec"}
 	if workspace != "" {
 		base = append(base, "--workspace", shellQuote(workspace))
@@ -735,6 +752,9 @@ func upSuggestedCommands(workspace string, configPath string, featureTimeout tim
 	}
 	if policy != devcontainer.FeatureLockfilePolicyAuto {
 		base = append(base, "--lockfile-policy", string(policy))
+	}
+	if sshAgent {
+		base = append(base, "--ssh")
 	}
 	execPrefix := strings.Join(base, " ") + " --"
 	return []string{

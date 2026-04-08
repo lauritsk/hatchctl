@@ -24,12 +24,19 @@ type ContainerState struct {
 	Running bool   `json:"Running"`
 }
 
+type ContainerMount struct {
+	Type        string `json:"Type"`
+	Source      string `json:"Source"`
+	Destination string `json:"Destination"`
+}
+
 type ContainerInspect struct {
-	ID     string         `json:"Id"`
-	Name   string         `json:"Name"`
-	Image  string         `json:"Image"`
-	Config InspectConfig  `json:"Config"`
-	State  ContainerState `json:"State"`
+	ID     string           `json:"Id"`
+	Name   string           `json:"Name"`
+	Image  string           `json:"Image"`
+	Config InspectConfig    `json:"Config"`
+	State  ContainerState   `json:"State"`
+	Mounts []ContainerMount `json:"Mounts"`
 }
 
 func (c *Client) InspectImage(ctx context.Context, image string) (ImageInspect, error) {

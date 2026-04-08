@@ -50,6 +50,7 @@ type UpOptions struct {
 	Dotfiles           DotfilesOptions
 	AllowHostLifecycle bool
 	TrustWorkspace     bool
+	SSHAgent           bool
 	Recreate           bool
 	BridgeEnabled      bool
 	Verbose            bool
@@ -93,6 +94,7 @@ type ExecOptions struct {
 	CacheDir       string
 	FeatureTimeout time.Duration
 	LockfilePolicy devcontainer.FeatureLockfilePolicy
+	SSHAgent       bool
 	Verbose        bool
 	Debug          bool
 	Events         ui.Sink
@@ -110,6 +112,7 @@ type ReadConfigOptions struct {
 	CacheDir       string
 	FeatureTimeout time.Duration
 	LockfilePolicy devcontainer.FeatureLockfilePolicy
+	SSHAgent       bool
 	Dotfiles       DotfilesOptions
 	Verbose        bool
 	Debug          bool
@@ -304,6 +307,11 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 	if err := runner.enrichMergedConfig(ctx, &resolved, image); err != nil {
 		return UpResult{}, err
 	}
+	if opts.SSHAgent {
+		if resolved.Merged, err = injectSSHAgent(resolved.Merged); err != nil {
+			return UpResult{}, err
+		}
+	}
 	helperArch, err := runner.inspectImageArchitecture(ctx, image)
 	if err != nil {
 		return UpResult{}, err
@@ -332,7 +340,7 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 	}
 
 	runner.emitPhaseProgress(opts.Events, phaseContainer, "Ensuring managed container")
-	containerID, created, err := runner.ensureContainer(ctx, resolved, image, opts.BridgeEnabled, overridePath, opts.Events)
+	containerID, created, err := runner.ensureContainer(ctx, resolved, image, opts.BridgeEnabled, opts.SSHAgent, overridePath, opts.Events)
 	if err != nil {
 		return UpResult{}, err
 	}
@@ -430,6 +438,14 @@ func (r *Runner) Exec(ctx context.Context, opts ExecOptions) (int, error) {
 		return 0, err
 	}
 	resolved := prepared.resolved
+	if opts.SSHAgent {
+		if resolved.Merged, err = injectSSHAgent(resolved.Merged); err != nil {
+			return 0, err
+		}
+		if err := ensureContainerHasSSHAgent(prepared.containerInspect, sshAgentContainerSocketPath); err != nil {
+			return 0, err
+		}
+	}
 	interactive := shouldAllocateTTY(opts.Stdin, opts.Stdout)
 	args, err := r.dockerExecArgs(ctx, prepared.containerID, resolved, opts.Stdin != nil, interactive, opts.RemoteEnv, opts.Args)
 	if err != nil {
@@ -479,6 +495,11 @@ func (r *Runner) ReadConfig(ctx context.Context, opts ReadConfigOptions) (ReadCo
 	resolved := prepared.resolved
 	image := prepared.image
 	state := prepared.state
+	if opts.SSHAgent {
+		if resolved.Merged, err = injectSSHAgent(resolved.Merged); err != nil {
+			return ReadConfigResult{}, err
+		}
+	}
 	var bridgeSession *bridge.Session
 	if state.BridgeEnabled {
 		bridgeSession, err = bridge.Preview(resolved.StateDir, true)
