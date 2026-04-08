@@ -16,10 +16,6 @@ Prefer the smallest change that materially improves the system, but feel free to
 
 ## Workflow
 
-Start each new task in a new git worktree on a new branch.
-
-Create a pull request for each task and, when it is safe to do so, merge it as the agent.
-
 Prefer using configured `mise` tasks to run repository workflows whenever one is available.
 
 When creating commits, use the configured `mise` task: `mise run commit ...` so commits go through `cog commit` rather than calling `git commit` directly.
