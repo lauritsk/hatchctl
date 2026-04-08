@@ -430,7 +430,7 @@ func resolveConfigPath(workspace string, configArg string) (string, error) {
 			return candidate, nil
 		}
 	}
-	return "", fmt.Errorf("no devcontainer config found in %s", workspace)
+	return "", fmt.Errorf("no devcontainer config found in %s\nLooked for:\n- %s\n- %s\nAdd a devcontainer config in one of those locations or rerun with --config <path>", workspace, paths[0], paths[1])
 }
 
 func EffectiveDockerfile(config Config) string {

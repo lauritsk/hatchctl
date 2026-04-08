@@ -309,6 +309,28 @@ func TestRunExecJSONRequiresCommand(t *testing.T) {
 	}
 }
 
+func TestExecHelpExplainsShellAndSeparator(t *testing.T) {
+	isolateConfigHome(t)
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	app := NewWithRunner(&out, &errOut, stubRunner{})
+
+	if err := app.Run(context.Background(), []string{"exec", "--help"}); err != nil {
+		t.Fatalf("run app: %v", err)
+	}
+	got := out.String()
+	if !strings.Contains(got, "Open the remote user's default shell in the managed devcontainer") {
+		t.Fatalf("expected updated exec help text, got %q", got)
+	}
+	if !strings.Contains(got, "hatchctl exec") || !strings.Contains(got, "Use `--` to separate hatchctl flags") {
+		t.Fatalf("expected shell and separator guidance, got %q", got)
+	}
+	if errOut.Len() != 0 {
+		t.Fatalf("expected no stderr output, got %q", errOut.String())
+	}
+}
+
 func TestRunExecJSONCapturesOutputAndEnv(t *testing.T) {
 	isolateConfigHome(t)
 
@@ -537,6 +559,26 @@ func TestRunLifecyclePassesPhase(t *testing.T) {
 	}
 }
 
+func TestLifecycleAliasPassesPhase(t *testing.T) {
+	isolateConfigHome(t)
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	app := NewWithRunner(&out, &errOut, stubRunner{runLifecycle: func(_ context.Context, opts runtime.RunLifecycleOptions) (runtime.RunLifecycleResult, error) {
+		if opts.Phase != "start" {
+			t.Fatalf("unexpected phase %q", opts.Phase)
+		}
+		return runtime.RunLifecycleResult{ContainerID: "abc123", Phase: opts.Phase}, nil
+	}})
+
+	if err := app.Run(context.Background(), []string{"lifecycle", "--phase", "start"}); err != nil {
+		t.Fatalf("run app: %v", err)
+	}
+	if got := out.String(); got != "Lifecycle phase \"start\" completed for container abc123.\n" {
+		t.Fatalf("unexpected output %q", got)
+	}
+}
+
 func TestRunBridgeDoctorUsesFrozenLockfilePolicy(t *testing.T) {
 	isolateConfigHome(t)
 
@@ -559,6 +601,28 @@ func TestRunBridgeDoctorUsesFrozenLockfilePolicy(t *testing.T) {
 	}
 	if got := out.String(); !strings.Contains(got, "Bridge enabled: true") || !strings.Contains(got, "Current status: running") {
 		t.Fatalf("unexpected bridge doctor output %q", got)
+	}
+}
+
+func TestBridgeHelpHidesInternalServeCommand(t *testing.T) {
+	isolateConfigHome(t)
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	app := NewWithRunner(&out, &errOut, stubRunner{})
+
+	if err := app.Run(context.Background(), []string{"bridge", "--help"}); err != nil {
+		t.Fatalf("run app: %v", err)
+	}
+	got := out.String()
+	if strings.Contains(got, "serve") {
+		t.Fatalf("expected bridge help to hide internal serve command, got %q", got)
+	}
+	if !strings.Contains(got, "doctor") {
+		t.Fatalf("expected bridge doctor in help output, got %q", got)
+	}
+	if errOut.Len() != 0 {
+		t.Fatalf("expected no stderr output, got %q", errOut.String())
 	}
 }
 

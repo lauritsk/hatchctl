@@ -126,6 +126,19 @@ func (a *App) newUpCommand(global *globalOptions) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "up",
 		Short: "Create or reuse a devcontainer for this workspace",
+		Long: strings.Join([]string{
+			"Create or reuse the managed devcontainer for a workspace.",
+			"",
+			"Use this as the normal entry point when you want hatchctl to resolve the config, build the image if needed, and start or reconnect to the container.",
+			"If the workspace asks for host-side lifecycle commands or elevated Docker settings, hatchctl stops and tells you which trust flag to add.",
+		}, "\n"),
+		Example: strings.Join([]string{
+			"hatchctl up",
+			"hatchctl up --workspace ../my-project",
+			"hatchctl up --dotfiles lauritsk/dotfiles",
+			"hatchctl up --trust-workspace --allow-host-lifecycle",
+			"hatchctl up --json",
+		}, "\n"),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			renderer := a.newRenderer(jsonOut)
 			defer renderer.Close()
@@ -198,6 +211,17 @@ func (a *App) newBuildCommand(global *globalOptions) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "build",
 		Short: "Build the devcontainer image without starting it",
+		Long: strings.Join([]string{
+			"Build the resolved devcontainer image without starting a container.",
+			"",
+			"Use this when you want to validate image changes, warm the cache in CI, or inspect build failures separately from container startup.",
+		}, "\n"),
+		Example: strings.Join([]string{
+			"hatchctl build",
+			"hatchctl build --workspace ../my-project",
+			"hatchctl build --lockfile-policy update",
+			"hatchctl build --json",
+		}, "\n"),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			renderer := a.newRenderer(jsonOut)
 			defer renderer.Close()
@@ -253,8 +277,27 @@ func (a *App) newExecCommand(global *globalOptions) *cobra.Command {
 	var remoteEnv []string
 	var sshAgent bool
 	cmd := &cobra.Command{
-		Use:                "exec [-- COMMAND [ARG...]]",
-		Short:              "Run a command inside the devcontainer",
+		Use:   "exec [-- COMMAND [ARG...]]",
+		Short: "Open a shell or run a command inside the devcontainer",
+		Long: strings.Join([]string{
+			"Open the remote user's default shell in the managed devcontainer, or run a command with `--`.",
+			"",
+			"Examples:",
+			"  hatchctl exec",
+			"  hatchctl exec -- pwd",
+			"  hatchctl exec -- go test ./...",
+			"  hatchctl exec --env CI=1 -- sh -lc 'make test'",
+			"",
+			"Use `--` to separate hatchctl flags from the command you want to run in the container.",
+			"`--json` requires an explicit command so hatchctl can return the exit code and captured output.",
+		}, "\n"),
+		Example: strings.Join([]string{
+			"hatchctl exec",
+			"hatchctl exec -- pwd",
+			"hatchctl exec -- go test ./...",
+			"hatchctl exec --env CI=1 -- sh -lc 'make test'",
+			"hatchctl exec --json -- sh -lc 'go test ./...'",
+		}, "\n"),
 		DisableFlagParsing: false,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if jsonOut && len(args) == 0 {
@@ -354,6 +397,16 @@ func (a *App) newConfigCommand(global *globalOptions) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "config",
 		Short: "Show the merged config and detected runtime state",
+		Long: strings.Join([]string{
+			"Inspect the resolved devcontainer config and the runtime state hatchctl detected for this workspace.",
+			"",
+			"This command is for troubleshooting and scripting. It defaults to `--lockfile-policy frozen` so inspection does not update feature resolution as a side effect.",
+		}, "\n"),
+		Example: strings.Join([]string{
+			"hatchctl config",
+			"hatchctl config --workspace ../my-project",
+			"hatchctl config --json",
+		}, "\n"),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			renderer := a.newRenderer(jsonOut)
 			defer renderer.Close()
@@ -412,8 +465,20 @@ func (a *App) newRunCommand(global *globalOptions) *cobra.Command {
 	var jsonOut bool
 	dotfiles := defaultDotfilesOptions()
 	cmd := &cobra.Command{
-		Use:   "run",
-		Short: "Re-run lifecycle steps in an existing container",
+		Use:     "run",
+		Aliases: []string{"lifecycle"},
+		Short:   "Re-run lifecycle steps in an existing container",
+		Long: strings.Join([]string{
+			"Re-run devcontainer lifecycle phases in an existing managed container.",
+			"",
+			"Use this when you need to repeat create, start, or attach hooks. For opening a shell or running ad hoc commands, use `hatchctl exec` instead.",
+		}, "\n"),
+		Example: strings.Join([]string{
+			"hatchctl run",
+			"hatchctl lifecycle --phase attach",
+			"hatchctl run --phase start --allow-host-lifecycle",
+			"hatchctl run --json --phase create",
+		}, "\n"),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			renderer := a.newRenderer(jsonOut)
 			defer renderer.Close()
@@ -465,6 +530,7 @@ func (a *App) newBridgeCommand(global *globalOptions) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "bridge",
 		Short: "macOS bridge commands and diagnostics",
+		Long:  "Inspect and manage the macOS bridge used for browser-open and localhost callback forwarding.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return cmd.Help()
 		},
@@ -510,6 +576,16 @@ func (a *App) newBridgeDoctorCommand(global *globalOptions) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "doctor",
 		Short: "Check macOS bridge availability and status",
+		Long: strings.Join([]string{
+			"Inspect bridge availability, helper paths, and the current session state for this workspace.",
+			"",
+			"This command defaults to `--lockfile-policy frozen` so diagnostics do not update feature resolution as a side effect.",
+		}, "\n"),
+		Example: strings.Join([]string{
+			"hatchctl bridge doctor",
+			"hatchctl bridge doctor --workspace ../my-project",
+			"hatchctl bridge doctor --json",
+		}, "\n"),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			renderer := a.newRenderer(jsonOut)
 			defer renderer.Close()
@@ -561,8 +637,9 @@ func (a *App) newBridgeServeCommand() *cobra.Command {
 	var stateDir string
 	var containerID string
 	cmd := &cobra.Command{
-		Use:   "serve",
-		Short: "Serve bridge callbacks for a managed container",
+		Use:    "serve",
+		Short:  "Serve bridge callbacks for a managed container",
+		Hidden: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if stateDir == "" || containerID == "" {
 				return errors.New("missing required flags: --state-dir and --container-id")
