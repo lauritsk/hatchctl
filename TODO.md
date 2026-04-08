@@ -2,7 +2,6 @@
 
 ## Not Done
 
-- persist or cache a resolved workspace/runtime plan so `up`, `build`, `exec`, `config`, and lifecycle commands stop re-resolving and re-inspecting the same state repeatedly
 - evaluate a hybrid Docker integration that uses the Engine API for inspect/start/exec-heavy paths while keeping Compose behavior compatible where the CLI is still the best fit
 
 ## Done
@@ -41,6 +40,7 @@
 - [x] document supported compatibility surface and known gaps
 - [x] document the latest `devcontainer-cli` version/revision this project was synced against so future sync passes can review only newer upstream changes
 - [x] decide first public release scope and cut `v0.1.0` only when single-container runtime, bridge, and feature consumption are solid enough for real use
+- [x] persist or cache a resolved workspace/runtime plan so `up`, `build`, `exec`, `config`, and lifecycle commands stop re-resolving and re-inspecting the same state repeatedly
 - [x] verify container signature with cosign by default (if possible)
 - [x] consider more security improvements / secure-by-default things that could be implemented in this project
 - [x] harden feature option handling so feature env values are treated as data, not shell code during image builds

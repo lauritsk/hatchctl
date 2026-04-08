@@ -674,6 +674,105 @@ func TestResolveReadOnlyFixtureReusesRemoteFeatureLockfile(t *testing.T) {
 	}
 }
 
+func TestResolveReusesPersistedPlanCacheForRemoteFeatures(t *testing.T) {
+	t.Parallel()
+
+	layer := buildFeatureLayer(t, map[string]string{
+		"devcontainer-feature.json": `{"id":"cached-tool","containerEnv":{"CACHE":"yes"}}`,
+		"install.sh":                "#!/bin/sh\nexit 0\n",
+	})
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if r.URL.Path != "/feature.tgz" {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write(layer)
+	}))
+	defer server.Close()
+
+	workspace := t.TempDir()
+	configDir := filepath.Join(workspace, ".devcontainer")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(configDir, "devcontainer.json"), []byte(`{
+		"image": "alpine:3.20",
+		"workspaceFolder": "/workspace",
+		"features": {"`+server.URL+`/feature.tgz": true}
+	}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	resolved, err := Resolve(context.Background(), workspace, "")
+	if err != nil {
+		t.Fatalf("first resolve: %v", err)
+	}
+	if len(resolved.Features) != 1 || resolved.Features[0].Metadata.ID != "cached-tool" {
+		t.Fatalf("unexpected resolved features %#v", resolved.Features)
+	}
+	if requests != 1 {
+		t.Fatalf("expected first resolve to fetch once, got %d requests", requests)
+	}
+
+	resolved, err = Resolve(context.Background(), workspace, "")
+	if err != nil {
+		t.Fatalf("second resolve: %v", err)
+	}
+	if len(resolved.Features) != 1 || resolved.Features[0].Metadata.ID != "cached-tool" {
+		t.Fatalf("unexpected cached resolved features %#v", resolved.Features)
+	}
+	if requests != 1 {
+		t.Fatalf("expected cached resolve to avoid a second fetch, got %d requests", requests)
+	}
+	if _, err := os.Stat(filepath.Join(resolved.StateDir, "resolved-plan.json")); err != nil {
+		t.Fatalf("expected resolved plan cache file: %v", err)
+	}
+}
+
+func TestResolveInvalidatesPersistedPlanCacheWhenLocalFeatureChanges(t *testing.T) {
+	t.Parallel()
+
+	workspace := t.TempDir()
+	configDir := filepath.Join(workspace, ".devcontainer")
+	featureDir := filepath.Join(configDir, "feature-a")
+	if err := os.MkdirAll(featureDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	manifestPath := filepath.Join(featureDir, "devcontainer-feature.json")
+	if err := os.WriteFile(manifestPath, []byte(`{"id":"feature-a","containerEnv":{"VALUE":"one"}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(configDir, "devcontainer.json"), []byte(`{
+		"image": "alpine:3.20",
+		"workspaceFolder": "/workspace",
+		"features": {"./feature-a": true}
+	}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	resolved, err := Resolve(context.Background(), workspace, "")
+	if err != nil {
+		t.Fatalf("first resolve: %v", err)
+	}
+	if got := resolved.Merged.ContainerEnv["VALUE"]; got != "one" {
+		t.Fatalf("unexpected first feature value %q", got)
+	}
+
+	if err := os.WriteFile(manifestPath, []byte(`{"id":"feature-a","containerEnv":{"VALUE":"two"}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	resolved, err = Resolve(context.Background(), workspace, "")
+	if err != nil {
+		t.Fatalf("second resolve: %v", err)
+	}
+	if got := resolved.Merged.ContainerEnv["VALUE"]; got != "two" {
+		t.Fatalf("expected cache invalidation after local feature change, got %q", got)
+	}
+}
+
 func copyFixtureWorkspace(t *testing.T, fixture string) string {
 	t.Helper()
 	source := filepath.Join("testdata", fixture)

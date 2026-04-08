@@ -262,6 +262,33 @@ func resolve(ctx context.Context, workspaceArg string, configArg string, opts Re
 	if err != nil {
 		return ResolvedConfig{}, err
 	}
+	stateDir, err := WorkspaceStateDir(workspace, configPath)
+	if err != nil {
+		return ResolvedConfig{}, err
+	}
+	cacheKey, err := resolvedPlanCacheKey(configPath, configDir, config, composeFiles)
+	if err != nil {
+		return ResolvedConfig{}, err
+	}
+	if opts.LockfilePolicy != FeatureLockfilePolicyUpdate {
+		cached, ok, err := readResolvedPlanCache(stateDir, cacheKey)
+		if err != nil {
+			return ResolvedConfig{}, err
+		}
+		if ok {
+			if opts.WriteFeatureLock && opts.LockfilePolicy != FeatureLockfilePolicyFrozen {
+				if err := WriteFeatureLockFile(configPath, cached.Features); err != nil {
+					return ResolvedConfig{}, err
+				}
+			}
+			if opts.WriteFeatureState {
+				if err := WriteFeatureStateFile(stateDir, cached.Features); err != nil {
+					return ResolvedConfig{}, err
+				}
+			}
+			return cached, nil
+		}
+	}
 	if config.Service != "" || len(composeFiles) > 0 {
 		sourceKind = "compose"
 		if config.Service == "" {
@@ -281,11 +308,6 @@ func resolve(ctx context.Context, workspaceArg string, configArg string, opts Re
 	workspaceMount := config.WorkspaceMount
 	if workspaceMount == "" {
 		workspaceMount = fmt.Sprintf("type=bind,source=%s,target=%s", workspace, remoteWorkspace)
-	}
-
-	stateDir, err := WorkspaceStateDir(workspace, configPath)
-	if err != nil {
-		return ResolvedConfig{}, err
 	}
 
 	imageName := ImageName(workspace, configPath)
@@ -316,7 +338,7 @@ func resolve(ctx context.Context, workspaceArg string, configArg string, opts Re
 		metadata = append(metadata, feature.Metadata)
 	}
 
-	return ResolvedConfig{
+	resolved := ResolvedConfig{
 		WorkspaceFolder: workspace,
 		ConfigPath:      configPath,
 		ConfigDir:       configDir,
@@ -333,7 +355,15 @@ func resolve(ctx context.Context, workspaceArg string, configArg string, opts Re
 		ComposeService:  config.Service,
 		ComposeProject:  ComposeProjectName(workspace, configPath),
 		Labels:          labels,
-	}, nil
+	}
+	cacheKey, err = resolvedPlanCacheKey(configPath, configDir, config, composeFiles)
+	if err != nil {
+		return ResolvedConfig{}, err
+	}
+	if err := writeResolvedPlanCache(stateDir, cacheKey, resolved); err != nil {
+		return ResolvedConfig{}, err
+	}
+	return resolved, nil
 }
 
 func Load(configPath string) (Config, error) {
