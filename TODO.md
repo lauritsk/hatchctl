@@ -2,6 +2,8 @@
 
 ## Not Done
 
+- [ ] investigate and fix Darwin/OrbStack instability in bridge lifecycle and heavy Docker-backed integration tests so the current opt-in skips can be removed and macOS regains full runtime integration coverage
+
 ## Done
 
 - [x] add first-class `config.toml` support with XDG/Linux and macOS-compliant config discovery plus a clear merge/override hierarchy across user, workspace, and CLI options; ensure cache/state/artifact outputs also follow platform best practices
