@@ -2,6 +2,15 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## [v0.2.0](https://github.com/lauritsk/hatchctl/compare/97d3761d8083cab0c0a23bd2e84ed734b3d82ae5..v0.2.0) - 2026-04-08
+#### Features
+- (**runtime**) add dotfiles personalization support - ([97d3761](https://github.com/lauritsk/hatchctl/commit/97d3761d8083cab0c0a23bd2e84ed734b3d82ae5)) - Karl Hans Laurits
+#### Bug Fixes
+- (**bridge**) use portable bridge transports - ([6809f80](https://github.com/lauritsk/hatchctl/commit/6809f803933908b8cadd022bb974f8e039d8d16a)) - Karl Hans Laurits
+- (**runtime**) make dotfiles test self-contained - ([c1da74c](https://github.com/lauritsk/hatchctl/commit/c1da74cc183405b7268d4ba1b77b0ff7d4029b06)) - Karl Hans Laurits
+
+- - -
+
 ## [v0.1.6](https://github.com/lauritsk/hatchctl/compare/7ee076f237d2fba8edc70090308547b88e8a19b7..v0.1.6) - 2026-04-08
 #### Bug Fixes
 - (**display**) stabilize spinner cursor rendering - ([7ee076f](https://github.com/lauritsk/hatchctl/commit/7ee076f237d2fba8edc70090308547b88e8a19b7)) - Karl Hans Laurits
