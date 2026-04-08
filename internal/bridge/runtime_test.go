@@ -8,7 +8,9 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestBridgeHostServiceHandlesOpenRequest(t *testing.T) {
@@ -235,6 +237,152 @@ func TestPrepareAndRuntimeFilesUseOwnerOnlyPermissions(t *testing.T) {
 	assertMode(session.PIDPath, 0o600)
 	if session.SocketPath == "" || session.HelperSock == "" {
 		t.Fatalf("expected socket paths in session %#v", session)
+	}
+}
+
+func TestBridgeHostServiceRejectsInvalidRequests(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		payload string
+		want    string
+	}{
+		{name: "invalid json", payload: "not-json\n", want: "invalid request"},
+		{name: "unknown kind", payload: `{"kind":"mystery"}` + "\n", want: "unknown request"},
+		{name: "missing url", payload: `{"kind":"open"}` + "\n", want: "missing url"},
+		{name: "invalid url", payload: `{"kind":"open","url":"://bad"}` + "\n", want: "invalid url"},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			session := &Session{ID: "session", StatusPath: filepath.Join(t.TempDir(), "bridge-status.json")}
+			service := newBridgeHostService(session, "container", func(string) error { return nil })
+			client, server := net.Pipe()
+			defer client.Close()
+			go service.handleConn(server)
+			if _, err := io.WriteString(client, tt.payload); err != nil {
+				t.Fatalf("write payload: %v", err)
+			}
+			response, err := readBridgeResponse(client)
+			if err != nil {
+				t.Fatalf("read response: %v", err)
+			}
+			if response.Error != tt.want {
+				t.Fatalf("unexpected response %#v", response)
+			}
+		})
+	}
+}
+
+func TestBridgeHostServiceReturnsOpenError(t *testing.T) {
+	t.Parallel()
+
+	session := &Session{ID: "session", StatusPath: filepath.Join(t.TempDir(), "bridge-status.json")}
+	service := newBridgeHostService(session, "container", func(string) error {
+		return fmt.Errorf("open failed")
+	})
+	service.forwardURL = func(port int) (int, bool, error) {
+		return port, true, nil
+	}
+	client, server := net.Pipe()
+	defer client.Close()
+	go service.handleConn(server)
+	if err := writeBridgeRequest(client, bridgeRequest{Kind: "open", URL: "http://localhost:8080"}); err != nil {
+		t.Fatalf("write request: %v", err)
+	}
+	response, err := readBridgeResponse(client)
+	if err != nil {
+		t.Fatalf("read response: %v", err)
+	}
+	if response.Error != "open failed" {
+		t.Fatalf("unexpected response %#v", response)
+	}
+	data, err := os.ReadFile(session.StatusPath)
+	if err != nil {
+		t.Fatalf("read status file: %v", err)
+	}
+	if !strings.Contains(string(data), `"lastEvent": "open failed"`) {
+		t.Fatalf("unexpected status file %s", string(data))
+	}
+}
+
+func TestRewriteLocalURLDefaultsPortsByScheme(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		url  string
+		port int
+	}{
+		{name: "http", url: "http://localhost/path", port: 80},
+		{name: "https", url: "https://127.0.0.1/cb", port: 443},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			service := &bridgeHostService{}
+			service.forwardURL = func(port int) (int, bool, error) {
+				if port != tt.port {
+					t.Fatalf("unexpected port %d", port)
+				}
+				return 19090, false, nil
+			}
+			rewritten, err := service.rewriteLocalURL(tt.url)
+			if err != nil {
+				t.Fatalf("rewrite url: %v", err)
+			}
+			if !strings.Contains(rewritten, "127.0.0.1:19090") {
+				t.Fatalf("unexpected rewritten url %q", rewritten)
+			}
+		})
+	}
+}
+
+func TestRewriteLocalURLRejectsInvalidPorts(t *testing.T) {
+	t.Parallel()
+
+	service := &bridgeHostService{}
+	_, err := service.rewriteLocalURL("http://localhost:0")
+	if err == nil || err.Error() != `invalid localhost port "0"` {
+		t.Fatalf("unexpected error %v", err)
+	}
+}
+
+func TestListenForwardPortFallsBackWhenExactPortBusy(t *testing.T) {
+	t.Parallel()
+
+	busy, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer busy.Close()
+	port := busy.Addr().(*net.TCPAddr).Port
+
+	listener, exact, err := listenForwardPort(port)
+	if err != nil {
+		t.Fatalf("listen forward port: %v", err)
+	}
+	defer listener.Close()
+	if exact {
+		t.Fatal("expected fallback listener to use a different host port")
+	}
+	if got := listener.Addr().(*net.TCPAddr).Port; got == port {
+		t.Fatalf("expected fallback port, got exact port %d", got)
+	}
+}
+
+func TestWaitForSocketTimesOut(t *testing.T) {
+	t.Parallel()
+
+	path := testSocketPath(t, "missing.sock")
+	err := waitForSocket(path, 150*time.Millisecond)
+	if err == nil || !strings.Contains(err.Error(), "timed out waiting for bridge socket") {
+		t.Fatalf("unexpected error %v", err)
 	}
 }
 

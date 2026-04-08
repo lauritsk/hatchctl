@@ -39,3 +39,82 @@ func TestRunHostLifecycleUsesInjectedRunnerAndStreams(t *testing.T) {
 		t.Fatal("expected injected host runner to be called")
 	}
 }
+
+func TestRunCommandUsesShellForStringCommands(t *testing.T) {
+	t.Parallel()
+
+	var got []string
+	err := runCommand(context.Background(), func(_ context.Context, args []string) error {
+		got = append([]string(nil), args...)
+		return nil
+	}, devcontainer.LifecycleCommand{Kind: "string", Value: "echo hi", Exists: true})
+	if err != nil {
+		t.Fatalf("run command: %v", err)
+	}
+	if len(got) != 3 || got[0] != "/bin/sh" || got[1] != "-lc" || got[2] != "echo hi" {
+		t.Fatalf("unexpected args %#v", got)
+	}
+}
+
+func TestRunCommandRunsObjectStepsInSortedOrder(t *testing.T) {
+	t.Parallel()
+
+	var got []string
+	err := runCommand(context.Background(), func(_ context.Context, args []string) error {
+		got = append(got, args[len(args)-1])
+		return nil
+	}, devcontainer.LifecycleCommand{
+		Kind:   "object",
+		Exists: true,
+		Steps: map[string]devcontainer.LifecycleCommand{
+			"z-last":  {Kind: "string", Value: "echo z", Exists: true},
+			"a-first": {Kind: "string", Value: "echo a", Exists: true},
+		},
+	})
+	if err != nil {
+		t.Fatalf("run command: %v", err)
+	}
+	if len(got) != 2 || got[0] != "echo a" || got[1] != "echo z" {
+		t.Fatalf("unexpected command order %#v", got)
+	}
+}
+
+func TestRunCommandWrapsObjectStepErrors(t *testing.T) {
+	t.Parallel()
+
+	err := runCommand(context.Background(), func(_ context.Context, args []string) error {
+		if len(args) > 0 && args[len(args)-1] == "echo fail" {
+			return context.DeadlineExceeded
+		}
+		return nil
+	}, devcontainer.LifecycleCommand{
+		Kind:   "object",
+		Exists: true,
+		Steps: map[string]devcontainer.LifecycleCommand{
+			"ok":   {Kind: "string", Value: "echo ok", Exists: true},
+			"fail": {Kind: "string", Value: "echo fail", Exists: true},
+		},
+	})
+	if err == nil || err.Error() != "lifecycle step fail: context deadline exceeded" {
+		t.Fatalf("unexpected error %v", err)
+	}
+}
+
+func TestRunCommandSkipsEmptyArraysAndCommands(t *testing.T) {
+	t.Parallel()
+
+	called := false
+	runner := func(_ context.Context, _ []string) error {
+		called = true
+		return nil
+	}
+	if err := runCommand(context.Background(), runner, devcontainer.LifecycleCommand{Kind: "array", Exists: true}); err != nil {
+		t.Fatalf("run empty array: %v", err)
+	}
+	if err := runCommand(context.Background(), runner, devcontainer.LifecycleCommand{}); err != nil {
+		t.Fatalf("run empty command: %v", err)
+	}
+	if called {
+		t.Fatal("expected runner not to be called")
+	}
+}
