@@ -2,6 +2,15 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## [v0.3.3](https://github.com/lauritsk/hatchctl/compare/9ab8bf06e484f3e378d770d70d7c8c52b5e04193..v0.3.3) - 2026-04-08
+#### Bug Fixes
+- (**runtime**) Preserve base image metadata in feature images - ([8824d48](https://github.com/lauritsk/hatchctl/commit/8824d484a74fb161b26d6b8ebe29694c681b93b0)) - Karl Hans Laurits
+- (**security**) harden workspace trust boundaries - ([9ab8bf0](https://github.com/lauritsk/hatchctl/commit/9ab8bf06e484f3e378d770d70d7c8c52b5e04193)) - Karl Hans Laurits
+#### Miscellaneous Chores
+- (**mise**) Update hatchctl tool version and document commit task usage - ([ff833a3](https://github.com/lauritsk/hatchctl/commit/ff833a3b9343f0e016b8d4352cc8d0bc000e91c7)) - Karl Hans Laurits
+
+- - -
+
 ## [v0.3.2](https://github.com/lauritsk/hatchctl/compare/449ae146a5724b4ffad54360366346be8d03fc42..v0.3.2) - 2026-04-08
 #### Bug Fixes
 - (**runtime**) resolve dotfiles home and restore interactive exec tty - ([30bf1f3](https://github.com/lauritsk/hatchctl/commit/30bf1f31f7fa24394f8d44f5470c759d4449c27d)) - Karl Hans Laurits
