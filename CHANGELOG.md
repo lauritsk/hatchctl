@@ -2,6 +2,17 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## [v0.2.3](https://github.com/lauritsk/hatchctl/compare/a2453c20794cea2e0e5baa61d7570b7f5b0f8306..v0.2.3) - 2026-04-08
+#### Bug Fixes
+- (**runtime**) resolve HOME for exec user - ([0a1b16c](https://github.com/lauritsk/hatchctl/commit/0a1b16cee70937bc426510d299025c75ea406ad2)) - Karl Hans Laurits
+- (**ui**) separate progress spinners from streamed logs - ([e7373f8](https://github.com/lauritsk/hatchctl/commit/e7373f85d69808fb365013ac49bee5553dfd0bd6)) - Karl Hans Laurits
+- (**up**) suggest follow-up exec commands - ([a2453c2](https://github.com/lauritsk/hatchctl/commit/a2453c20794cea2e0e5baa61d7570b7f5b0f8306)) - Karl Hans Laurits
+#### Documentation
+- (**todo**) add prioritized architecture backlog - ([988e814](https://github.com/lauritsk/hatchctl/commit/988e8149c5ecefd51ac5c35cd1f4203ee58adbfe)) - Karl Hans Laurits
+- (**todo**) track config and artifact location work - ([f086951](https://github.com/lauritsk/hatchctl/commit/f086951e72b4029431e9640877bf6cdd37c44c00)) - Karl Hans Laurits
+
+- - -
+
 ## [v0.2.2](https://github.com/lauritsk/hatchctl/compare/3b7fb715b1c91c3181ead7ed2235f48b4ffb5feb..v0.2.2) - 2026-04-08
 #### Bug Fixes
 - (**ci**) skip flaky dotfiles integration test - ([3b7fb71](https://github.com/lauritsk/hatchctl/commit/3b7fb715b1c91c3181ead7ed2235f48b4ffb5feb)) - Karl Hans Laurits
