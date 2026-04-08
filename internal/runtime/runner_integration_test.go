@@ -82,8 +82,19 @@ func TestUpInstallsDotfilesOnceAndReportsStatus(t *testing.T) {
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
+	baseImage := "hatchctl-dotfiles-test-" + sanitizeName(filepath.Base(workspace))
+	baseDockerfileDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(baseDockerfileDir, "Dockerfile"), []byte("FROM alpine:3.20\nRUN apk add --no-cache git\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.Run(ctx, docker.RunOptions{Args: []string{"build", "-t", baseImage, baseDockerfileDir}}); err != nil {
+		t.Fatalf("build base image: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rmi", "-f", baseImage}})
+	})
 	if err := os.WriteFile(filepath.Join(configDir, "devcontainer.json"), []byte(`{
-		"image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+		"image": "`+baseImage+`",
 		"workspaceFolder": "/workspaces/demo"
 	}`), 0o644); err != nil {
 		t.Fatal(err)
