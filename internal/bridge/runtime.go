@@ -10,7 +10,6 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
 	"sort"
 	"strconv"
@@ -134,7 +133,7 @@ func Serve(ctx context.Context, stateDir string, containerID string) error {
 	defer func() {
 		_ = tcpListener.Close()
 	}()
-	if err := os.WriteFile(session.PIDPath, []byte(strconv.Itoa(os.Getpid())), 0o600); err != nil {
+	if err := fileStore.WritePID(session.PIDPath, os.Getpid()); err != nil {
 		return err
 	}
 	if err := writeStatus(session, containerID, "running", "", nil, 0, false); err != nil {
@@ -331,15 +330,14 @@ func defaultOpen(target string) error {
 }
 
 func stopExisting(session *Session) error {
-	data, err := os.ReadFile(session.PIDPath)
+	pid, err := fileStore.ReadPID(session.PIDPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil
 		}
 		return err
 	}
-	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
-	if err != nil || pid <= 0 {
+	if pid <= 0 {
 		return nil
 	}
 	process, err := os.FindProcess(pid)
@@ -413,19 +411,7 @@ func listenBridgeTCP(port int) (net.Listener, error) {
 }
 
 func writeBridgeConfig(session *Session, containerID string) error {
-	config := map[string]any{
-		"sessionId":   session.ID,
-		"containerId": containerID,
-		"host":        session.Host,
-		"port":        session.Port,
-		"statusPath":  session.StatusPath,
-		"pidPath":     session.PIDPath,
-	}
-	data, err := json.MarshalIndent(config, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(session.ConfigPath, data, 0o600)
+	return fileStore.WriteConfig(session, containerID)
 }
 
 func writeStatus(session *Session, containerID string, event string, lastError string, forwarded []forwardStatus, lastPort int, lastExact bool) error {
@@ -440,14 +426,7 @@ func writeStatus(session *Session, containerID string, event string, lastError s
 		LastError:   lastError,
 		UpdatedAt:   time.Now().UTC().Format(time.RFC3339),
 	}
-	data, err := json.MarshalIndent(status, "", "  ")
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(filepath.Dir(session.StatusPath), 0o700); err != nil {
-		return err
-	}
-	return os.WriteFile(session.StatusPath, data, 0o600)
+	return fileStore.WriteStatus(session, status)
 }
 
 func writeBridgeRequest(w io.Writer, request bridgeRequest) error {

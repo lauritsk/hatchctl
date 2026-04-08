@@ -14,9 +14,10 @@ type workspacePlanner struct {
 
 func (p *workspacePlanner) prepareResolved(ctx context.Context, opts prepareResolveOptions) (devcontainer.ResolvedConfig, error) {
 	p.runner.emitProgress(opts.Events, opts.ProgressLabel)
-	resolveOpts := devcontainer.ResolveOptions{LockfilePolicy: opts.LockfilePolicy, FeatureHTTPTimeout: opts.FeatureTimeout}
+	resolveOpts := devcontainer.ResolveOptions{LockfilePolicy: opts.LockfilePolicy, FeatureHTTPTimeout: opts.FeatureTimeout, ReadPlanCache: true}
 	if !opts.ReadOnly {
 		resolveOpts.AllowNetwork = true
+		resolveOpts.WritePlanCache = true
 		resolveOpts.WriteFeatureLock = true
 		resolveOpts.WriteFeatureState = true
 	}

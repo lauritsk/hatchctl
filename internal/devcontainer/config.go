@@ -207,6 +207,8 @@ type ResolvedConfig struct {
 
 type ResolveOptions struct {
 	AllowNetwork       bool
+	ReadPlanCache      bool
+	WritePlanCache     bool
 	WriteFeatureLock   bool
 	WriteFeatureState  bool
 	FeatureHTTPTimeout time.Duration
@@ -216,6 +218,8 @@ type ResolveOptions struct {
 func Resolve(ctx context.Context, workspaceArg string, configArg string) (ResolvedConfig, error) {
 	return ResolveWithOptions(ctx, workspaceArg, configArg, ResolveOptions{
 		AllowNetwork:      true,
+		ReadPlanCache:     true,
+		WritePlanCache:    true,
 		WriteFeatureLock:  true,
 		WriteFeatureState: true,
 		LockfilePolicy:    FeatureLockfilePolicyAuto,
@@ -224,6 +228,7 @@ func Resolve(ctx context.Context, workspaceArg string, configArg string) (Resolv
 
 func ResolveReadOnly(ctx context.Context, workspaceArg string, configArg string) (ResolvedConfig, error) {
 	return ResolveReadOnlyWithOptions(ctx, workspaceArg, configArg, ResolveOptions{
+		ReadPlanCache:  true,
 		LockfilePolicy: FeatureLockfilePolicyFrozen,
 	})
 }
@@ -270,7 +275,7 @@ func resolve(ctx context.Context, workspaceArg string, configArg string, opts Re
 	if err != nil {
 		return ResolvedConfig{}, err
 	}
-	if opts.LockfilePolicy != FeatureLockfilePolicyUpdate {
+	if opts.ReadPlanCache && opts.LockfilePolicy != FeatureLockfilePolicyUpdate {
 		cached, ok, err := readResolvedPlanCache(stateDir, cacheKey)
 		if err != nil {
 			return ResolvedConfig{}, err
@@ -324,14 +329,22 @@ func resolve(ctx context.Context, workspaceArg string, configArg string, opts Re
 
 	features, err := ResolveFeatures(ctx, configPath, configDir, filepath.Join(stateDir, "features-cache"), config.Features, FeatureResolveOptions{
 		AllowNetwork:   opts.AllowNetwork,
-		WriteLockFile:  opts.WriteFeatureLock,
-		WriteStateFile: opts.WriteFeatureState,
 		StateDir:       stateDir,
 		HTTPTimeout:    opts.FeatureHTTPTimeout,
 		LockfilePolicy: opts.LockfilePolicy,
 	})
 	if err != nil {
 		return ResolvedConfig{}, err
+	}
+	if opts.WriteFeatureLock && opts.LockfilePolicy != FeatureLockfilePolicyFrozen {
+		if err := WriteFeatureLockFile(configPath, features); err != nil {
+			return ResolvedConfig{}, err
+		}
+	}
+	if opts.WriteFeatureState {
+		if err := WriteFeatureStateFile(stateDir, features); err != nil {
+			return ResolvedConfig{}, err
+		}
 	}
 	metadata := make([]MetadataEntry, 0, len(features))
 	for _, feature := range features {
@@ -360,8 +373,10 @@ func resolve(ctx context.Context, workspaceArg string, configArg string, opts Re
 	if err != nil {
 		return ResolvedConfig{}, err
 	}
-	if err := writeResolvedPlanCache(stateDir, cacheKey, resolved); err != nil {
-		return ResolvedConfig{}, err
+	if opts.WritePlanCache {
+		if err := writeResolvedPlanCache(stateDir, cacheKey, resolved); err != nil {
+			return ResolvedConfig{}, err
+		}
 	}
 	return resolved, nil
 }

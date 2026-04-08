@@ -111,6 +111,10 @@ type parsedFeatureSource struct {
 }
 
 func ResolveFeatures(ctx context.Context, configPath string, configDir string, cacheDir string, values map[string]any, opts FeatureResolveOptions) ([]ResolvedFeature, error) {
+	return resolveFeatures(ctx, configPath, configDir, cacheDir, values, opts)
+}
+
+func resolveFeatures(ctx context.Context, configPath string, configDir string, cacheDir string, values map[string]any, opts FeatureResolveOptions) ([]ResolvedFeature, error) {
 	if len(values) == 0 {
 		return nil, nil
 	}
@@ -173,16 +177,6 @@ func ResolveFeatures(ctx context.Context, configPath string, configDir string, c
 		idx := len(features) - 1
 		byAlias[source] = idx
 		byAlias[manifest.ID] = idx
-	}
-	if opts.WriteLockFile && policy != FeatureLockfilePolicyFrozen {
-		if err := WriteFeatureLockFile(configPath, features); err != nil {
-			return nil, err
-		}
-	}
-	if opts.WriteStateFile {
-		if err := WriteFeatureStateFile(opts.StateDir, features); err != nil {
-			return nil, err
-		}
 	}
 	return orderFeatures(features, byAlias)
 }

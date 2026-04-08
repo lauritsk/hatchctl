@@ -134,6 +134,9 @@ func TestResolveFeaturesFetchesOCIRegistryFeature(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(features[0].Path, "install.sh")); err != nil {
 		t.Fatalf("expected extracted feature install script: %v", err)
 	}
+	if err := WriteFeatureLockFile(configPath, features); err != nil {
+		t.Fatalf("write lockfile: %v", err)
+	}
 	lockData, err := os.ReadFile(FeatureLockFilePath(configPath))
 	if err != nil {
 		t.Fatalf("read lockfile: %v", err)
@@ -178,6 +181,9 @@ func TestResolveFeaturesFetchesTarballFeatureAndPinsIntegrity(t *testing.T) {
 	}
 	if len(features) != 1 || features[0].SourceKind != "direct-tarball" {
 		t.Fatalf("unexpected tarball features %#v", features)
+	}
+	if err := WriteFeatureLockFile(configPath, features); err != nil {
+		t.Fatalf("write tarball lockfile: %v", err)
 	}
 	lockData, err := os.ReadFile(FeatureLockFilePath(configPath))
 	if err != nil {
@@ -225,6 +231,9 @@ func TestResolveFeaturesFetchesDeprecatedGitHubShorthandFeature(t *testing.T) {
 	}
 	if features[0].Metadata.ContainerEnv["GITHUB"] != "yes" {
 		t.Fatalf("unexpected feature metadata %#v", features[0].Metadata)
+	}
+	if err := WriteFeatureLockFile(configPath, features); err != nil {
+		t.Fatalf("write github shorthand lockfile: %v", err)
 	}
 	lockData, err := os.ReadFile(FeatureLockFilePath(configPath))
 	if err != nil {

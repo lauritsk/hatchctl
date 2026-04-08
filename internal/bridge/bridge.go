@@ -147,7 +147,7 @@ func Doctor(stateDir string) (Report, error) {
 		status = session.Status
 	}
 	if session != nil && session.StatusPath != "" {
-		if data, err := os.ReadFile(session.StatusPath); err == nil {
+		if data, err := fileStore.ReadStatus(session.StatusPath); err == nil {
 			var bridgeStatus struct {
 				PID       int    `json:"pid"`
 				LastEvent string `json:"lastEvent"`
@@ -272,25 +272,11 @@ func loadOrCreateSession(bridgeDir string, enabled bool) (*Session, error) {
 }
 
 func readSession(bridgeDir string) (*Session, error) {
-	path := filepath.Join(bridgeDir, "session.json")
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	var session Session
-	if err := json.Unmarshal(data, &session); err != nil {
-		return nil, err
-	}
-	return &session, nil
+	return fileStore.ReadSession(bridgeDir)
 }
 
 func saveSession(bridgeDir string, session *Session) error {
-	path := filepath.Join(bridgeDir, "session.json")
-	data, err := json.MarshalIndent(session, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(path, data, 0o600)
+	return fileStore.SaveSession(bridgeDir, session)
 }
 
 func randomToken(bytesLen int) string {
