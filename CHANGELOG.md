@@ -2,6 +2,14 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## [v0.3.6](https://github.com/lauritsk/hatchctl/compare/e092ae72c14ff50a6b1c4320e375f8da9d31edef..v0.3.6) - 2026-04-08
+#### Bug Fixes
+- (**cli**) Preserve terminal access for interactive exec tools - ([9e7e81a](https://github.com/lauritsk/hatchctl/commit/9e7e81a15d1d00195a2899630766305a5ddc362c)) - Karl Hans Laurits
+#### Miscellaneous Chores
+- (**mise**) Update hatchctl tool version - ([e092ae7](https://github.com/lauritsk/hatchctl/commit/e092ae72c14ff50a6b1c4320e375f8da9d31edef)) - Karl Hans Laurits
+
+- - -
+
 ## [v0.3.5](https://github.com/lauritsk/hatchctl/compare/03a85dfe35b3b185c768034597144688962fc2a0..v0.3.5) - 2026-04-08
 #### Bug Fixes
 - (**bridge**) Preserve loopback host in bridge auth callbacks - ([03f8bd8](https://github.com/lauritsk/hatchctl/commit/03f8bd871b6aec05baa265c02d4ac657625fe5c9)) - Karl Hans Laurits
