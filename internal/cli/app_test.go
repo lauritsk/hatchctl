@@ -149,6 +149,19 @@ func TestRunUpAcceptsExplicitDotfilesRepositoryFlag(t *testing.T) {
 	}
 }
 
+func TestRunBuildRejectsDotfilesFlags(t *testing.T) {
+	t.Parallel()
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	app := NewWithRunner(&out, &errOut, stubRunner{})
+
+	err := app.Run(context.Background(), []string{"build", "--dotfiles", "github.com/example/dotfiles"})
+	if err == nil || !strings.Contains(err.Error(), "unknown flag: --dotfiles") {
+		t.Fatalf("expected unknown dotfiles flag error, got %v", err)
+	}
+}
+
 func TestRunUpUsesGlobalDebugForProgressAndPlan(t *testing.T) {
 	t.Parallel()
 

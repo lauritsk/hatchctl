@@ -30,8 +30,6 @@ type containerConnectRunner func(string, int, io.Reader, io.Writer) error
 
 var runContainerConnect containerConnectRunner = defaultContainerConnectRunner
 
-type Runtime struct{}
-
 var (
 	hostCommandRunner command.Runner = command.Local{}
 	dockerCLI                        = docker.NewClient("docker")
@@ -83,7 +81,7 @@ type bridgeHostService struct {
 	forwarded   map[int]forwardedPort
 }
 
-func (Runtime) Start(session *Session, containerID string) (*Session, error) {
+func Start(session *Session, containerID string) (*Session, error) {
 	if session == nil || !session.Enabled {
 		return nil, nil
 	}
@@ -131,16 +129,8 @@ func (Runtime) Start(session *Session, containerID string) (*Session, error) {
 	return session, nil
 }
 
-func Start(stateDir string, enabled bool, helperArch string, containerID string) (*Session, error) {
-	session, err := Planner{}.Prepare(stateDir, enabled, helperArch)
-	if err != nil {
-		return nil, err
-	}
-	return Runtime{}.Start(session, containerID)
-}
-
 func Serve(ctx context.Context, stateDir string, containerID string) error {
-	session, err := Planner{}.Prepare(stateDir, true, "")
+	session, err := Prepare(stateDir, true, "")
 	if err != nil {
 		return err
 	}
@@ -371,7 +361,7 @@ func stopExisting(session *Session) error {
 }
 
 func Stop(stateDir string) error {
-	session, err := Planner{}.Prepare(stateDir, true, "")
+	session, err := Prepare(stateDir, true, "")
 	if err != nil {
 		return err
 	}

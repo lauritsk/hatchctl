@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"os"
 	"slices"
-	"strings"
 
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	"github.com/lauritsk/hatchctl/internal/fileutil"
@@ -278,10 +277,6 @@ func composeNamedVolume(raw string) (string, bool) {
 		return "", false
 	}
 	return spec.Source, true
-}
-
-func isTrue(value string) bool {
-	return strings.EqualFold(value, "true") || value == "1"
 }
 
 func sortedVolumeNames(values map[string]struct{}) []string {

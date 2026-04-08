@@ -8,8 +8,7 @@ import (
 )
 
 type workspacePlanner struct {
-	runner   *Runner
-	resolver workspaceResolver
+	runner *Runner
 }
 
 func (p *workspacePlanner) prepareResolved(ctx context.Context, opts prepareResolveOptions) (devcontainer.ResolvedConfig, error) {
@@ -27,9 +26,9 @@ func (p *workspacePlanner) prepareResolved(ctx context.Context, opts prepareReso
 		err      error
 	)
 	if opts.ReadOnly {
-		resolved, err = p.resolver.ResolveReadOnly(ctx, opts.Workspace, opts.ConfigPath, resolveOpts)
+		resolved, err = devcontainer.ResolveReadOnlyWithOptions(ctx, opts.Workspace, opts.ConfigPath, resolveOpts)
 	} else {
-		resolved, err = p.resolver.Resolve(ctx, opts.Workspace, opts.ConfigPath, resolveOpts)
+		resolved, err = devcontainer.ResolveWithOptions(ctx, opts.Workspace, opts.ConfigPath, resolveOpts)
 	}
 	if err != nil {
 		return devcontainer.ResolvedConfig{}, err
@@ -41,19 +40,6 @@ func (p *workspacePlanner) prepareResolved(ctx context.Context, opts prepareReso
 		p.runner.emitPlan(opts.Events, resolved)
 	}
 	return resolved, nil
-}
-
-func (p *workspacePlanner) prepareEnrichedResolved(ctx context.Context, opts prepareResolveOptions) (devcontainer.ResolvedConfig, string, error) {
-	resolved, err := p.prepareResolved(ctx, opts)
-	if err != nil {
-		return devcontainer.ResolvedConfig{}, "", err
-	}
-	image := preparedImage(resolved)
-	p.runner.emitProgress(opts.Events, "Applying runtime metadata")
-	if err := p.runner.enrichMergedConfig(ctx, &resolved, image); err != nil {
-		return devcontainer.ResolvedConfig{}, "", err
-	}
-	return resolved, image, nil
 }
 
 func (p *workspacePlanner) prepareWorkspace(ctx context.Context, opts prepareWorkspaceOptions) (preparedWorkspace, error) {
@@ -69,7 +55,7 @@ func (p *workspacePlanner) prepareWorkspace(ctx context.Context, opts prepareWor
 		}
 	}
 	if opts.loadState {
-		state, err := p.runner.stateStore.Read(prepared.resolved.StateDir)
+		state, err := devcontainer.ReadState(prepared.resolved.StateDir)
 		if err != nil {
 			return preparedWorkspace{}, err
 		}

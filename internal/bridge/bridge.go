@@ -35,9 +35,42 @@ type Session struct {
 	Status     string `json:"status"`
 }
 
-type Report = Session
+type Report struct {
+	ID         string `json:"id"`
+	Enabled    bool   `json:"enabled"`
+	HelperArch string `json:"helperArch,omitempty"`
+	Host       string `json:"host,omitempty"`
+	Port       int    `json:"port,omitempty"`
+	StatePath  string `json:"statePath"`
+	ConfigPath string `json:"configPath,omitempty"`
+	PIDPath    string `json:"pidPath,omitempty"`
+	StatusPath string `json:"statusPath,omitempty"`
+	HelperPath string `json:"helperPath"`
+	MountPath  string `json:"mountPath"`
+	BinPath    string `json:"binPath"`
+	Status     string `json:"status"`
+}
 
-type Planner struct{}
+func ReportFromSession(session *Session) *Report {
+	if session == nil {
+		return nil
+	}
+	return &Report{
+		ID:         session.ID,
+		Enabled:    session.Enabled,
+		HelperArch: session.HelperArch,
+		Host:       session.Host,
+		Port:       session.Port,
+		StatePath:  session.StatePath,
+		ConfigPath: session.ConfigPath,
+		PIDPath:    session.PIDPath,
+		StatusPath: session.StatusPath,
+		HelperPath: session.HelperPath,
+		MountPath:  session.MountPath,
+		BinPath:    session.BinPath,
+		Status:     session.Status,
+	}
+}
 
 const (
 	containerBridgeMountPath = "/var/run/hatchctl/bridge"
@@ -45,7 +78,7 @@ const (
 	containerBridgeHost      = "host.docker.internal"
 )
 
-func (Planner) Prepare(stateDir string, enabled bool, helperArch string) (*Session, error) {
+func Prepare(stateDir string, enabled bool, helperArch string) (*Session, error) {
 	bridgeDir := filepath.Join(stateDir, "bridge")
 	if err := os.MkdirAll(bridgeDir, 0o700); err != nil {
 		return nil, err
@@ -103,7 +136,7 @@ func (Planner) Prepare(stateDir string, enabled bool, helperArch string) (*Sessi
 	return session, nil
 }
 
-func (Planner) Preview(stateDir string, enabled bool) (*Session, error) {
+func Preview(stateDir string, enabled bool) (*Session, error) {
 	if !enabled {
 		return nil, nil
 	}
@@ -118,15 +151,11 @@ func (Planner) Preview(stateDir string, enabled bool) (*Session, error) {
 	return session, nil
 }
 
-func (Planner) Inject(session *Session, merged devcontainer.MergedConfig) devcontainer.MergedConfig {
+func Inject(session *Session, merged devcontainer.MergedConfig) devcontainer.MergedConfig {
 	if session == nil {
 		return merged
 	}
 	return applySession(session, merged)
-}
-
-func Prepare(stateDir string, enabled bool, helperArch string) (*Session, error) {
-	return Planner{}.Prepare(stateDir, enabled, helperArch)
 }
 
 func Doctor(stateDir string) (Report, error) {
@@ -167,9 +196,9 @@ func Doctor(stateDir string) (Report, error) {
 	return Report{
 		ID:         valueOrDefault(sessionID(session), devcontainer.ContainerName(stateDir, helperPath)),
 		Enabled:    enabled,
+		HelperArch: sessionHelperArch(session),
 		Host:       sessionHost(session),
 		Port:       sessionPort(session),
-		Token:      sessionToken(session),
 		StatePath:  bridgeDir,
 		ConfigPath: sessionConfigPath(session),
 		PIDPath:    sessionPIDPath(session),
@@ -315,18 +344,18 @@ func sessionPort(session *Session) int {
 	return session.Port
 }
 
-func sessionToken(session *Session) string {
-	if session == nil {
-		return ""
-	}
-	return session.Token
-}
-
 func sessionConfigPath(session *Session) string {
 	if session == nil {
 		return ""
 	}
 	return session.ConfigPath
+}
+
+func sessionHelperArch(session *Session) string {
+	if session == nil {
+		return ""
+	}
+	return session.HelperArch
 }
 
 func sessionPIDPath(session *Session) string {

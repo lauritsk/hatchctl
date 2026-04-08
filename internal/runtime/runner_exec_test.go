@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -93,6 +94,52 @@ func TestInstallDotfilesUsesResolvedHome(t *testing.T) {
 	}
 }
 
+func TestExecDoesNotWritePlanCacheArtifacts(t *testing.T) {
+	ctx := context.Background()
+	workspace := t.TempDir()
+	configDir := filepath.Join(workspace, ".devcontainer")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(configDir, "devcontainer.json"), []byte(`{"image":"alpine:3.20","workspaceFolder":"/workspaces/demo"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	logPath := filepath.Join(t.TempDir(), "docker.log")
+	stateDir := filepath.Join(t.TempDir(), "state")
+	cacheDir := filepath.Join(t.TempDir(), "cache")
+	runner := NewRunnerWithIO(docker.NewClient(fakeDockerBinary(t, logPath)), nil, nil, nil)
+
+	code, err := runner.Exec(ctx, ExecOptions{
+		Workspace: workspace,
+		StateDir:  stateDir,
+		CacheDir:  cacheDir,
+		Args:      []string{"pwd"},
+		Stdout:    io.Discard,
+		Stderr:    io.Discard,
+	})
+	if err != nil {
+		t.Fatalf("exec: %v", err)
+	}
+	if code != 0 {
+		t.Fatalf("unexpected exit code %d", code)
+	}
+	cacheEntries, err := os.ReadDir(cacheDir)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("read cache dir: %v", err)
+	}
+	if len(cacheEntries) != 0 {
+		t.Fatalf("expected exec to avoid cache writes, found %d entries", len(cacheEntries))
+	}
+	entries, err := os.ReadDir(stateDir)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("read state dir: %v", err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("expected exec to avoid state writes, found %d entries", len(entries))
+	}
+}
+
 func fakeDockerBinary(t *testing.T, logPath string) string {
 	t.Helper()
 	scriptPath := filepath.Join(t.TempDir(), "docker")
@@ -109,11 +156,24 @@ func fakeDockerBinary(t *testing.T, logPath string) string {
 		"done\n" +
 		"printf '\\n' >> \"$FAKE_DOCKER_LOG\"\n" +
 		"case \"${1:-}\" in\n" +
+		"  ps)\n" +
+		"    printf 'container-123\\n'\n" +
+		"    ;;\n" +
+		"  image)\n" +
+		"    printf '[{\"Id\":\"img\",\"Architecture\":\"amd64\",\"Config\":{\"User\":\"app\",\"Labels\":{}}}]'\n" +
+		"    ;;\n" +
 		"  inspect)\n" +
 		"    printf '[{\"Id\":\"container-123\",\"Name\":\"/container-123\",\"Image\":\"img\",\"Config\":{\"User\":\"app\",\"Env\":[\"HOME=/root\"]},\"State\":{\"Status\":\"running\",\"Running\":true}}]'\n" +
 		"    ;;\n" +
 		"  exec)\n" +
-		"    printf 'root:x:0:0:root:/root:/bin/sh\napp:x:1000:1000::/home/app:/bin/sh\n'\n" +
+		"    case \"$*\" in\n" +
+		"      *' cat /etc/passwd')\n" +
+		"        printf 'root:x:0:0:root:/root:/bin/sh\napp:x:1000:1000::/home/app:/bin/sh\n'\n" +
+		"        ;;\n" +
+		"      *)\n" +
+		"        :\n" +
+		"        ;;\n" +
+		"    esac\n" +
 		"    ;;\n" +
 		"esac\n"
 	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {

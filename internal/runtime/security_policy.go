@@ -35,10 +35,6 @@ func (p imageVerificationPolicy) Apply(result security.VerificationResult, event
 	return nil
 }
 
-func (p imageVerificationPolicy) Verify(ctx context.Context, ref string, events ui.Sink) error {
-	return p.Apply(p.Check(ctx, ref), events)
-}
-
 func envTruthy(name string) bool {
 	switch strings.ToLower(strings.TrimSpace(os.Getenv(name))) {
 	case "1", "true", "yes", "on":
