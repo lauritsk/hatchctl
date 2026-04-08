@@ -4,7 +4,7 @@
 version: 2
 
 env:
-  - BRIDGE_HELPERS_DIR=internal/bridge/assets
+  - BRIDGE_HELPERS_DIR=internal/bridge/generated/assets
 
 before:
   hooks:
@@ -14,6 +14,8 @@ before:
 
 builds:
   - main: ./...
+    tags:
+      - release
     env:
       - CGO_ENABLED=0
     ldflags:
