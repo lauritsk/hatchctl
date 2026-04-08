@@ -3,6 +3,7 @@ mise.local.toml
 mise.local.lock
 .dist/
 dist/
+.bin/
 
 internal/bridge/generated/
 
