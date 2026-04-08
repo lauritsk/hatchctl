@@ -2,6 +2,14 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## [v0.3.2](https://github.com/lauritsk/hatchctl/compare/449ae146a5724b4ffad54360366346be8d03fc42..v0.3.2) - 2026-04-08
+#### Bug Fixes
+- (**runtime**) resolve dotfiles home and restore interactive exec tty - ([30bf1f3](https://github.com/lauritsk/hatchctl/commit/30bf1f31f7fa24394f8d44f5470c759d4449c27d)) - Karl Hans Laurits
+#### Miscellaneous Chores
+- (**mise**) add hatchctl tool dependency - ([449ae14](https://github.com/lauritsk/hatchctl/commit/449ae146a5724b4ffad54360366346be8d03fc42)) - Karl Hans Laurits
+
+- - -
+
 ## [v0.3.1](https://github.com/lauritsk/hatchctl/compare/1018af8270ac713d298bb28f472b42d04cf7e322..v0.3.1) - 2026-04-08
 #### Bug Fixes
 - (**ci**) isolate config-sensitive cli tests - ([bf1d6c7](https://github.com/lauritsk/hatchctl/commit/bf1d6c77ff96cad69c854dec1a51e2b23d3d419b)) - Karl Hans Laurits
