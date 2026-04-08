@@ -74,6 +74,63 @@ func TestBuildPersistsMetadataLabel(t *testing.T) {
 	}
 }
 
+func TestUpInstallsDotfilesOnceAndReportsStatus(t *testing.T) {
+	client := dockerClientForTest(t)
+	ctx := context.Background()
+	workspace := t.TempDir()
+	configDir := filepath.Join(workspace, ".devcontainer")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(configDir, "devcontainer.json"), []byte(`{
+		"image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+		"workspaceFolder": "/workspaces/demo"
+	}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dotfilesRepo := filepath.Join(workspace, "dotfiles-repo")
+	initGitRepoForTest(t, dotfilesRepo, map[string]string{
+		"install": "#!/bin/sh\nset -eu\nmkdir -p \"$HOME/.config/hatchctl-dotfiles\"\necho run >> \"$HOME/.config/hatchctl-dotfiles/count\"\n",
+	})
+
+	runner := NewRunner(client)
+	dotfiles := DotfilesOptions{Repository: "file:///workspaces/demo/dotfiles-repo"}
+	upResult, err := runner.Up(ctx, UpOptions{Workspace: workspace, Recreate: true, Dotfiles: dotfiles})
+	if err != nil {
+		t.Fatalf("up with dotfiles: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rm", "-f", upResult.ContainerID}})
+	})
+
+	configResult, err := runner.ReadConfig(ctx, ReadConfigOptions{Workspace: workspace, Dotfiles: dotfiles})
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	if configResult.Dotfiles == nil || !configResult.Dotfiles.Configured || !configResult.Dotfiles.Applied || configResult.Dotfiles.NeedsInstall {
+		t.Fatalf("unexpected dotfiles status %#v", configResult.Dotfiles)
+	}
+
+	assertDotfilesInstallCount(t, runner, ctx, workspace, 1)
+
+	second, err := runner.Up(ctx, UpOptions{Workspace: workspace, Dotfiles: dotfiles})
+	if err != nil {
+		t.Fatalf("second up with dotfiles: %v", err)
+	}
+	if !strings.HasPrefix(upResult.ContainerID, second.ContainerID) && !strings.HasPrefix(second.ContainerID, upResult.ContainerID) {
+		t.Fatalf("expected container reuse, first=%q second=%q", upResult.ContainerID, second.ContainerID)
+	}
+	assertDotfilesInstallCount(t, runner, ctx, workspace, 1)
+
+	state, err := devcontainer.ReadState(configResult.StateDir)
+	if err != nil {
+		t.Fatalf("read state: %v", err)
+	}
+	if !state.DotfilesReady || state.DotfilesRepo != "file:///workspaces/demo/dotfiles-repo" || state.DotfilesTarget != "$HOME/.dotfiles" {
+		t.Fatalf("unexpected dotfiles state %#v", state)
+	}
+}
+
 func TestUpPersistsMergedMetadataAndHonorsMergedRuntimeConfig(t *testing.T) {
 	setBridgeHelperEnv(t)
 	client := dockerClientForTest(t)
@@ -1630,6 +1687,58 @@ func envMap(values []string) map[string]string {
 		}
 	}
 	return result
+}
+
+func assertDotfilesInstallCount(t *testing.T, runner *Runner, ctx context.Context, workspace string, want int) {
+	t.Helper()
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode, err := runner.Exec(ctx, ExecOptions{
+		Workspace: workspace,
+		Args:      []string{"sh", "-lc", `wc -l < "$HOME/.config/hatchctl-dotfiles/count"`},
+		Stdout:    &stdout,
+		Stderr:    &stderr,
+	})
+	if err != nil {
+		t.Fatalf("read dotfiles install count: %v (stderr: %s)", err, stderr.String())
+	}
+	if exitCode != 0 {
+		t.Fatalf("unexpected count exit code %d (stderr: %s)", exitCode, stderr.String())
+	}
+	if got := strings.TrimSpace(stdout.String()); got != fmt.Sprintf("%d", want) {
+		t.Fatalf("unexpected dotfiles install count %q want %d", got, want)
+	}
+}
+
+func initGitRepoForTest(t *testing.T, dir string, files map[string]string) {
+	t.Helper()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for name, contents := range files {
+		path := filepath.Join(dir, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		mode := os.FileMode(0o644)
+		if name == "install" || strings.HasSuffix(name, ".sh") {
+			mode = 0o755
+		}
+		if err := os.WriteFile(path, []byte(contents), mode); err != nil {
+			t.Fatal(err)
+		}
+	}
+	runGit := func(args ...string) {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, string(output))
+		}
+	}
+	runGit("init")
+	runGit("add", ".")
+	runGit("-c", "user.name=Test User", "-c", "user.email=test@example.com", "commit", "-m", "init")
 }
 
 func sanitizeName(value string) string {

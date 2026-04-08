@@ -5,11 +5,12 @@ import (
 	"fmt"
 
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
+	ui "github.com/lauritsk/hatchctl/internal/display"
 	"github.com/lauritsk/hatchctl/internal/docker"
 )
 
-func (r *Runner) runLifecycleForUp(ctx context.Context, resolved devcontainer.ResolvedConfig, containerID string, created bool, lifecycleReady bool) error {
-	if created || !lifecycleReady {
+func (r *Runner) runLifecycleForUp(ctx context.Context, resolved devcontainer.ResolvedConfig, containerID string, created bool, state devcontainer.State, dotfiles DotfilesOptions, events ui.Sink) error {
+	if created || !state.LifecycleReady {
 		if err := runHostLifecycle(ctx, resolved.WorkspaceFolder, resolved.Config.InitializeCommand, r.commandIO(), r.hostCommandRunner); err != nil {
 			return err
 		}
@@ -23,13 +24,18 @@ func (r *Runner) runLifecycleForUp(ctx context.Context, resolved devcontainer.Re
 			return err
 		}
 	}
+	if dotfiles.Enabled() && (created || !dotfilesStateMatches(state, dotfiles)) {
+		if err := r.installDotfiles(ctx, containerID, resolved, dotfiles, events); err != nil {
+			return err
+		}
+	}
 	if err := r.runContainerLifecycleList(ctx, containerID, resolved, resolved.Merged.PostStartCommands); err != nil {
 		return err
 	}
 	return r.runContainerLifecycleList(ctx, containerID, resolved, resolved.Merged.PostAttachCommands)
 }
 
-func (r *Runner) runLifecyclePhase(ctx context.Context, resolved devcontainer.ResolvedConfig, containerID string, phase string) error {
+func (r *Runner) runLifecyclePhase(ctx context.Context, resolved devcontainer.ResolvedConfig, containerID string, phase string, state devcontainer.State, dotfiles DotfilesOptions, runDotfiles bool, events ui.Sink) error {
 	switch phase {
 	case "all":
 		if err := runHostLifecycle(ctx, resolved.WorkspaceFolder, resolved.Config.InitializeCommand, r.commandIO(), r.hostCommandRunner); err != nil {
@@ -43,6 +49,11 @@ func (r *Runner) runLifecyclePhase(ctx context.Context, resolved devcontainer.Re
 		}
 		if err := r.runContainerLifecycleList(ctx, containerID, resolved, resolved.Merged.PostCreateCommands); err != nil {
 			return err
+		}
+		if runDotfiles && dotfiles.Enabled() && !dotfilesStateMatches(state, dotfiles) {
+			if err := r.installDotfiles(ctx, containerID, resolved, dotfiles, events); err != nil {
+				return err
+			}
 		}
 		if err := r.runContainerLifecycleList(ctx, containerID, resolved, resolved.Merged.PostStartCommands); err != nil {
 			return err
@@ -58,7 +69,15 @@ func (r *Runner) runLifecyclePhase(ctx context.Context, resolved devcontainer.Re
 		if err := r.runContainerLifecycleList(ctx, containerID, resolved, resolved.Merged.UpdateContentCommands); err != nil {
 			return err
 		}
-		return r.runContainerLifecycleList(ctx, containerID, resolved, resolved.Merged.PostCreateCommands)
+		if err := r.runContainerLifecycleList(ctx, containerID, resolved, resolved.Merged.PostCreateCommands); err != nil {
+			return err
+		}
+		if runDotfiles && dotfiles.Enabled() && !dotfilesStateMatches(state, dotfiles) {
+			if err := r.installDotfiles(ctx, containerID, resolved, dotfiles, events); err != nil {
+				return err
+			}
+		}
+		return nil
 	case "start":
 		return r.runContainerLifecycleList(ctx, containerID, resolved, resolved.Merged.PostStartCommands)
 	case "attach":

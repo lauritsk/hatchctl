@@ -16,6 +16,10 @@ type State struct {
 	LifecycleReady  bool   `json:"lifecycleReady,omitempty"`
 	BridgeEnabled   bool   `json:"bridgeEnabled,omitempty"`
 	BridgeSessionID string `json:"bridgeSessionId,omitempty"`
+	DotfilesReady   bool   `json:"dotfilesReady,omitempty"`
+	DotfilesRepo    string `json:"dotfilesRepo,omitempty"`
+	DotfilesInstall string `json:"dotfilesInstall,omitempty"`
+	DotfilesTarget  string `json:"dotfilesTarget,omitempty"`
 }
 
 func WorkspaceStateDir(workspace string, configPath string) (string, error) {

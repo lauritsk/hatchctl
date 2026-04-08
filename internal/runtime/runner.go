@@ -42,6 +42,7 @@ type UpOptions struct {
 	ConfigPath     string
 	FeatureTimeout time.Duration
 	LockfilePolicy devcontainer.FeatureLockfilePolicy
+	Dotfiles       DotfilesOptions
 	Recreate       bool
 	BridgeEnabled  bool
 	Verbose        bool
@@ -91,6 +92,7 @@ type ReadConfigOptions struct {
 	ConfigPath     string
 	FeatureTimeout time.Duration
 	LockfilePolicy devcontainer.FeatureLockfilePolicy
+	Dotfiles       DotfilesOptions
 	Verbose        bool
 	Debug          bool
 	Events         ui.Sink
@@ -116,6 +118,7 @@ type ReadConfigResult struct {
 	Mounts               []string          `json:"mounts,omitempty"`
 	ForwardPorts         []string          `json:"forwardPorts,omitempty"`
 	Bridge               *bridge.Report    `json:"bridge,omitempty"`
+	Dotfiles             *DotfilesStatus   `json:"dotfiles,omitempty"`
 	MetadataCount        int               `json:"metadataCount"`
 	ManagedContainer     *ManagedContainer `json:"managedContainer,omitempty"`
 }
@@ -156,6 +159,7 @@ type RunLifecycleOptions struct {
 	ConfigPath     string
 	FeatureTimeout time.Duration
 	LockfilePolicy devcontainer.FeatureLockfilePolicy
+	Dotfiles       DotfilesOptions
 	Verbose        bool
 	Debug          bool
 	Events         ui.Sink
@@ -197,6 +201,10 @@ func (e ExitError) Error() string {
 }
 
 func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
+	dotfiles, err := opts.Dotfiles.Normalized()
+	if err != nil {
+		return UpResult{}, err
+	}
 	prepared, err := r.prepareWorkspace(ctx, prepareWorkspaceOptions{resolve: prepareResolveOptions{
 		Workspace:      opts.Workspace,
 		ConfigPath:     opts.ConfigPath,
@@ -269,13 +277,17 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 	}
 
 	r.emitProgress(opts.Events, "Running lifecycle commands")
-	if err := r.runLifecycleForUp(ctx, resolved, containerID, created, state.LifecycleReady); err != nil {
+	if err := r.runLifecycleForUp(ctx, resolved, containerID, created, state, dotfiles, opts.Events); err != nil {
 		return UpResult{}, err
 	}
 
 	state.ContainerID = containerID
 	state.LifecycleReady = true
 	state.BridgeEnabled = opts.BridgeEnabled
+	state.DotfilesReady = dotfiles.Enabled()
+	state.DotfilesRepo = dotfiles.Repository
+	state.DotfilesInstall = dotfiles.InstallCommand
+	state.DotfilesTarget = dotfiles.TargetPath
 	if bridgeReport != nil {
 		state.BridgeSessionID = bridgeReport.ID
 	}
@@ -378,6 +390,10 @@ func (r *Runner) Exec(ctx context.Context, opts ExecOptions) (int, error) {
 }
 
 func (r *Runner) ReadConfig(ctx context.Context, opts ReadConfigOptions) (ReadConfigResult, error) {
+	dotfiles, err := opts.Dotfiles.Normalized()
+	if err != nil {
+		return ReadConfigResult{}, err
+	}
 	prepared, err := r.prepareWorkspace(ctx, prepareWorkspaceOptions{resolve: prepareResolveOptions{
 		Workspace:      opts.Workspace,
 		ConfigPath:     opts.ConfigPath,
@@ -439,12 +455,17 @@ func (r *Runner) ReadConfig(ctx context.Context, opts ReadConfigOptions) (ReadCo
 		Mounts:               resolved.Merged.Mounts,
 		ForwardPorts:         []string(resolved.Merged.ForwardPorts),
 		Bridge:               bridgeReport,
+		Dotfiles:             dotfilesStatus(state, dotfiles),
 		MetadataCount:        len(resolved.Merged.Metadata),
 		ManagedContainer:     managedContainer,
 	}, nil
 }
 
 func (r *Runner) RunLifecycle(ctx context.Context, opts RunLifecycleOptions) (RunLifecycleResult, error) {
+	dotfiles, err := opts.Dotfiles.Normalized()
+	if err != nil {
+		return RunLifecycleResult{}, err
+	}
 	prepared, err := r.prepareWorkspace(ctx, prepareWorkspaceOptions{resolve: prepareResolveOptions{
 		Workspace:      opts.Workspace,
 		ConfigPath:     opts.ConfigPath,
@@ -453,18 +474,29 @@ func (r *Runner) RunLifecycle(ctx context.Context, opts RunLifecycleOptions) (Ru
 		ProgressLabel:  "Resolving development container",
 		Debug:          opts.Debug,
 		Events:         opts.Events,
-	}, enrich: true, findContainer: true})
+	}, enrich: true, findContainer: true, loadState: true})
 	if err != nil {
 		return RunLifecycleResult{}, err
 	}
 	resolved := prepared.resolved
+	state := prepared.state
 	phase := strings.ToLower(opts.Phase)
 	if phase == "" {
 		phase = "all"
 	}
 	r.emitProgress(opts.Events, "Running lifecycle commands")
-	if err := r.runLifecyclePhase(ctx, resolved, prepared.containerID, phase); err != nil {
+	runDotfiles := phase == "all" || phase == "create"
+	if err := r.runLifecyclePhase(ctx, resolved, prepared.containerID, phase, state, dotfiles, runDotfiles, opts.Events); err != nil {
 		return RunLifecycleResult{}, err
+	}
+	if runDotfiles {
+		state.DotfilesReady = dotfiles.Enabled()
+		state.DotfilesRepo = dotfiles.Repository
+		state.DotfilesInstall = dotfiles.InstallCommand
+		state.DotfilesTarget = dotfiles.TargetPath
+		if err := devcontainer.WriteState(resolved.StateDir, state); err != nil {
+			return RunLifecycleResult{}, err
+		}
 	}
 	return RunLifecycleResult{ContainerID: prepared.containerID, Phase: phase}, nil
 }

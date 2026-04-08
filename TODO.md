@@ -6,6 +6,7 @@
 
 ## Done
 
+- [x] add first-class dotfiles personalization support with explicit CLI UX and one-time install tracking
 - [x] move UID/GID reconciliation out of derived image rebuilds and into a runtime-oriented approach where possible
 - [x] redesign bridge transport around a persistent localhost-only control/data channel so browser-open and localhost callback auth flows still work without a detached wide-bind HTTP server or per-connection `docker exec`
 - [x] harden single-container metadata parity

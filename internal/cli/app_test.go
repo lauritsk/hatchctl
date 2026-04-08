@@ -109,6 +109,44 @@ func TestRunUpPassesFeatureTimeoutFlag(t *testing.T) {
 	}
 }
 
+func TestRunUpPassesDotfilesFlags(t *testing.T) {
+	t.Parallel()
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	var got runtime.UpOptions
+	app := NewWithRunner(&out, &errOut, stubRunner{up: func(_ context.Context, opts runtime.UpOptions) (runtime.UpResult, error) {
+		got = opts
+		return runtime.UpResult{}, nil
+	}})
+
+	if err := app.Run(context.Background(), []string{"up", "--dotfiles", "github.com/lauritsk/dotfiles", "--dotfiles-install-command", "install", "--dotfiles-target-path", "~/dotfiles"}); err != nil {
+		t.Fatalf("run app: %v", err)
+	}
+	if got.Dotfiles.Repository != "github.com/lauritsk/dotfiles" || got.Dotfiles.InstallCommand != "install" || got.Dotfiles.TargetPath != "~/dotfiles" {
+		t.Fatalf("unexpected dotfiles options %#v", got.Dotfiles)
+	}
+}
+
+func TestRunUpAcceptsExplicitDotfilesRepositoryFlag(t *testing.T) {
+	t.Parallel()
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	var got runtime.UpOptions
+	app := NewWithRunner(&out, &errOut, stubRunner{up: func(_ context.Context, opts runtime.UpOptions) (runtime.UpResult, error) {
+		got = opts
+		return runtime.UpResult{}, nil
+	}})
+
+	if err := app.Run(context.Background(), []string{"up", "--dotfiles-repository", "github.com/lauritsk/dotfiles"}); err != nil {
+		t.Fatalf("run app: %v", err)
+	}
+	if got.Dotfiles.Repository != "github.com/lauritsk/dotfiles" {
+		t.Fatalf("unexpected dotfiles repository %#v", got.Dotfiles)
+	}
+}
+
 func TestRunUpUsesGlobalDebugForProgressAndPlan(t *testing.T) {
 	t.Parallel()
 
@@ -245,7 +283,7 @@ func TestRunConfigUsesFrozenLockfilePolicy(t *testing.T) {
 		if opts.LockfilePolicy != devcontainer.FeatureLockfilePolicyFrozen {
 			t.Fatalf("unexpected lockfile policy %q", opts.LockfilePolicy)
 		}
-		return runtime.ReadConfigResult{ConfigPath: "/tmp/devcontainer.json", WorkspaceFolder: "/workspace", WorkspaceMount: "type=bind", SourceKind: "image"}, nil
+		return runtime.ReadConfigResult{ConfigPath: "/tmp/devcontainer.json", WorkspaceFolder: "/workspace", WorkspaceMount: "type=bind", SourceKind: "image", Dotfiles: &runtime.DotfilesStatus{Configured: true, Applied: false, NeedsInstall: true, Repository: "https://github.com/lauritsk/dotfiles.git", TargetPath: "$HOME/.dotfiles"}}, nil
 	}})
 
 	if err := app.Run(context.Background(), []string{"config"}); err != nil {
@@ -253,6 +291,9 @@ func TestRunConfigUsesFrozenLockfilePolicy(t *testing.T) {
 	}
 	if !called {
 		t.Fatal("expected config runner to be called")
+	}
+	if got := out.String(); !strings.Contains(got, "Dotfiles") {
+		t.Fatalf("expected dotfiles status in output, got %q", got)
 	}
 }
 

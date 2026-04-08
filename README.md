@@ -46,6 +46,7 @@ install ./hatchctl /usr/local/bin/hatchctl
 - Compose feature consumption for image-based and Dockerfile-based single-service flows
 - Compose bridge support and Compose UID/GID remap parity for single-service flows
 - config-adjacent feature lockfiles with digest and integrity reuse
+- first-class dotfiles personalization through CLI flags or `HATCHCTL_DOTFILES_*` env vars
 - `up`, `build`, `exec`, `config`, `run`, and `bridge doctor`
 - machine-readable JSON output for `up`, `build`, `exec`, `config`, `run`, and `bridge doctor`
 - lifecycle execution for `initializeCommand`, `onCreateCommand`, `updateContentCommand`, `postCreateCommand`, `postStartCommand`, and `postAttachCommand`
@@ -68,6 +69,7 @@ install ./hatchctl /usr/local/bin/hatchctl
 
 ```sh
 hatchctl up
+hatchctl up --dotfiles lauritsk/dotfiles
 hatchctl up --feature-timeout 2m
 hatchctl build
 hatchctl exec -- go test ./...
@@ -75,6 +77,8 @@ hatchctl config --json
 hatchctl run --phase start
 hatchctl bridge doctor
 ```
+
+Dotfiles are configured outside `devcontainer.json`, matching how editor tooling treats them. Most users only need `--dotfiles <repo>`. `--dotfiles-repository`, `--dotfiles-install-command`, and `--dotfiles-target-path` are available when you need more control, and each has a matching `HATCHCTL_DOTFILES_*` environment variable.
 
 Remote feature downloads default to a `90s` HTTP timeout. Override that per command with `--feature-timeout`, for example `hatchctl up --feature-timeout 2m`.
 

@@ -52,6 +52,7 @@ func (a *App) Run(ctx context.Context, args []string) error {
 
 func (a *App) newRootCommand() *cobra.Command {
 	global := &globalOptions{}
+	dotfiles := defaultDotfilesOptions()
 	versionFlag := false
 	cmd := &cobra.Command{
 		Use:           "hatchctl",
@@ -68,6 +69,7 @@ func (a *App) newRootCommand() *cobra.Command {
 		},
 		Example: strings.Join([]string{
 			"hatchctl up",
+			"hatchctl up --dotfiles lauritsk/dotfiles",
 			"hatchctl --verbose up",
 			"hatchctl build --debug",
 			"hatchctl up --workspace ../my-project --bridge",
@@ -81,20 +83,21 @@ func (a *App) newRootCommand() *cobra.Command {
 	cmd.CompletionOptions.DisableDefaultCmd = true
 	cmd.PersistentFlags().BoolVar(&global.Verbose, "verbose", false, "print progress while running")
 	cmd.PersistentFlags().BoolVar(&global.Debug, "debug", false, "print detailed execution diagnostics")
+	addDotfilesFlags(cmd, &dotfiles)
 	cmd.Flags().BoolVarP(&versionFlag, "version", "v", false, "print version information")
 	cmd.AddCommand(
-		a.newUpCommand(global),
+		a.newUpCommand(global, &dotfiles),
 		a.newBuildCommand(global),
 		a.newExecCommand(global),
-		a.newConfigCommand(global),
-		a.newRunCommand(global),
+		a.newConfigCommand(global, &dotfiles),
+		a.newRunCommand(global, &dotfiles),
 		a.newBridgeCommand(global),
 		newVersionCommand(a.out),
 	)
 	return cmd
 }
 
-func (a *App) newUpCommand(global *globalOptions) *cobra.Command {
+func (a *App) newUpCommand(global *globalOptions, dotfiles *dotfilesOptions) *cobra.Command {
 	var workspace string
 	var configPath string
 	var lockfilePolicy string
@@ -117,6 +120,7 @@ func (a *App) newUpCommand(global *globalOptions) *cobra.Command {
 				ConfigPath:     configPath,
 				FeatureTimeout: featureTimeout,
 				LockfilePolicy: policy,
+				Dotfiles:       dotfiles.runtime(),
 				Recreate:       recreate,
 				BridgeEnabled:  bridgeEnabled,
 				Verbose:        global.Verbose || global.Debug,
@@ -255,7 +259,7 @@ func (a *App) newExecCommand(global *globalOptions) *cobra.Command {
 	return cmd
 }
 
-func (a *App) newConfigCommand(global *globalOptions) *cobra.Command {
+func (a *App) newConfigCommand(global *globalOptions, dotfiles *dotfilesOptions) *cobra.Command {
 	var workspace string
 	var configPath string
 	var lockfilePolicy string
@@ -276,6 +280,7 @@ func (a *App) newConfigCommand(global *globalOptions) *cobra.Command {
 				ConfigPath:     configPath,
 				FeatureTimeout: featureTimeout,
 				LockfilePolicy: policy,
+				Dotfiles:       dotfiles.runtime(),
 				Verbose:        global.Verbose || global.Debug,
 				Debug:          global.Debug,
 				Events:         renderer.Events(),
@@ -297,7 +302,7 @@ func (a *App) newConfigCommand(global *globalOptions) *cobra.Command {
 	return cmd
 }
 
-func (a *App) newRunCommand(global *globalOptions) *cobra.Command {
+func (a *App) newRunCommand(global *globalOptions, dotfiles *dotfilesOptions) *cobra.Command {
 	var workspace string
 	var configPath string
 	var lockfilePolicy string
@@ -319,6 +324,7 @@ func (a *App) newRunCommand(global *globalOptions) *cobra.Command {
 				ConfigPath:     configPath,
 				FeatureTimeout: featureTimeout,
 				LockfilePolicy: policy,
+				Dotfiles:       dotfiles.runtime(),
 				Verbose:        global.Verbose || global.Debug,
 				Debug:          global.Debug,
 				Events:         renderer.Events(),
@@ -465,6 +471,31 @@ type globalOptions struct {
 	Debug   bool
 }
 
+type dotfilesOptions struct {
+	Repository     string
+	InstallCommand string
+	TargetPath     string
+}
+
+func defaultDotfilesOptions() dotfilesOptions {
+	return dotfilesOptions{
+		Repository:     os.Getenv("HATCHCTL_DOTFILES_REPOSITORY"),
+		InstallCommand: os.Getenv("HATCHCTL_DOTFILES_INSTALL_COMMAND"),
+		TargetPath:     os.Getenv("HATCHCTL_DOTFILES_TARGET_PATH"),
+	}
+}
+
+func addDotfilesFlags(cmd *cobra.Command, opts *dotfilesOptions) {
+	cmd.PersistentFlags().StringVar(&opts.Repository, "dotfiles", opts.Repository, "dotfiles repo (owner/repo, github.com/owner/repo, or git URL); env HATCHCTL_DOTFILES_REPOSITORY")
+	cmd.PersistentFlags().StringVar(&opts.Repository, "dotfiles-repository", opts.Repository, "explicit dotfiles repo flag; same as --dotfiles")
+	cmd.PersistentFlags().StringVar(&opts.InstallCommand, "dotfiles-install-command", opts.InstallCommand, "dotfiles install script or command; env HATCHCTL_DOTFILES_INSTALL_COMMAND")
+	cmd.PersistentFlags().StringVar(&opts.TargetPath, "dotfiles-target-path", opts.TargetPath, "dotfiles checkout path inside the container; env HATCHCTL_DOTFILES_TARGET_PATH")
+}
+
+func (o dotfilesOptions) runtime() runtime.DotfilesOptions {
+	return runtime.DotfilesOptions{Repository: o.Repository, InstallCommand: o.InstallCommand, TargetPath: o.TargetPath}
+}
+
 func (a *App) newRenderer(jsonOut bool) *ui.Renderer {
 	return ui.NewRenderer(a.out, a.err, jsonOut)
 }
@@ -515,6 +546,9 @@ func configResultFields(result runtime.ReadConfigResult) []ui.KeyValue {
 	}
 	if result.Bridge != nil {
 		fields = append(fields, ui.KeyValue{Key: "Bridge", Value: fmt.Sprintf("enabled=%t mount=%s helper=%s status=%s", result.Bridge.Enabled, result.Bridge.BinPath, result.Bridge.HelperPath, result.Bridge.Status)})
+	}
+	if result.Dotfiles != nil {
+		fields = append(fields, ui.KeyValue{Key: "Dotfiles", Value: fmt.Sprintf("configured=%t applied=%t pending=%t repo=%s target=%s", result.Dotfiles.Configured, result.Dotfiles.Applied, result.Dotfiles.NeedsInstall, result.Dotfiles.Repository, result.Dotfiles.TargetPath)})
 	}
 	if result.ManagedContainer != nil {
 		fields = append(fields, ui.KeyValue{Key: "Managed container", Value: fmt.Sprintf("id=%s status=%s running=%t user=%s metadata=%d", result.ManagedContainer.ID, result.ManagedContainer.Status, result.ManagedContainer.Running, result.ManagedContainer.RemoteUser, result.ManagedContainer.MetadataCount)})
