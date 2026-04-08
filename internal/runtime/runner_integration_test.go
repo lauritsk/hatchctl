@@ -259,6 +259,12 @@ func TestUpPersistsMergedMetadataAndHonorsMergedRuntimeConfig(t *testing.T) {
 	if got := configResult.ManagedContainer.ContainerEnv["BROWSER"]; got != "/var/run/hatchctl/bridge/bin/devcontainer-open" {
 		t.Fatalf("unexpected managed container env %#v", configResult.ManagedContainer.ContainerEnv)
 	}
+	if _, ok := configResult.ManagedContainer.ContainerEnv["DEVCONTAINER_BRIDGE_SOCKET"]; ok {
+		t.Fatalf("unexpected legacy bridge socket env %#v", configResult.ManagedContainer.ContainerEnv)
+	}
+	if _, ok := configResult.ManagedContainer.ContainerEnv["DEVCONTAINER_BRIDGE_HELPER_SOCKET"]; ok {
+		t.Fatalf("unexpected legacy helper socket env %#v", configResult.ManagedContainer.ContainerEnv)
+	}
 	if !configResult.ManagedContainer.BridgeEnabled {
 		t.Fatalf("expected managed container bridge to be enabled %#v", configResult.ManagedContainer)
 	}
@@ -323,7 +329,7 @@ func TestUpPersistsMergedMetadataAndHonorsMergedRuntimeConfig(t *testing.T) {
 	stderr.Reset()
 	exitCode, err = runner.Exec(ctx, ExecOptions{
 		Workspace: workspace,
-		Args:      []string{"sh", "-lc", `printf '%s|%s' "$BROWSER" "$DEVCONTAINER_BRIDGE_ENABLED"`},
+		Args:      []string{"sh", "-lc", `printf '%s|%s|%s|%s' "$BROWSER" "$DEVCONTAINER_BRIDGE_ENABLED" "${DEVCONTAINER_BRIDGE_SOCKET:-}" "${DEVCONTAINER_BRIDGE_HELPER_SOCKET:-}"`},
 		Stdout:    &stdout,
 		Stderr:    &stderr,
 	})
@@ -333,7 +339,7 @@ func TestUpPersistsMergedMetadataAndHonorsMergedRuntimeConfig(t *testing.T) {
 	if exitCode != 0 {
 		t.Fatalf("unexpected bridge env exit code %d (stderr: %s)", exitCode, stderr.String())
 	}
-	if got := strings.TrimSpace(stdout.String()); got != "/var/run/hatchctl/bridge/bin/devcontainer-open|true" {
+	if got := strings.TrimSpace(stdout.String()); got != "/var/run/hatchctl/bridge/bin/devcontainer-open|true||" {
 		t.Fatalf("unexpected bridge env output %q", got)
 	}
 

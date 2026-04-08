@@ -9,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 )
@@ -73,66 +72,73 @@ func TestHelperConnectCopiesTraffic(t *testing.T) {
 	}
 }
 
-func TestHelperServeConnectsToContainerLocalhost(t *testing.T) {
+func TestBridgeHostServiceConnectsToContainerPort(t *testing.T) {
 	t.Parallel()
-	tcpListener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer tcpListener.Close()
-	go func() {
-		conn, err := tcpListener.Accept()
-		if err != nil {
-			return
+	session := &Session{ID: "session", StatusPath: filepath.Join(t.TempDir(), "bridge-status.json")}
+	service := newBridgeHostService(session, "container", func(string) error { return nil })
+	service.connectPort = func(containerID string, port int, stdin io.Reader, stdout io.Writer) error {
+		if containerID != "container" {
+			t.Fatalf("unexpected container id %q", containerID)
 		}
-		defer conn.Close()
-		data, _ := io.ReadAll(conn)
-		_, _ = conn.Write(append([]byte("reply:"), data...))
-	}()
-
-	unixPath := testSocketPath(t, "helper.sock")
-	unixListener, err := listenUnixSocket(unixPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		_ = unixListener.Close()
-		_ = os.Remove(unixPath)
-	}()
-	go func() {
-		conn, err := unixListener.Accept()
-		if err != nil {
-			return
+		if port != 8080 {
+			t.Fatalf("unexpected port %d", port)
 		}
-		handleHelperConn(conn)
-	}()
-
-	conn, err := net.Dial("unix", unixPath)
-	if err != nil {
-		t.Fatal(err)
+		data := make([]byte, len("hello"))
+		_, err := io.ReadFull(stdin, data)
+		if err != nil {
+			return err
+		}
+		_, err = stdout.Write(append([]byte("reply:"), data...))
+		return err
 	}
-	defer conn.Close()
-	port := tcpListener.Addr().(*net.TCPAddr).Port
-	if err := writeBridgeRequest(conn, bridgeRequest{Kind: "connect", Port: port}); err != nil {
-		t.Fatalf("write request: %v", err)
-	}
-	response, err := readBridgeResponse(conn)
-	if err != nil {
-		t.Fatalf("read response: %v", err)
-	}
-	if !response.OK {
-		t.Fatalf("unexpected response %#v", response)
-	}
-	if _, err := conn.Write([]byte("hello")); err != nil {
+	client, server := net.Pipe()
+	defer client.Close()
+	go service.handleForwardConn(8080, server)
+	if _, err := client.Write([]byte("hello")); err != nil {
 		t.Fatalf("write data: %v", err)
 	}
-	closeWrite(conn)
-	data, err := io.ReadAll(conn)
+	data, err := io.ReadAll(client)
 	if err != nil {
 		t.Fatalf("read proxied data: %v", err)
 	}
 	if got := string(data); got != "reply:hello" {
 		t.Fatalf("unexpected proxied data %q", got)
+	}
+	status, err := os.ReadFile(session.StatusPath)
+	if err != nil && !os.IsNotExist(err) {
+		t.Fatalf("read status file: %v", err)
+	}
+	if len(status) != 0 {
+		t.Fatalf("expected no status update on successful forward, got %s", string(status))
+	}
+}
+
+func TestBridgeHostServiceReportsForwardError(t *testing.T) {
+	t.Parallel()
+	session := &Session{ID: "session", StatusPath: filepath.Join(t.TempDir(), "bridge-status.json")}
+	service := newBridgeHostService(session, "container", func(string) error { return nil })
+	service.connectPort = func(string, int, io.Reader, io.Writer) error {
+		return fmt.Errorf("connect failed")
+	}
+	client, server := net.Pipe()
+	go service.handleForwardConn(8080, server)
+	_ = client.Close()
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		data, err := os.ReadFile(session.StatusPath)
+		if err == nil {
+			if !strings.Contains(string(data), `"lastEvent": "forward failed"`) || !strings.Contains(string(data), `"lastError": "connect failed"`) {
+				t.Fatalf("unexpected status file %s", string(data))
+			}
+			break
+		}
+		if !os.IsNotExist(err) {
+			t.Fatalf("read status file: %v", err)
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("status file was not written")
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }
 
@@ -165,6 +171,36 @@ func TestHelperOpenUsesBridgeSocket(t *testing.T) {
 	}
 	req := <-requests
 	if req.Kind != "open" || req.URL != "https://example.com" {
+		t.Fatalf("unexpected request %#v", req)
+	}
+}
+
+func TestHelperOpenUsesTCPBridge(t *testing.T) {
+	t.Parallel()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	requests := make(chan bridgeRequest, 1)
+	go func() {
+		conn, err := listener.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		var req bridgeRequest
+		if err := readBridgeRequest(conn, &req); err == nil {
+			requests <- req
+			_ = writeBridgeResponse(conn, bridgeResponse{OK: true})
+		}
+	}()
+	port := listener.Addr().(*net.TCPAddr).Port
+	if err := helperOpen([]string{"--host", "127.0.0.1", "--port", fmt.Sprintf("%d", port), "--token", "secret", "--url", "https://example.com/tcp"}); err != nil {
+		t.Fatalf("helper open over tcp: %v", err)
+	}
+	req := <-requests
+	if req.Kind != "open" || req.URL != "https://example.com/tcp" || req.Token != "secret" {
 		t.Fatalf("unexpected request %#v", req)
 	}
 }
@@ -226,7 +262,6 @@ func TestPrepareAndRuntimeFilesUseOwnerOnlyPermissions(t *testing.T) {
 		t.Fatalf("prepare bridge session: %v", err)
 	}
 	session.SocketPath = testSocketPath(t, "bridge.sock")
-	session.HelperSock = testSocketPath(t, "helper.sock")
 	if err := writeBridgeConfig(session, "container"); err != nil {
 		t.Fatalf("write bridge config: %v", err)
 	}
@@ -264,7 +299,7 @@ func TestPrepareAndRuntimeFilesUseOwnerOnlyPermissions(t *testing.T) {
 		t.Fatalf("write pid file: %v", err)
 	}
 	assertMode(session.PIDPath, 0o600)
-	if session.SocketPath == "" || session.HelperSock == "" {
+	if session.SocketPath == "" {
 		t.Fatalf("expected socket paths in session %#v", session)
 	}
 }
@@ -411,63 +446,6 @@ func TestWaitForSocketTimesOut(t *testing.T) {
 	path := testSocketPath(t, "missing.sock")
 	err := waitForSocket(path, 150*time.Millisecond)
 	if err == nil || !strings.Contains(err.Error(), "timed out waiting for bridge socket") {
-		t.Fatalf("unexpected error %v", err)
-	}
-}
-
-func TestWaitForHelperRetriesUntilSocketReady(t *testing.T) {
-	t.Parallel()
-
-	path := testSocketPath(t, "helper.sock")
-	ready := make(chan struct{})
-	var once sync.Once
-	retries := 0
-
-	err := waitForHelper(path, 2*time.Second, func() error {
-		retries++
-		if retries != 2 {
-			return nil
-		}
-		once.Do(func() {
-			go func() {
-				listener, err := listenUnixSocket(path)
-				if err != nil {
-					return
-				}
-				defer func() {
-					_ = listener.Close()
-					_ = os.Remove(path)
-					close(ready)
-				}()
-				conn, err := listener.Accept()
-				if err != nil {
-					return
-				}
-				defer conn.Close()
-				var req bridgeRequest
-				if err := readBridgeRequest(conn, &req); err != nil {
-					return
-				}
-				_ = writeBridgeResponse(conn, bridgeResponse{OK: req.Kind == "ping"})
-			}()
-		})
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("wait for helper: %v", err)
-	}
-	if retries < 2 {
-		t.Fatalf("expected helper retry, got %d attempts", retries)
-	}
-	<-ready
-}
-
-func TestWaitForHelperTimesOut(t *testing.T) {
-	t.Parallel()
-
-	path := testSocketPath(t, "missing-helper.sock")
-	err := waitForHelper(path, 150*time.Millisecond, nil)
-	if err == nil || !strings.Contains(err.Error(), "timed out waiting for bridge helper socket") {
 		t.Fatalf("unexpected error %v", err)
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"maps"
+	"net"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -24,7 +25,6 @@ type Session struct {
 	Port       int    `json:"port,omitempty"`
 	Token      string `json:"token,omitempty"`
 	SocketPath string `json:"socketPath,omitempty"`
-	HelperSock string `json:"helperSock,omitempty"`
 	StatePath  string `json:"statePath"`
 	ConfigPath string `json:"configPath,omitempty"`
 	PIDPath    string `json:"pidPath,omitempty"`
@@ -41,7 +41,7 @@ const (
 	containerBridgeMountPath = "/var/run/hatchctl/bridge"
 	helperBinaryEnvVar       = "HATCHCTL_BRIDGE_HELPER"
 	hostSocketName           = "bridge.sock"
-	helperSocketName         = "helper.sock"
+	containerBridgeHost      = "host.docker.internal"
 )
 
 func Prepare(stateDir string, enabled bool, helperArch string) (*Session, error) {
@@ -58,7 +58,20 @@ func Prepare(stateDir string, enabled bool, helperArch string) (*Session, error)
 		return nil, err
 	}
 	helperPath := filepath.Join(binPath, "devcontainer-open")
-	if err := os.WriteFile(helperPath, []byte(openShim()), 0o755); err != nil {
+	if session.Host == "" {
+		session.Host = containerBridgeHost
+	}
+	if session.Port == 0 {
+		port, err := reserveBridgePort()
+		if err != nil {
+			return nil, err
+		}
+		session.Port = port
+	}
+	if session.Token == "" {
+		session.Token = randomToken(18)
+	}
+	if err := os.WriteFile(helperPath, []byte(openShim(session)), 0o755); err != nil {
 		return nil, err
 	}
 	if err := os.WriteFile(filepath.Join(binPath, "xdg-open"), []byte(xdgOpenShim()), 0o755); err != nil {
@@ -75,9 +88,6 @@ func Prepare(stateDir string, enabled bool, helperArch string) (*Session, error)
 	session.HelperArch = resolvedHelperArch
 	if session.SocketPath == "" {
 		session.SocketPath = filepath.Join(bridgeDir, hostSocketName)
-	}
-	if session.HelperSock == "" {
-		session.HelperSock = filepath.Join(bridgeDir, helperSocketName)
 	}
 	session.StatePath = bridgeDir
 	session.HelperPath = helperPath
@@ -173,7 +183,7 @@ func Doctor(stateDir string) (Report, error) {
 	}, nil
 }
 
-func openShim() string {
+func openShim(session *Session) string {
 	return fmt.Sprintf(`#!/bin/sh
 set -eu
 
@@ -186,8 +196,8 @@ if [ -n "${DEVCONTAINER_BRIDGE_OPEN_COMMAND:-}" ]; then
   DEVCONTAINER_BRIDGE_URL="$url" exec /bin/sh -lc "$DEVCONTAINER_BRIDGE_OPEN_COMMAND"
 fi
 
-	exec %s bridge helper open --socket %s --url "$url"
-`, containerHelperBin, filepath.ToSlash(filepath.Join(containerBridgeMountPath, hostSocketName)))
+	exec %s bridge helper open --host %s --port %d --token %s --url "$url"
+`, containerHelperBin, session.Host, session.Port, session.Token)
 }
 
 func xdgOpenShim() string {
@@ -238,8 +248,6 @@ func applySession(session *Session, merged devcontainer.MergedConfig) devcontain
 	containerEnv := cloneEnv(merged.ContainerEnv)
 	containerEnv["BROWSER"] = filepath.ToSlash(filepath.Join(session.BinPath, "devcontainer-open"))
 	containerEnv["DEVCONTAINER_BRIDGE_ENABLED"] = "true"
-	containerEnv["DEVCONTAINER_BRIDGE_SOCKET"] = filepath.ToSlash(filepath.Join(session.MountPath, hostSocketName))
-	containerEnv["DEVCONTAINER_BRIDGE_HELPER_SOCKET"] = filepath.ToSlash(filepath.Join(session.MountPath, helperSocketName))
 	containerEnv["PATH"] = prependPath(session.BinPath, containerEnv["PATH"])
 	mount := fmt.Sprintf("type=bind,source=%s,target=%s", session.StatePath, session.MountPath)
 	merged.ContainerEnv = containerEnv
@@ -258,7 +266,6 @@ func loadOrCreateSession(bridgeDir string, enabled bool) (*Session, error) {
 	session = &Session{
 		ID:         randomToken(12),
 		SocketPath: filepath.Join(bridgeDir, hostSocketName),
-		HelperSock: filepath.Join(bridgeDir, helperSocketName),
 		StatePath:  bridgeDir,
 		ConfigPath: filepath.Join(bridgeDir, "bridge-config.json"),
 		PIDPath:    filepath.Join(bridgeDir, "bridge.pid"),
@@ -397,4 +404,13 @@ func appendMount(mounts []string, mount string) []string {
 		}
 	}
 	return append(mounts, mount)
+}
+
+func reserveBridgePort() (int, error) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return 0, err
+	}
+	defer listener.Close()
+	return listener.Addr().(*net.TCPAddr).Port, nil
 }

@@ -372,7 +372,6 @@ func (a *App) newBridgeHelperCommand() *cobra.Command {
 	cmd.AddCommand(
 		a.newBridgeHelperPassthroughCommand("connect"),
 		a.newBridgeHelperPassthroughCommand("open"),
-		a.newBridgeHelperPassthroughCommand("serve"),
 	)
 	return cmd
 }

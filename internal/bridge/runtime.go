@@ -24,9 +24,11 @@ const containerHelperBin = "/var/run/hatchctl/bridge/bin/hatchctl"
 
 const (
 	bridgeSocketStartupTimeout = 5 * time.Second
-	helperSocketStartupTimeout = 15 * time.Second
-	helperSocketRetryInterval  = 500 * time.Millisecond
 )
+
+type containerConnectRunner func(string, int, io.Reader, io.Writer) error
+
+var runContainerConnect containerConnectRunner = defaultContainerConnectRunner
 
 type statusFile struct {
 	SessionID   string          `json:"sessionId"`
@@ -53,9 +55,10 @@ type forwardedPort struct {
 }
 
 type bridgeRequest struct {
-	Kind string `json:"kind"`
-	URL  string `json:"url,omitempty"`
-	Port int    `json:"port,omitempty"`
+	Kind  string `json:"kind"`
+	URL   string `json:"url,omitempty"`
+	Port  int    `json:"port,omitempty"`
+	Token string `json:"token,omitempty"`
 }
 
 type bridgeResponse struct {
@@ -68,6 +71,7 @@ type bridgeHostService struct {
 	containerID string
 	openURL     func(string) error
 	forwardURL  func(int) (int, bool, error)
+	connectPort containerConnectRunner
 	mu          sync.Mutex
 	forwarded   map[int]forwardedPort
 }
@@ -116,14 +120,6 @@ func Start(stateDir string, enabled bool, helperArch string, containerID string)
 	if err := waitForSocket(session.SocketPath, bridgeSocketStartupTimeout); err != nil {
 		return nil, err
 	}
-	if err := ensureHelperService(session, containerID); err != nil {
-		return nil, err
-	}
-	if err := waitForHelper(session.HelperSock, helperSocketStartupTimeout, func() error {
-		return ensureHelperService(session, containerID)
-	}); err != nil {
-		return nil, err
-	}
 	session.Status = "running"
 	return session, nil
 }
@@ -137,8 +133,15 @@ func Serve(ctx context.Context, stateDir string, containerID string) error {
 	if err != nil {
 		return err
 	}
+	tcpListener, err := listenBridgeTCP(session.Port)
+	if err != nil {
+		_ = listener.Close()
+		_ = os.Remove(session.SocketPath)
+		return err
+	}
 	defer func() {
 		_ = listener.Close()
+		_ = tcpListener.Close()
 		_ = os.Remove(session.SocketPath)
 	}()
 	if err := os.WriteFile(session.PIDPath, []byte(strconv.Itoa(os.Getpid())), 0o600); err != nil {
@@ -150,18 +153,24 @@ func Serve(ctx context.Context, stateDir string, containerID string) error {
 	go func() {
 		<-ctx.Done()
 		_ = listener.Close()
+		_ = tcpListener.Close()
 	}()
 	service := newBridgeHostService(session, containerID, defaultOpen)
+	go service.serveListener(ctx, tcpListener)
+	return service.serveListener(ctx, listener)
+}
+
+func (s *bridgeHostService) serveListener(ctx context.Context, listener net.Listener) error {
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
 			if ctx.Err() != nil || isClosedListener(err) {
 				return nil
 			}
-			_ = writeStatus(session, containerID, "error", err.Error(), nil, 0, false)
+			_ = writeStatus(s.session, s.containerID, "error", err.Error(), nil, 0, false)
 			return err
 		}
-		go service.handleConn(conn)
+		go s.handleConn(conn)
 	}
 }
 
@@ -170,6 +179,7 @@ func newBridgeHostService(session *Session, containerID string, opener func(stri
 		session:     session,
 		containerID: containerID,
 		openURL:     opener,
+		connectPort: runContainerConnect,
 		forwarded:   map[int]forwardedPort{},
 	}
 	service.forwardURL = service.ensureForward
@@ -187,6 +197,10 @@ func (s *bridgeHostService) handleConn(conn net.Conn) {
 	case "ping":
 		_ = writeBridgeResponse(conn, bridgeResponse{OK: true})
 	case "open":
+		if s.session.Token != "" && request.Token != s.session.Token {
+			_ = writeBridgeResponse(conn, bridgeResponse{Error: "unauthorized"})
+			return
+		}
 		if request.URL == "" {
 			_ = writeBridgeResponse(conn, bridgeResponse{Error: "missing url"})
 			return
@@ -277,31 +291,10 @@ func (s *bridgeHostService) ensureForward(port int) (int, bool, error) {
 
 func (s *bridgeHostService) handleForwardConn(port int, conn net.Conn) {
 	defer conn.Close()
-	helperConn, err := net.Dial("unix", s.session.HelperSock)
-	if err != nil {
+	if err := s.connectPort(s.containerID, port, conn, conn); err != nil {
+		_ = writeStatus(s.session, s.containerID, "forward failed", err.Error(), s.forwardSnapshot(), port, false)
 		return
 	}
-	defer helperConn.Close()
-	if err := writeBridgeRequest(helperConn, bridgeRequest{Kind: "connect", Port: port}); err != nil {
-		return
-	}
-	response, err := readBridgeResponse(helperConn)
-	if err != nil || !response.OK {
-		return
-	}
-	done := make(chan struct{}, 2)
-	go func() {
-		_, _ = io.Copy(helperConn, conn)
-		closeWrite(helperConn)
-		done <- struct{}{}
-	}()
-	go func() {
-		_, _ = io.Copy(conn, helperConn)
-		closeWrite(conn)
-		done <- struct{}{}
-	}()
-	<-done
-	<-done
 }
 
 func (s *bridgeHostService) forwardSnapshot() []forwardStatus {
@@ -395,21 +388,6 @@ func isPIDRunning(pid int) bool {
 	return process.Signal(syscall.Signal(0)) == nil
 }
 
-func ensureHelperService(session *Session, containerID string) error {
-	if err := pingSocket(session.HelperSock); err == nil {
-		return nil
-	}
-	_ = os.Remove(session.HelperSock)
-	cmd := exec.Command(
-		"docker", "exec", "-d", containerID,
-		containerHelperBin, "bridge", "helper", "serve",
-		"--socket", filepath.ToSlash(filepath.Join(containerBridgeMountPath, helperSocketName)),
-	)
-	cmd.Stdout = io.Discard
-	cmd.Stderr = io.Discard
-	return cmd.Run()
-}
-
 func waitForSocket(path string, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
@@ -419,22 +397,6 @@ func waitForSocket(path string, timeout time.Duration) error {
 		time.Sleep(100 * time.Millisecond)
 	}
 	return fmt.Errorf("timed out waiting for bridge socket %s", path)
-}
-
-func waitForHelper(path string, timeout time.Duration, retry func() error) error {
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		if err := pingSocket(path); err == nil {
-			return nil
-		}
-		if retry != nil {
-			if err := retry(); err != nil {
-				return err
-			}
-		}
-		time.Sleep(helperSocketRetryInterval)
-	}
-	return fmt.Errorf("timed out waiting for bridge helper socket %s", path)
 }
 
 func pingSocket(path string) error {
@@ -454,6 +416,30 @@ func pingSocket(path string) error {
 		return errors.New(response.Error)
 	}
 	return nil
+}
+
+func defaultContainerConnectRunner(containerID string, port int, stdin io.Reader, stdout io.Writer) error {
+	var stderr strings.Builder
+	cmd := exec.Command(
+		"docker", "exec", "-i", containerID,
+		containerHelperBin, "bridge", "helper", "connect",
+		"--port", strconv.Itoa(port),
+	)
+	cmd.Stdin = stdin
+	cmd.Stdout = stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		message := strings.TrimSpace(stderr.String())
+		if message == "" {
+			message = err.Error()
+		}
+		return fmt.Errorf("docker exec bridge helper connect: %s", message)
+	}
+	return nil
+}
+
+func listenBridgeTCP(port int) (net.Listener, error) {
+	return net.Listen("tcp", net.JoinHostPort("0.0.0.0", strconv.Itoa(port)))
 }
 
 func listenUnixSocket(path string) (net.Listener, error) {
@@ -477,8 +463,9 @@ func writeBridgeConfig(session *Session, containerID string) error {
 	config := map[string]any{
 		"sessionId":   session.ID,
 		"containerId": containerID,
+		"host":        session.Host,
+		"port":        session.Port,
 		"socketPath":  session.SocketPath,
-		"helperSock":  session.HelperSock,
 		"statusPath":  session.StatusPath,
 		"pidPath":     session.PIDPath,
 	}
