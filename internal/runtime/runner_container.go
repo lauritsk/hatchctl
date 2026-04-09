@@ -76,26 +76,6 @@ func (r *Runner) removeContainer(ctx context.Context, containerID string, events
 	return r.backend.RemoveContainer(ctx, dockercli.RemoveContainerRequest{ContainerID: containerID, Force: true, Streams: dockercli.Streams{Stdout: stdout, Stderr: stderr}})
 }
 
-func (r *Runner) reconcileState(ctx context.Context, resolved devcontainer.ResolvedConfig, state devcontainer.State) (devcontainer.State, error) {
-	if state.ContainerID != "" {
-		if _, err := r.backend.InspectContainer(ctx, state.ContainerID); err == nil {
-			return state, nil
-		} else if !docker.IsNotFound(err) {
-			return devcontainer.State{}, err
-		}
-	}
-	containerID, err := r.findContainer(ctx, resolved)
-	if err != nil {
-		if errors.Is(err, errManagedContainerNotFound) {
-			return devcontainer.State{BridgeEnabled: state.BridgeEnabled, BridgeSessionID: state.BridgeSessionID}, nil
-		}
-		return devcontainer.State{}, err
-	}
-	state.ContainerID = containerID
-	state.LifecycleReady = false
-	return state, nil
-}
-
 func (r *Runner) effectiveRemoteUser(ctx context.Context, prepared preparedWorkspace) (string, error) {
 	if user := effectiveRemoteUserFromContainerInspect(prepared.containerInspect, prepared.resolved); user != "" {
 		return user, nil

@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"io"
+	"os"
 
 	"github.com/lauritsk/hatchctl/internal/bridge"
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
@@ -13,17 +14,8 @@ import (
 	storefs "github.com/lauritsk/hatchctl/internal/store/fs"
 )
 
-type Runtime interface {
-	Up(context.Context, runtime.UpOptions) (runtime.UpResult, error)
-	Build(context.Context, runtime.BuildOptions) (runtime.BuildResult, error)
-	Exec(context.Context, runtime.ExecOptions) (int, error)
-	ReadConfig(context.Context, runtime.ReadConfigOptions) (runtime.ReadConfigResult, error)
-	RunLifecycle(context.Context, runtime.RunLifecycleOptions) (runtime.RunLifecycleResult, error)
-	BridgeDoctor(context.Context, runtime.BridgeDoctorOptions) (bridge.Report, error)
-}
-
 type Service struct {
-	runner        Runtime
+	executor      *runtime.Runner
 	buildPlans    bool
 	lockMutations bool
 }
@@ -87,20 +79,25 @@ type (
 	BuildResult        = runtime.BuildResult
 	ReadConfigResult   = runtime.ReadConfigResult
 	RunLifecycleResult = runtime.RunLifecycleResult
+	DotfilesStatus     = runtime.DotfilesStatus
 	ExitError          = runtime.ExitError
 )
 
-func New(runner Runtime) *Service {
-	return &Service{runner: runner, buildPlans: true, lockMutations: true}
+func New(executor *runtime.Runner) *Service {
+	return NewWithExecutor(executor)
 }
 
-func NewWithoutMutationLock(runner Runtime) *Service {
-	return &Service{runner: runner}
+func NewWithExecutor(executor *runtime.Runner) *Service {
+	return &Service{executor: executor, buildPlans: true, lockMutations: true}
+}
+
+func NewWithExecutorWithoutMutationLock(executor *runtime.Runner) *Service {
+	return &Service{executor: executor}
 }
 
 func NewDefault() *Service {
 	engine := docker.NewClient("docker")
-	return New(runtime.NewRunner(engine))
+	return NewWithExecutor(runtime.NewRunner(engine))
 }
 
 func (s *Service) Up(ctx context.Context, req UpRequest) (UpResult, error) {
@@ -111,26 +108,7 @@ func (s *Service) Up(ctx context.Context, req UpRequest) (UpResult, error) {
 	return withMutationLock(s, ctx, "up", func() (workspaceplan.WorkspacePlan, error) {
 		return s.maybeBuildWorkspacePlan(req.Defaults, policy, false, req.Defaults.BridgeEnabled, req.Defaults.SSHAgent, req.Defaults.Dotfiles, req.Defaults.TrustWorkspace, req.AllowHostLifecycle)
 	}, func(workspacePlan workspaceplan.WorkspacePlan) (UpResult, error) {
-		return s.runner.Up(ctx, runtime.UpOptions{
-			Plan:               workspacePlan,
-			Workspace:          req.Defaults.Workspace,
-			ConfigPath:         req.Defaults.ConfigPath,
-			StateDir:           req.Defaults.StateDir,
-			CacheDir:           req.Defaults.CacheDir,
-			FeatureTimeout:     req.Defaults.FeatureTimeout,
-			LockfilePolicy:     policy,
-			Dotfiles:           req.Defaults.Dotfiles.runtime(),
-			AllowHostLifecycle: req.AllowHostLifecycle,
-			TrustWorkspace:     req.Defaults.TrustWorkspace,
-			SSHAgent:           req.Defaults.SSHAgent,
-			Recreate:           req.Recreate,
-			BridgeEnabled:      req.Defaults.BridgeEnabled,
-			Verbose:            req.Global.Verbose || req.Global.Debug,
-			Debug:              req.Global.Debug,
-			Events:             req.IO.Events,
-			Stdout:             req.IO.Stdout,
-			Stderr:             req.IO.Stderr,
-		})
+		return s.upWithExecutor(ctx, req, workspacePlan)
 	})
 }
 
@@ -142,21 +120,7 @@ func (s *Service) Build(ctx context.Context, req BuildRequest) (BuildResult, err
 	return withMutationLock(s, ctx, "build", func() (workspaceplan.WorkspacePlan, error) {
 		return s.maybeBuildWorkspacePlan(req.Defaults, policy, false, false, false, DotfilesOptions{}, req.Defaults.TrustWorkspace, false)
 	}, func(workspacePlan workspaceplan.WorkspacePlan) (BuildResult, error) {
-		return s.runner.Build(ctx, runtime.BuildOptions{
-			Plan:           workspacePlan,
-			Workspace:      req.Defaults.Workspace,
-			ConfigPath:     req.Defaults.ConfigPath,
-			StateDir:       req.Defaults.StateDir,
-			CacheDir:       req.Defaults.CacheDir,
-			FeatureTimeout: req.Defaults.FeatureTimeout,
-			LockfilePolicy: policy,
-			TrustWorkspace: req.Defaults.TrustWorkspace,
-			Verbose:        req.Global.Verbose || req.Global.Debug,
-			Debug:          req.Global.Debug,
-			Events:         req.IO.Events,
-			Stdout:         req.IO.Stdout,
-			Stderr:         req.IO.Stderr,
-		})
+		return s.buildWithExecutor(ctx, req, workspacePlan)
 	})
 }
 
@@ -169,24 +133,10 @@ func (s *Service) Exec(ctx context.Context, req ExecRequest) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	return s.runner.Exec(ctx, runtime.ExecOptions{
-		Plan:           workspacePlan,
-		Workspace:      req.Defaults.Workspace,
-		ConfigPath:     req.Defaults.ConfigPath,
-		StateDir:       req.Defaults.StateDir,
-		CacheDir:       req.Defaults.CacheDir,
-		FeatureTimeout: req.Defaults.FeatureTimeout,
-		LockfilePolicy: policy,
-		SSHAgent:       req.Defaults.SSHAgent,
-		Verbose:        req.Global.Verbose || req.Global.Debug,
-		Debug:          req.Global.Debug,
-		Events:         req.IO.Events,
-		Args:           req.Args,
-		RemoteEnv:      req.RemoteEnv,
-		Stdin:          req.IO.Stdin,
-		Stdout:         req.IO.Stdout,
-		Stderr:         req.IO.Stderr,
-	})
+	if err := ensureNoActiveMutation(workspacePlan.LockProtected.StateDir); err != nil {
+		return 0, err
+	}
+	return s.execWithExecutor(ctx, req, workspacePlan)
 }
 
 func (s *Service) ReadConfig(ctx context.Context, req ReadConfigRequest) (ReadConfigResult, error) {
@@ -198,22 +148,7 @@ func (s *Service) ReadConfig(ctx context.Context, req ReadConfigRequest) (ReadCo
 	if err != nil {
 		return ReadConfigResult{}, err
 	}
-	return s.runner.ReadConfig(ctx, runtime.ReadConfigOptions{
-		Plan:           workspacePlan,
-		Workspace:      req.Defaults.Workspace,
-		ConfigPath:     req.Defaults.ConfigPath,
-		StateDir:       req.Defaults.StateDir,
-		CacheDir:       req.Defaults.CacheDir,
-		FeatureTimeout: req.Defaults.FeatureTimeout,
-		LockfilePolicy: policy,
-		SSHAgent:       req.Defaults.SSHAgent,
-		Dotfiles:       req.Defaults.Dotfiles.runtime(),
-		Verbose:        req.Global.Verbose || req.Global.Debug,
-		Debug:          req.Global.Debug,
-		Events:         req.IO.Events,
-		Stdout:         req.IO.Stdout,
-		Stderr:         req.IO.Stderr,
-	})
+	return s.readConfigWithExecutor(ctx, req, workspacePlan)
 }
 
 func (s *Service) RunLifecycle(ctx context.Context, req RunLifecycleRequest) (RunLifecycleResult, error) {
@@ -224,23 +159,7 @@ func (s *Service) RunLifecycle(ctx context.Context, req RunLifecycleRequest) (Ru
 	return withMutationLock(s, ctx, "run", func() (workspaceplan.WorkspacePlan, error) {
 		return s.maybeBuildWorkspacePlan(req.Defaults, policy, true, false, false, req.Defaults.Dotfiles, false, req.AllowHostLifecycle)
 	}, func(workspacePlan workspaceplan.WorkspacePlan) (RunLifecycleResult, error) {
-		return s.runner.RunLifecycle(ctx, runtime.RunLifecycleOptions{
-			Plan:               workspacePlan,
-			Workspace:          req.Defaults.Workspace,
-			ConfigPath:         req.Defaults.ConfigPath,
-			StateDir:           req.Defaults.StateDir,
-			CacheDir:           req.Defaults.CacheDir,
-			FeatureTimeout:     req.Defaults.FeatureTimeout,
-			LockfilePolicy:     policy,
-			Dotfiles:           req.Defaults.Dotfiles.runtime(),
-			AllowHostLifecycle: req.AllowHostLifecycle,
-			Verbose:            req.Global.Verbose || req.Global.Debug,
-			Debug:              req.Global.Debug,
-			Events:             req.IO.Events,
-			Phase:              req.Phase,
-			Stdout:             req.IO.Stdout,
-			Stderr:             req.IO.Stderr,
-		})
+		return s.runLifecycleWithExecutor(ctx, req, workspacePlan)
 	})
 }
 
@@ -253,20 +172,7 @@ func (s *Service) BridgeDoctor(ctx context.Context, req BridgeDoctorRequest) (br
 	if err != nil {
 		return bridge.Report{}, err
 	}
-	return s.runner.BridgeDoctor(ctx, runtime.BridgeDoctorOptions{
-		Plan:           workspacePlan,
-		Workspace:      req.Defaults.Workspace,
-		ConfigPath:     req.Defaults.ConfigPath,
-		StateDir:       req.Defaults.StateDir,
-		CacheDir:       req.Defaults.CacheDir,
-		FeatureTimeout: req.Defaults.FeatureTimeout,
-		LockfilePolicy: policy,
-		Verbose:        req.Global.Verbose || req.Global.Debug,
-		Debug:          req.Global.Debug,
-		Events:         req.IO.Events,
-		Stdout:         req.IO.Stdout,
-		Stderr:         req.IO.Stderr,
-	})
+	return s.bridgeDoctorWithExecutor(ctx, req, workspacePlan)
 }
 
 func (o DotfilesOptions) runtime() runtime.DotfilesOptions {
@@ -318,4 +224,18 @@ func withMutationLock[T any](s *Service, ctx context.Context, command string, bu
 		}
 	}
 	return run(workspacePlan)
+}
+
+func ensureNoActiveMutation(stateDir string) error {
+	coordination, err := storefs.ReadCoordination(stateDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	if coordination.ActiveOwner != nil {
+		return &storefs.WorkspaceBusyError{StateDir: stateDir, Owner: coordination.ActiveOwner}
+	}
+	return nil
 }

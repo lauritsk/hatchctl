@@ -67,7 +67,7 @@ func TestPlanUpLifecycleUsesPersistedKeyAndTransitionState(t *testing.T) {
 		t.Fatalf("expected start/attach lifecycle to remain enabled, got %#v", plan)
 	}
 
-	observed.Control.WorkspaceState.Transition = &devcontainer.StateTransition{Kind: "all", Key: "old"}
+	observed.Control.WorkspaceState.LifecycleTransition = &devcontainer.StateTransition{Kind: "all", Key: "old"}
 	plan = PlanUpLifecycle(observed, DesiredLifecycle{Key: "lifecycle-key"})
 	if !plan.RunCreate || !plan.NeedsRecovery {
 		t.Fatalf("expected pending lifecycle transition to force recovery, got %#v", plan)

@@ -1,7 +1,6 @@
 package runtime
 
 import (
-	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	workspaceplan "github.com/lauritsk/hatchctl/internal/plan"
 )
 
@@ -87,6 +86,7 @@ func planForLifecycle(opts RunLifecycleOptions) (workspaceplan.WorkspacePlan, er
 		CacheBaseDir:       opts.CacheDir,
 		FeatureTimeout:     opts.FeatureTimeout,
 		LockfilePolicy:     opts.LockfilePolicy,
+		ReadOnly:           true,
 		Dotfiles:           dotfilesPreference(opts.Dotfiles),
 		AllowHostLifecycle: opts.AllowHostLifecycle,
 	})
@@ -117,8 +117,4 @@ func dotfilesOptionsFromPlan(workspacePlan workspaceplan.WorkspacePlan) Dotfiles
 		InstallCommand: workspacePlan.Preferences.Dotfiles.InstallCommand,
 		TargetPath:     workspacePlan.Preferences.Dotfiles.TargetPath,
 	}
-}
-
-func lockfilePolicyFromPlan(workspacePlan workspaceplan.WorkspacePlan) devcontainer.FeatureLockfilePolicy {
-	return workspacePlan.ResolveOptions(nil).LockfilePolicy
 }

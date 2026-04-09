@@ -17,6 +17,7 @@ import (
 	"github.com/lauritsk/hatchctl/internal/bridge"
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	"github.com/lauritsk/hatchctl/internal/docker"
+	storefs "github.com/lauritsk/hatchctl/internal/store/fs"
 )
 
 var cachedIntegrationFixtures struct {
@@ -1124,7 +1125,7 @@ func TestBuildConsumesLocalFeaturesFromImageSource(t *testing.T) {
 	}
 	baseImage := sharedAlpineBaseImage(t, client, ctx)
 	t.Cleanup(func() {
-		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rmi", "-f", devcontainer.ImageName(workspace, filepath.Join(configDir, "devcontainer.json"))}})
+		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rmi", "-f", storefs.ImageName(workspace, filepath.Join(configDir, "devcontainer.json"))}})
 	})
 	writeLocalFeature(t, filepath.Join(configDir, "feature-a"), `{
 		"id": "feature-a",
@@ -1184,7 +1185,7 @@ func TestBuildTreatsFeatureOptionValuesAsData(t *testing.T) {
 		t.Fatal(err)
 	}
 	baseImage := sharedDataDirBaseImage(t, client, ctx)
-	derivedImage := devcontainer.ImageName(workspace, filepath.Join(configDir, "devcontainer.json"))
+	derivedImage := storefs.ImageName(workspace, filepath.Join(configDir, "devcontainer.json"))
 	t.Cleanup(func() {
 		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rmi", "-f", derivedImage}})
 	})
@@ -1278,7 +1279,7 @@ func TestUpConsumesLocalFeaturesFromDockerfileSource(t *testing.T) {
 	t.Cleanup(func() {
 		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rm", "-f", upResult.ContainerID}})
 		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rmi", "-f", upResult.Image}})
-		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rmi", "-f", devcontainer.ImageName(workspace, filepath.Join(configDir, "devcontainer.json")) + "-base"}})
+		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rmi", "-f", storefs.ImageName(workspace, filepath.Join(configDir, "devcontainer.json")) + "-base"}})
 	})
 
 	configResult, err := runner.ReadConfig(ctx, ReadConfigOptions{Workspace: workspace})

@@ -162,7 +162,7 @@ func ResolveTargetPath(home string, targetPath string) string {
 }
 
 func StateMatches(state devcontainer.State, cfg Config) bool {
-	return state.DotfilesReady && state.DotfilesRepo == cfg.Repository && state.DotfilesInstall == cfg.InstallCommand && state.DotfilesTarget == cfg.TargetPath
+	return state.DotfilesReady && state.DotfilesTransition == nil && state.DotfilesRepo == cfg.Repository && state.DotfilesInstall == cfg.InstallCommand && state.DotfilesTarget == cfg.TargetPath
 }
 
 func StatusFor(state devcontainer.State, cfg Config) *Status {
@@ -171,7 +171,7 @@ func StatusFor(state devcontainer.State, cfg Config) *Status {
 	}
 	return &Status{
 		Configured:     cfg.Enabled(),
-		Applied:        state.DotfilesReady,
+		Applied:        state.DotfilesReady && state.DotfilesTransition == nil,
 		NeedsInstall:   cfg.Enabled() && !StateMatches(state, cfg),
 		Repository:     firstNonEmpty(cfg.Repository, state.DotfilesRepo),
 		InstallCommand: firstNonEmpty(cfg.InstallCommand, state.DotfilesInstall),

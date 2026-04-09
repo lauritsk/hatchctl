@@ -169,6 +169,9 @@ func (o *Observer) RevalidateReadToken(ctx context.Context, observed ObservedSta
 	if err != nil && !os.IsNotExist(err) {
 		return err
 	}
+	if coordination.ActiveOwner != nil {
+		return fmt.Errorf("%w: workspace mutation is active", ErrObservedStateStale)
+	}
 	if coordination.Generation != token.CoordinationGeneration {
 		return fmt.Errorf("%w: workspace coordination changed", ErrObservedStateStale)
 	}
@@ -336,7 +339,7 @@ func bestContainer(inspects []docker.ContainerInspect) docker.ContainerInspect {
 }
 
 func clearedState(state devcontainer.State) devcontainer.State {
-	return devcontainer.State{Version: state.Version, BridgeEnabled: state.BridgeEnabled, BridgeSessionID: state.BridgeSessionID}
+	return devcontainer.State{Version: state.Version, BridgeEnabled: state.BridgeEnabled, BridgeSessionID: state.BridgeSessionID, BridgeTransition: state.BridgeTransition}
 }
 
 func targetKind(resolved devcontainer.ResolvedConfig) TargetKind {
@@ -360,7 +363,7 @@ func (o ObservedState) readToken() ReadToken {
 func observeCapabilities(container *docker.ContainerInspect, state devcontainer.State, resolved devcontainer.ResolvedConfig) CapabilityState {
 	capabilityState := CapabilityState{
 		BridgeEnabled:   bridgecap.EnabledFromInspect(container, state),
-		DotfilesApplied: state.DotfilesReady,
+		DotfilesApplied: state.DotfilesReady && state.DotfilesTransition == nil,
 		UIDRemapDesired: resolved.Merged.UpdateRemoteUserUID == nil || *resolved.Merged.UpdateRemoteUserUID,
 	}
 	if container != nil {

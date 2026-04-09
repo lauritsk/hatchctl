@@ -16,6 +16,7 @@ import (
 
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	"github.com/lauritsk/hatchctl/internal/fileutil"
+	storefs "github.com/lauritsk/hatchctl/internal/store/fs"
 )
 
 type Session struct {
@@ -79,15 +80,16 @@ const (
 )
 
 func Prepare(stateDir string, enabled bool, helperArch string) (*Session, error) {
-	bridgeDir := filepath.Join(stateDir, "bridge")
+	paths := storefs.WorkspaceBridgePaths(stateDir)
+	bridgeDir := paths.Dir
 	if err := os.MkdirAll(bridgeDir, 0o700); err != nil {
 		return nil, err
 	}
-	session, err := loadOrCreateSession(bridgeDir, enabled)
+	session, err := loadOrCreateSession(bridgeDir, paths, enabled)
 	if err != nil {
 		return nil, err
 	}
-	binPath := filepath.Join(bridgeDir, "bin")
+	binPath := paths.BinDir
 	if err := os.MkdirAll(binPath, 0o755); err != nil {
 		return nil, err
 	}
@@ -140,7 +142,7 @@ func Preview(stateDir string, enabled bool) (*Session, error) {
 	if !enabled {
 		return nil, nil
 	}
-	bridgeDir := filepath.Join(stateDir, "bridge")
+	bridgeDir := storefs.WorkspaceBridgePaths(stateDir).Dir
 	session, err := readSession(bridgeDir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -159,8 +161,9 @@ func Inject(session *Session, merged devcontainer.MergedConfig) devcontainer.Mer
 }
 
 func Doctor(stateDir string) (Report, error) {
-	bridgeDir := filepath.Join(stateDir, "bridge")
-	helperPath := filepath.Join(bridgeDir, "bin", "devcontainer-open")
+	paths := storefs.WorkspaceBridgePaths(stateDir)
+	bridgeDir := paths.Dir
+	helperPath := filepath.Join(paths.BinDir, "devcontainer-open")
 	_, err := os.Stat(helperPath)
 	status := "not configured"
 	enabled := false
@@ -179,7 +182,7 @@ func Doctor(stateDir string) (Report, error) {
 		status = session.Status
 	}
 	if session != nil && session.StatusPath != "" {
-		if data, err := bridgeStore().ReadStatus(session.StatusPath); err == nil {
+		if data, err := storefs.ReadBridgeStatus(session.StatusPath); err == nil {
 			var bridgeStatus struct {
 				PID       int    `json:"pid"`
 				LastEvent string `json:"lastEvent"`
@@ -194,7 +197,7 @@ func Doctor(stateDir string) (Report, error) {
 		}
 	}
 	return Report{
-		ID:         valueOrDefault(sessionID(session), devcontainer.ContainerName(stateDir, helperPath)),
+		ID:         valueOrDefault(sessionID(session), storefs.ContainerName(stateDir, helperPath)),
 		Enabled:    enabled,
 		HelperArch: sessionHelperArch(session),
 		Host:       sessionHost(session),
@@ -279,7 +282,7 @@ func applySession(session *Session, merged devcontainer.MergedConfig) devcontain
 	return merged
 }
 
-func loadOrCreateSession(bridgeDir string, enabled bool) (*Session, error) {
+func loadOrCreateSession(bridgeDir string, paths storefs.BridgePaths, enabled bool) (*Session, error) {
 	session, err := readSession(bridgeDir)
 	if err == nil {
 		return session, nil
@@ -289,10 +292,10 @@ func loadOrCreateSession(bridgeDir string, enabled bool) (*Session, error) {
 	}
 	session = &Session{
 		ID:         randomToken(12),
-		StatePath:  bridgeDir,
-		ConfigPath: filepath.Join(bridgeDir, "bridge-config.json"),
-		PIDPath:    filepath.Join(bridgeDir, "bridge.pid"),
-		StatusPath: filepath.Join(bridgeDir, "bridge-status.json"),
+		StatePath:  paths.Dir,
+		ConfigPath: paths.ConfigPath,
+		PIDPath:    paths.PIDPath,
+		StatusPath: paths.StatusPath,
 	}
 	if err := saveSession(bridgeDir, session); err != nil {
 		return nil, err
@@ -301,11 +304,11 @@ func loadOrCreateSession(bridgeDir string, enabled bool) (*Session, error) {
 }
 
 func readSession(bridgeDir string) (*Session, error) {
-	return bridgeStore().ReadSession(bridgeDir)
+	return storefs.ReadBridgeSession[Session](bridgeDir)
 }
 
 func saveSession(bridgeDir string, session *Session) error {
-	return bridgeStore().SaveSession(bridgeDir, session)
+	return storefs.WriteBridgeSession(bridgeDir, session)
 }
 
 func randomToken(bytesLen int) string {

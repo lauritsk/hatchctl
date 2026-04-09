@@ -30,6 +30,10 @@ func DefaultOutputRoots() (OutputRoots, error) {
 	return outputRoots(runtime.GOOS, homeDir, configDir, cacheDir, os.Getenv("XDG_STATE_HOME")), nil
 }
 
+func OutputRootsForPlatform(goos string, homeDir string, configDir string, cacheDir string, xdgStateHome string) OutputRoots {
+	return outputRoots(goos, homeDir, configDir, cacheDir, xdgStateHome)
+}
+
 func WorkspaceStateDir(workspace string, configPath string) (string, error) {
 	roots, err := DefaultOutputRoots()
 	if err != nil {

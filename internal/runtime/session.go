@@ -23,6 +23,18 @@ type workspaceSessionOptions struct {
 	InspectContainer      bool
 }
 
+type observedSessionOptions struct {
+	Plan                  workspaceplan.WorkspacePlan
+	Resolved              devcontainer.ResolvedConfig
+	Debug                 bool
+	Events                ui.Sink
+	Enrich                bool
+	LoadState             bool
+	FindContainer         bool
+	AllowMissingContainer bool
+	InspectContainer      bool
+}
+
 type workspaceSession struct {
 	runner   *Runner
 	prepared preparedWorkspace
@@ -42,6 +54,21 @@ func (r *Runner) prepareSession(ctx context.Context, opts workspaceSessionOption
 	if err := r.verifyResolvedFeatures(resolved, opts.Events); err != nil {
 		return nil, err
 	}
+	return r.prepareObservedSession(ctx, observedSessionOptions{
+		Plan:                  opts.Plan,
+		Resolved:              resolved,
+		Debug:                 opts.Debug,
+		Events:                opts.Events,
+		Enrich:                opts.Enrich,
+		LoadState:             opts.LoadState,
+		FindContainer:         opts.FindContainer,
+		AllowMissingContainer: opts.AllowMissingContainer,
+		InspectContainer:      opts.InspectContainer,
+	})
+}
+
+func (r *Runner) prepareObservedSession(ctx context.Context, opts observedSessionOptions) (*workspaceSession, error) {
+	resolved := opts.Resolved
 	if opts.Debug {
 		r.emitPlan(opts.Events, resolved)
 	}
@@ -160,9 +187,10 @@ func (t *workspaceStateTracker) BeginContainer(containerID string, containerKey 
 	t.state.ContainerKey = containerKey
 	t.state.LifecycleReady = false
 	t.state.LifecycleKey = ""
-	t.state.Transition = nil
+	t.state.LifecycleTransition = nil
 	t.state.BridgeEnabled = false
 	t.state.BridgeSessionID = ""
+	t.state.BridgeTransition = nil
 	t.setDotfiles(DotfilesOptions{}, false)
 }
 
@@ -174,24 +202,41 @@ func (t *workspaceStateTracker) SetContainer(containerID string, containerKey st
 func (t *workspaceStateTracker) SetBridge(enabled bool, sessionID string) {
 	t.state.BridgeEnabled = enabled
 	t.state.BridgeSessionID = sessionID
+	t.state.BridgeTransition = nil
 }
 
 func (t *workspaceStateTracker) MarkLifecycleReady(dotfiles DotfilesOptions) {
-	t.state.Transition = nil
+	t.state.LifecycleTransition = nil
 	t.state.LifecycleReady = true
 	t.setDotfiles(dotfiles, dotfiles.Enabled())
 }
 
 func (t *workspaceStateTracker) BeginLifecycle(kind string, key string) {
-	t.state.Transition = &devcontainer.StateTransition{Kind: kind, Key: key}
+	t.state.LifecycleTransition = &devcontainer.StateTransition{Kind: kind, Key: key}
 	t.state.LifecycleReady = false
 	t.state.LifecycleKey = ""
 }
 
 func (t *workspaceStateTracker) CompleteLifecycle(key string, dotfiles DotfilesOptions) {
-	t.state.Transition = nil
+	t.state.LifecycleTransition = nil
 	t.state.LifecycleReady = true
 	t.state.LifecycleKey = key
+	t.setDotfiles(dotfiles, dotfiles.Enabled())
+}
+
+func (t *workspaceStateTracker) BeginBridge(kind string, key string) {
+	t.state.BridgeTransition = &devcontainer.StateTransition{Kind: kind, Key: key}
+	t.state.BridgeEnabled = false
+	t.state.BridgeSessionID = ""
+}
+
+func (t *workspaceStateTracker) BeginDotfiles(kind string, key string) {
+	t.state.DotfilesTransition = &devcontainer.StateTransition{Kind: kind, Key: key}
+	t.state.DotfilesReady = false
+}
+
+func (t *workspaceStateTracker) CompleteDotfiles(dotfiles DotfilesOptions) {
+	t.state.DotfilesTransition = nil
 	t.setDotfiles(dotfiles, dotfiles.Enabled())
 }
 
@@ -200,6 +245,7 @@ func (t *workspaceStateTracker) setDotfiles(dotfiles DotfilesOptions, ready bool
 	t.state.DotfilesRepo = dotfiles.Repository
 	t.state.DotfilesInstall = dotfiles.InstallCommand
 	t.state.DotfilesTarget = dotfiles.TargetPath
+	t.state.DotfilesTransition = nil
 	if dotfiles.Repository == "" {
 		t.state.DotfilesReady = false
 		t.state.DotfilesInstall = ""

@@ -24,15 +24,24 @@ type App struct {
 	out io.Writer
 	err io.Writer
 
-	service *appcore.Service
+	service service
+}
+
+type service interface {
+	Up(context.Context, appcore.UpRequest) (appcore.UpResult, error)
+	Build(context.Context, appcore.BuildRequest) (appcore.BuildResult, error)
+	Exec(context.Context, appcore.ExecRequest) (int, error)
+	ReadConfig(context.Context, appcore.ReadConfigRequest) (appcore.ReadConfigResult, error)
+	RunLifecycle(context.Context, appcore.RunLifecycleRequest) (appcore.RunLifecycleResult, error)
+	BridgeDoctor(context.Context, appcore.BridgeDoctorRequest) (bridge.Report, error)
 }
 
 func New(out io.Writer, err io.Writer) *App {
 	return &App{out: out, err: err, service: appcore.NewDefault()}
 }
 
-func NewWithRunner(out io.Writer, err io.Writer, runner appcore.Runtime) *App {
-	return &App{out: out, err: err, service: appcore.NewWithoutMutationLock(runner)}
+func NewWithService(out io.Writer, err io.Writer, service service) *App {
+	return &App{out: out, err: err, service: service}
 }
 
 func (a *App) Run(ctx context.Context, args []string) error {

@@ -15,6 +15,7 @@ import (
 	"github.com/lauritsk/hatchctl/internal/bridge"
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	"github.com/lauritsk/hatchctl/internal/docker"
+	storefs "github.com/lauritsk/hatchctl/internal/store/fs"
 )
 
 func TestComposeBuildAndUpSingleService(t *testing.T) {
@@ -423,7 +424,7 @@ func TestComposeImageServiceConsumesLocalFeatures(t *testing.T) {
 		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rm", "-f", upResult.ContainerID}})
 		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rmi", "-f", upResult.Image}})
 	})
-	if upResult.Image != devcontainer.ImageName(workspace, filepath.Join(configDir, "devcontainer.json")) {
+	if upResult.Image != storefs.ImageName(workspace, filepath.Join(configDir, "devcontainer.json")) {
 		t.Fatalf("unexpected derived image %q", upResult.Image)
 	}
 
@@ -510,7 +511,7 @@ func TestComposeDockerfileServiceConsumesLocalFeatures(t *testing.T) {
 		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rmi", "-f", upResult.Image}})
 		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rmi", "-f", serviceImage}})
 	})
-	if buildResult.Image != devcontainer.ImageName(workspace, filepath.Join(configDir, "devcontainer.json")) {
+	if buildResult.Image != storefs.ImageName(workspace, filepath.Join(configDir, "devcontainer.json")) {
 		t.Fatalf("unexpected compose dockerfile feature image %q", buildResult.Image)
 	}
 

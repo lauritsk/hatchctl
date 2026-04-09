@@ -20,6 +20,7 @@ import (
 
 	"github.com/lauritsk/hatchctl/internal/command"
 	"github.com/lauritsk/hatchctl/internal/docker"
+	storefs "github.com/lauritsk/hatchctl/internal/store/fs"
 )
 
 const containerHelperBin = "/var/run/hatchctl/bridge/bin/hatchctl"
@@ -134,7 +135,7 @@ func Serve(ctx context.Context, stateDir string, containerID string) error {
 	defer func() {
 		_ = tcpListener.Close()
 	}()
-	if err := bridgeStore().WritePID(session.PIDPath, os.Getpid()); err != nil {
+	if err := storefs.WriteBridgePID(session.PIDPath, os.Getpid()); err != nil {
 		return err
 	}
 	if err := writeStatus(session, containerID, "running", "", nil, 0, false); err != nil {
@@ -380,7 +381,7 @@ func defaultOpen(target string) error {
 }
 
 func stopExisting(session *Session) error {
-	pid, err := bridgeStore().ReadPID(session.PIDPath)
+	pid, err := storefs.ReadBridgePID(session.PIDPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil
@@ -463,7 +464,15 @@ func listenBridgeTCP(port int) (net.Listener, error) {
 }
 
 func writeBridgeConfig(session *Session, containerID string) error {
-	return bridgeStore().WriteConfig(session, containerID)
+	config := map[string]any{
+		"sessionId":   session.ID,
+		"containerId": containerID,
+		"host":        session.Host,
+		"port":        session.Port,
+		"statusPath":  session.StatusPath,
+		"pidPath":     session.PIDPath,
+	}
+	return storefs.WriteBridgeConfig(session.ConfigPath, config)
 }
 
 func writeStatus(session *Session, containerID string, event string, lastError string, forwarded []forwardStatus, lastPort int, lastExact bool) error {
@@ -478,7 +487,7 @@ func writeStatus(session *Session, containerID string, event string, lastError s
 		LastError:   lastError,
 		UpdatedAt:   time.Now().UTC().Format(time.RFC3339),
 	}
-	return bridgeStore().WriteStatus(session, status)
+	return storefs.WriteBridgeStatus(session.StatusPath, status)
 }
 
 func writeBridgeRequest(w io.Writer, request bridgeRequest) error {

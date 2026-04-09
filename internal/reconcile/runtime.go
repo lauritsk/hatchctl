@@ -160,14 +160,14 @@ func PlanContainer(observed ObservedState, desired DesiredContainer) (ContainerP
 
 func PlanUpLifecycle(observed ObservedState, desired DesiredLifecycle) LifecyclePlan {
 	state := observed.Control.WorkspaceState
-	createNeeded := desired.Created || !state.LifecycleReady || state.LifecycleKey != desired.Key || state.Transition != nil
+	createNeeded := desired.Created || !state.LifecycleReady || state.LifecycleKey != desired.Key || state.LifecycleTransition != nil
 	return LifecyclePlan{
 		RunCreate:      createNeeded,
 		RunStart:       true,
 		RunAttach:      true,
 		Key:            desired.Key,
 		TransitionKind: LifecyclePhaseAll,
-		NeedsRecovery:  state.Transition != nil,
+		NeedsRecovery:  state.LifecycleTransition != nil,
 	}
 }
 
@@ -192,10 +192,10 @@ func PlanLifecycleCommand(observed ObservedState, desired DesiredLifecycle) Life
 		plan.RunAttach = true
 		plan.TransitionKind = LifecyclePhaseAll
 	}
-	plan.NeedsRecovery = observed.Control.WorkspaceState.Transition != nil
+	plan.NeedsRecovery = observed.Control.WorkspaceState.LifecycleTransition != nil
 	return plan
 }
 
 func LifecycleStateApplied(state devcontainer.State, desiredKey string) bool {
-	return state.LifecycleReady && state.LifecycleKey == desiredKey && state.Transition == nil
+	return state.LifecycleReady && state.LifecycleKey == desiredKey && state.LifecycleTransition == nil
 }

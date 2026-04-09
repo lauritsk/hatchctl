@@ -87,14 +87,6 @@ func composeBaseArgs(resolved devcontainer.ResolvedConfig) []string {
 	return args
 }
 
-func composeArgs(resolved devcontainer.ResolvedConfig, overridePath string) []string {
-	args := composeBaseArgs(resolved)
-	if overridePath != "" {
-		args = append(args, "-f", overridePath)
-	}
-	return args
-}
-
 func (r *Runner) readComposeConfig(ctx context.Context, resolved *devcontainer.ResolvedConfig) (composeConfig, error) {
 	if resolved == nil {
 		return composeConfig{}, nil

@@ -8,7 +8,6 @@ import (
 type bridgeRuntimeDeps struct {
 	hostCommand      command.Runner
 	docker           *docker.Client
-	store            bridgeFileStore
 	containerConnect containerConnectRunner
 }
 
@@ -19,11 +18,6 @@ func newDefaultBridgeRuntimeDeps() bridgeRuntimeDeps {
 	return bridgeRuntimeDeps{
 		hostCommand:      command.Local{},
 		docker:           client,
-		store:            filesystemBridgeStore{},
 		containerConnect: containerConnectWithDocker(client),
 	}
-}
-
-func bridgeStore() bridgeFileStore {
-	return defaultBridgeRuntimeDeps.store
 }

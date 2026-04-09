@@ -11,6 +11,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/lauritsk/hatchctl/internal/featurefetch"
+	storefs "github.com/lauritsk/hatchctl/internal/store/fs"
 )
 
 func TestLoadSupportsJSONC(t *testing.T) {
@@ -611,16 +614,16 @@ func TestResolveReadOnlyFixtureReusesRemoteFeatureLockfile(t *testing.T) {
 		"__FEATURE_INTEGRITY__": integrity,
 	})
 
-	cacheDir, err := WorkspaceCacheDir(workspace, configPath)
+	cacheDir, err := storefs.WorkspaceCacheDir(workspace, configPath)
 	if err != nil {
 		t.Fatalf("compute cache dir: %v", err)
 	}
 	cacheKey := sha256.Sum256([]byte(featureURL))
-	featureDir := filepath.Join(cacheDir, "features-cache", hex.EncodeToString(cacheKey[:]), sanitizeFeatureCacheRef(integrity))
+	featureDir := filepath.Join(storefs.FeatureCacheDir(cacheDir), hex.EncodeToString(cacheKey[:]), featurefetch.SanitizeCacheRef(integrity))
 	if err := os.MkdirAll(featureDir, 0o755); err != nil {
 		t.Fatalf("create cached feature dir: %v", err)
 	}
-	if err := extractFeatureLayer(bytes.NewReader(layer), featureDir); err != nil {
+	if err := featurefetch.ExtractFeatureLayer(bytes.NewReader(layer), featureDir); err != nil {
 		t.Fatalf("extract cached feature: %v", err)
 	}
 
@@ -751,7 +754,7 @@ func TestResolveIgnoresPlanCacheWriteFailures(t *testing.T) {
 	}
 	configPath := filepath.Join(configDir, "devcontainer.json")
 	cacheRoot := t.TempDir()
-	cacheDir := workspaceScopedDir(cacheRoot, workspace, configPath)
+	cacheDir := storefs.WorkspaceScopedDir(cacheRoot, workspace, configPath)
 	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -779,12 +782,12 @@ func TestResolveIgnoresPlanCacheWriteFailures(t *testing.T) {
 func TestOutputRootsFollowPlatformConventions(t *testing.T) {
 	t.Parallel()
 
-	darwin := outputRoots("darwin", "/Users/demo", "/Users/demo/Library/Application Support", "/Users/demo/Library/Caches", "")
+	darwin := storefs.OutputRootsForPlatform("darwin", "/Users/demo", "/Users/demo/Library/Application Support", "/Users/demo/Library/Caches", "")
 	if darwin.StateRoot != "/Users/demo/Library/Application Support/hatchctl" || darwin.CacheRoot != "/Users/demo/Library/Caches/hatchctl" {
 		t.Fatalf("unexpected darwin roots %#v", darwin)
 	}
 
-	linux := outputRoots("linux", "/home/demo", "/home/demo/.config", "/home/demo/.cache", "/tmp/state")
+	linux := storefs.OutputRootsForPlatform("linux", "/home/demo", "/home/demo/.config", "/home/demo/.cache", "/tmp/state")
 	if linux.StateRoot != "/tmp/state/hatchctl" || linux.CacheRoot != "/home/demo/.cache/hatchctl" {
 		t.Fatalf("unexpected linux roots %#v", linux)
 	}

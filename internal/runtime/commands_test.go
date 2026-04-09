@@ -12,7 +12,32 @@ import (
 	"github.com/lauritsk/hatchctl/internal/engine/dockercli"
 	"github.com/lauritsk/hatchctl/internal/policy"
 	"github.com/lauritsk/hatchctl/internal/reconcile"
+	storefs "github.com/lauritsk/hatchctl/internal/store/fs"
 )
+
+func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
+	return upCommand{runner: r, opts: opts}.run(ctx)
+}
+
+func (r *Runner) Build(ctx context.Context, opts BuildOptions) (BuildResult, error) {
+	return buildCommand{runner: r, opts: opts}.run(ctx)
+}
+
+func (r *Runner) Exec(ctx context.Context, opts ExecOptions) (int, error) {
+	return execCommandAction{runner: r, opts: opts}.run(ctx)
+}
+
+func (r *Runner) ReadConfig(ctx context.Context, opts ReadConfigOptions) (ReadConfigResult, error) {
+	return readConfigCommand{runner: r, opts: opts}.run(ctx)
+}
+
+func (r *Runner) RunLifecycle(ctx context.Context, opts RunLifecycleOptions) (RunLifecycleResult, error) {
+	return runLifecycleCommand{runner: r, opts: opts}.run(ctx)
+}
+
+func (r *Runner) BridgeDoctor(ctx context.Context, opts BridgeDoctorOptions) (bridge.Report, error) {
+	return bridgeDoctorCommand{runner: r, opts: opts}.run(ctx)
+}
 
 type upCommand struct {
 	runner *Runner
@@ -207,6 +232,9 @@ func (c execCommandAction) run(ctx context.Context) (int, error) {
 		return 0, err
 	}
 	resolved := session.Resolved()
+	if owner := session.Observed().Control.Coordination.ActiveOwner; owner != nil {
+		return 0, &storefs.WorkspaceBusyError{StateDir: resolved.StateDir, Owner: owner}
+	}
 	if workspacePlan.Capabilities.SSHAgent.Enabled {
 		if resolved.Merged, err = injectSSHAgent(resolved.Merged); err != nil {
 			return 0, err

@@ -3,7 +3,6 @@ package devcontainer
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"hash"
 	"io"
@@ -11,51 +10,18 @@ import (
 	"path/filepath"
 	"sort"
 
-	"github.com/lauritsk/hatchctl/internal/fileutil"
+	"github.com/lauritsk/hatchctl/internal/featurefetch"
+	storefs "github.com/lauritsk/hatchctl/internal/store/fs"
 )
 
 const resolvedPlanCacheVersion = 1
 
-type resolvedPlanCache struct {
-	Version  int            `json:"version"`
-	Key      string         `json:"key"`
-	Resolved ResolvedConfig `json:"resolved"`
-}
-
 func readResolvedPlanCache(cacheDir string, key string) (ResolvedConfig, bool, error) {
-	data, err := fileutil.ReadFile(filepath.Join(cacheDir, "resolved-plan.json"))
-	if err != nil {
-		if os.IsNotExist(err) {
-			return ResolvedConfig{}, false, nil
-		}
-		return ResolvedConfig{}, false, err
-	}
-	var cache resolvedPlanCache
-	if err := json.Unmarshal(data, &cache); err != nil {
-		return ResolvedConfig{}, false, nil
-	}
-	if cache.Version != resolvedPlanCacheVersion || cache.Key != key {
-		return ResolvedConfig{}, false, nil
-	}
-	if err := validateResolvedPlanCache(cache.Resolved); err != nil {
-		return ResolvedConfig{}, false, nil
-	}
-	return cache.Resolved, true, nil
+	return storefs.ReadResolvedPlanCache(cacheDir, key, resolvedPlanCacheVersion, validateResolvedPlanCache)
 }
 
 func writeResolvedPlanCache(cacheDir string, key string, resolved ResolvedConfig) error {
-	if err := os.MkdirAll(cacheDir, 0o700); err != nil {
-		return err
-	}
-	data, err := json.MarshalIndent(resolvedPlanCache{
-		Version:  resolvedPlanCacheVersion,
-		Key:      key,
-		Resolved: resolved,
-	}, "", "  ")
-	if err != nil {
-		return err
-	}
-	return fileutil.WriteFile(filepath.Join(cacheDir, "resolved-plan.json"), data, 0o600)
+	return storefs.WriteResolvedPlanCache(cacheDir, key, resolvedPlanCacheVersion, resolved)
 }
 
 func resolvedPlanCacheKey(configPath string, configDir string, config Config, composeFiles []string) (string, error) {
@@ -98,12 +64,12 @@ func resolveLocalFeaturePaths(configDir string, values map[string]any) ([]string
 	}
 	paths := map[string]struct{}{}
 	for source := range values {
-		path, err := resolveLocalFeaturePath(configDir, source)
+		path, err := featurefetch.ResolveLocalFeaturePath(configDir, source)
 		if err == nil {
 			paths[path] = struct{}{}
 			continue
 		}
-		if !isMissingPathError(err) {
+		if !os.IsNotExist(err) {
 			return nil, err
 		}
 	}

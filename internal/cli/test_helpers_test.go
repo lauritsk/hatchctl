@@ -15,11 +15,11 @@ type appHarness struct {
 	errOut bytes.Buffer
 }
 
-func newAppHarness(t testing.TB, runner stubRunner) *appHarness {
+func newAppHarness(t testing.TB, service stubService) *appHarness {
 	t.Helper()
 	isolateConfigHome(t)
 	h := &appHarness{t: t}
-	h.app = NewWithRunner(&h.out, &h.errOut, runner)
+	h.app = NewWithService(&h.out, &h.errOut, service)
 	return h
 }
 

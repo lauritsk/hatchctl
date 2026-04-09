@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/lauritsk/hatchctl/internal/featurefetch"
 	"github.com/lauritsk/hatchctl/internal/security"
 )
 
@@ -108,16 +109,20 @@ func resolveFeature(ctx context.Context, configDir string, cacheDir string, sour
 }
 
 func resolveFeatureSource(ctx context.Context, configDir string, cacheDir string, source string, lock FeatureLockEntry, policy FeatureLockfilePolicy, opts FeatureResolveOptions) (resolvedFeatureSource, error) {
-	path, kind, resolvedRef, integrity, version, verification, err := resolveFeaturePath(ctx, configDir, cacheDir, source, lock, opts.AllowNetwork, policy, opts.HTTPTimeout, opts.VerifyImage)
+	resolved, err := featurefetch.ResolveSource(ctx, configDir, cacheDir, source, lock, string(policy), featurefetch.ResolveOptions{
+		AllowNetwork: opts.AllowNetwork,
+		HTTPTimeout:  opts.HTTPTimeout,
+		VerifyImage:  opts.VerifyImage,
+	})
 	if err != nil {
 		return resolvedFeatureSource{}, err
 	}
 	return resolvedFeatureSource{
-		Path:         path,
-		Kind:         kind,
-		Resolved:     resolvedRef,
-		Integrity:    integrity,
-		Version:      version,
-		Verification: verification,
+		Path:         resolved.Path,
+		Kind:         resolved.Kind,
+		Resolved:     resolved.Resolved,
+		Integrity:    resolved.Integrity,
+		Version:      resolved.Version,
+		Verification: resolved.Verification,
 	}, nil
 }

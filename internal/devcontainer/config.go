@@ -2,11 +2,11 @@ package devcontainer
 
 import (
 	"context"
-	"path/filepath"
 	"time"
 
 	"github.com/lauritsk/hatchctl/internal/security"
 	"github.com/lauritsk/hatchctl/internal/spec"
+	storefs "github.com/lauritsk/hatchctl/internal/store/fs"
 )
 
 const (
@@ -112,15 +112,15 @@ func resolve(ctx context.Context, workspaceArg string, configArg string, opts Re
 		return cached, nil
 	}
 
-	imageName := ImageName(workspaceSpec.WorkspaceFolder, workspaceSpec.ConfigPath)
-	containerName := ContainerName(workspaceSpec.WorkspaceFolder, workspaceSpec.ConfigPath)
+	imageName := storefs.ImageName(workspaceSpec.WorkspaceFolder, workspaceSpec.ConfigPath)
+	containerName := storefs.ContainerName(workspaceSpec.WorkspaceFolder, workspaceSpec.ConfigPath)
 	labels := map[string]string{
 		HostFolderLabel: workspaceSpec.WorkspaceFolder,
 		ConfigFileLabel: workspaceSpec.ConfigPath,
 		ManagedByLabel:  ManagedByValue,
 	}
 
-	features, err := ResolveFeatures(ctx, workspaceSpec.ConfigPath, workspaceSpec.ConfigDir, filepath.Join(cacheDir, "features-cache"), workspaceSpec.Config.Features, FeatureResolveOptions{
+	features, err := ResolveFeatures(ctx, workspaceSpec.ConfigPath, workspaceSpec.ConfigDir, storefs.FeatureCacheDir(cacheDir), workspaceSpec.Config.Features, FeatureResolveOptions{
 		AllowNetwork:   opts.AllowNetwork,
 		StateDir:       stateDir,
 		HTTPTimeout:    opts.FeatureHTTPTimeout,
@@ -168,7 +168,7 @@ func resolve(ctx context.Context, workspaceArg string, configArg string, opts Re
 }
 
 func workspaceOutputDirs(workspace string, configPath string, opts ResolveOptions) (string, string, error) {
-	roots, err := DefaultOutputRoots()
+	roots, err := storefs.DefaultOutputRoots()
 	if err != nil {
 		return "", "", err
 	}
@@ -180,7 +180,7 @@ func workspaceOutputDirs(workspace string, configPath string, opts ResolveOption
 	if opts.CacheBaseDir != "" {
 		cacheRoot = opts.CacheBaseDir
 	}
-	return workspaceScopedDir(stateRoot, workspace, configPath), workspaceScopedDir(cacheRoot, workspace, configPath), nil
+	return storefs.WorkspaceScopedDir(stateRoot, workspace, configPath), storefs.WorkspaceScopedDir(cacheRoot, workspace, configPath), nil
 }
 
 func Load(configPath string) (Config, error) {
