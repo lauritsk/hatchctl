@@ -773,6 +773,47 @@ func TestResolveInvalidatesPersistedPlanCacheWhenLocalFeatureChanges(t *testing.
 	}
 }
 
+func TestResolveIgnoresPlanCacheWriteFailures(t *testing.T) {
+	t.Parallel()
+
+	workspace := t.TempDir()
+	configDir := filepath.Join(workspace, ".devcontainer")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(configDir, "devcontainer.json"), []byte(`{
+		"image": "alpine:3.20",
+		"workspaceFolder": "/workspace"
+	}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(configDir, "devcontainer.json")
+	cacheRoot := t.TempDir()
+	cacheDir := workspaceScopedDir(cacheRoot, workspace, configPath)
+	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(cacheDir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chmod(cacheDir, 0o755)
+	})
+
+	resolved, err := ResolveWithOptions(context.Background(), workspace, "", ResolveOptions{
+		ReadPlanCache:  true,
+		WritePlanCache: true,
+		StateBaseDir:   t.TempDir(),
+		CacheBaseDir:   cacheRoot,
+	})
+	if err != nil {
+		t.Fatalf("resolve with unwritable cache dir: %v", err)
+	}
+	if resolved.ConfigPath != configPath {
+		t.Fatalf("unexpected resolved config path %q", resolved.ConfigPath)
+	}
+}
+
 func TestOutputRootsFollowPlatformConventions(t *testing.T) {
 	t.Parallel()
 

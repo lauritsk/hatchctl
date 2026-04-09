@@ -1035,7 +1035,11 @@ func TestBuildConsumesLocalFeaturesFromImageSource(t *testing.T) {
 	writeLocalFeature(t, filepath.Join(configDir, "feature-b"), `{
 		"id": "feature-b",
 		"dependsOn": {"feature-a": true},
-		"containerEnv": {"FEATURE_B_ENV": "1"}
+		"containerEnv": {"FEATURE_B_ENV": "1"},
+		"options": {
+			"version": {"default": "latest"},
+			"other-option": {"default": false}
+		}
 	}`, "#!/bin/sh\nset -eu\nprintf '%s|%s' \"$VERSION\" \"$OTHER_OPTION\" > /usr/local/share/feature-b-options\n")
 	config := `{
 		"image": "` + baseImage + `",
@@ -1133,6 +1137,9 @@ func TestUpConsumesLocalFeaturesFromDockerfileSource(t *testing.T) {
 	}
 	writeLocalFeature(t, filepath.Join(configDir, "feature-a"), `{
 		"id": "feature-a",
+		"options": {
+			"version": {"default": "latest"}
+		},
 		"mounts": ["type=volume,source=feature-a,target=/feature-mount"],
 		"onCreateCommand": "echo feature-a-onCreate >> /workspaces/demo/events",
 		"postCreateCommand": "echo feature-a-postCreate >> /workspaces/demo/events"
@@ -1141,6 +1148,10 @@ func TestUpConsumesLocalFeaturesFromDockerfileSource(t *testing.T) {
 		"id": "feature-b",
 		"dependsOn": {"feature-a": true},
 		"containerEnv": {"FEATURE_B_ENV": "1"},
+		"options": {
+			"version": {"default": "latest"},
+			"other-option": {"default": false}
+		},
 		"mounts": ["type=volume,source=feature-b,target=/feature-mount"],
 		"postStartCommand": "echo feature-b-postStart >> /workspaces/demo/events"
 	}`, "#!/bin/sh\nset -eu\nprintf '%s|%s' \"$VERSION\" \"$OTHER_OPTION\" > /usr/local/share/feature-b-options\n")
@@ -1581,6 +1592,10 @@ func TestComposeImageServiceConsumesLocalFeatures(t *testing.T) {
 		"id": "feature-b",
 		"dependsOn": {"feature-a": true},
 		"containerEnv": {"COMPOSE_FEATURE_B": "1"},
+		"options": {
+			"version": {"default": "latest"},
+			"extra-flag": {"default": false}
+		},
 		"postStartCommand": "echo feature-b-postStart >> /workspaces/demo/events"
 	}`, "#!/bin/sh\nset -eu\nprintf '%s|%s' \"$VERSION\" \"$EXTRA_FLAG\" > /usr/local/share/compose-feature-options\n")
 	config := `{
@@ -1661,6 +1676,9 @@ func TestComposeDockerfileServiceConsumesLocalFeatures(t *testing.T) {
 	}
 	writeLocalFeature(t, filepath.Join(configDir, "feature-a"), `{
 		"id": "feature-a",
+		"options": {
+			"version": {"default": "latest"}
+		},
 		"postCreateCommand": "echo compose-dockerfile-feature-postCreate >> /workspaces/demo/events"
 	}`, "#!/bin/sh\nset -eu\nprintf '%s' \"$VERSION\" > /usr/local/share/compose-dockerfile-feature-version\n")
 	config := `{

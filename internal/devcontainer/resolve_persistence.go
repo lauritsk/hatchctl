@@ -21,7 +21,12 @@ func (resolverPersistence) WritePlanCache(cacheDir string, key string, resolved 
 	if !opts.WritePlanCache {
 		return nil
 	}
-	return writeResolvedPlanCache(cacheDir, key, resolved)
+	// The resolved plan cache is only an optimization, so a persistence failure
+	// should not block the workspace operation itself.
+	if err := writeResolvedPlanCache(cacheDir, key, resolved); err != nil {
+		return nil
+	}
+	return nil
 }
 
 func writeResolvedArtifacts(configPath string, stateDir string, features []ResolvedFeature, opts ResolveOptions) error {
