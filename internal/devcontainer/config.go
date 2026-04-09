@@ -2,16 +2,11 @@ package devcontainer
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
-	"fmt"
-	"os"
 	"path/filepath"
-	"sort"
-	"strings"
 	"time"
 
 	"github.com/lauritsk/hatchctl/internal/security"
+	"github.com/lauritsk/hatchctl/internal/spec"
 )
 
 const (
@@ -23,171 +18,14 @@ const (
 	SSHAgentLabel      = "devcontainer.ssh_agent.enabled"
 )
 
-type Config struct {
-	Name                 string            `json:"name,omitempty"`
-	Image                string            `json:"image,omitempty"`
-	DockerFile           string            `json:"dockerFile,omitempty"`
-	WorkspaceFolder      string            `json:"workspaceFolder,omitempty"`
-	WorkspaceMount       string            `json:"workspaceMount,omitempty"`
-	Mounts               []string          `json:"mounts,omitempty"`
-	ContainerEnv         map[string]string `json:"containerEnv,omitempty"`
-	RemoteEnv            map[string]string `json:"remoteEnv,omitempty"`
-	ContainerUser        string            `json:"containerUser,omitempty"`
-	RemoteUser           string            `json:"remoteUser,omitempty"`
-	RunArgs              []string          `json:"runArgs,omitempty"`
-	ForwardPorts         ForwardPorts      `json:"forwardPorts,omitempty"`
-	InitializeCommand    LifecycleCommand  `json:"initializeCommand,omitempty"`
-	OnCreateCommand      LifecycleCommand  `json:"onCreateCommand,omitempty"`
-	UpdateContentCommand LifecycleCommand  `json:"updateContentCommand,omitempty"`
-	PostCreateCommand    LifecycleCommand  `json:"postCreateCommand,omitempty"`
-	PostStartCommand     LifecycleCommand  `json:"postStartCommand,omitempty"`
-	PostAttachCommand    LifecycleCommand  `json:"postAttachCommand,omitempty"`
-	WaitFor              string            `json:"waitFor,omitempty"`
-	OverrideCommand      *bool             `json:"overrideCommand,omitempty"`
-	UpdateRemoteUserUID  *bool             `json:"updateRemoteUserUID,omitempty"`
-	Init                 *bool             `json:"init,omitempty"`
-	Privileged           *bool             `json:"privileged,omitempty"`
-	CapAdd               []string          `json:"capAdd,omitempty"`
-	SecurityOpt          []string          `json:"securityOpt,omitempty"`
-	Build                *BuildConfig      `json:"build,omitempty"`
-	Customizations       map[string]any    `json:"customizations,omitempty"`
-	Features             map[string]any    `json:"features,omitempty"`
-	DockerComposeFile    any               `json:"dockerComposeFile,omitempty"`
-	Service              string            `json:"service,omitempty"`
-	Raw                  map[string]any    `json:"-"`
-}
-
-type BuildConfig struct {
-	Dockerfile string            `json:"dockerfile,omitempty"`
-	Context    string            `json:"context,omitempty"`
-	Target     string            `json:"target,omitempty"`
-	Args       map[string]string `json:"args,omitempty"`
-	CacheFrom  any               `json:"cacheFrom,omitempty"`
-	Options    []string          `json:"options,omitempty"`
-}
-
-type LifecycleCommand struct {
-	Kind   string
-	Value  string
-	Args   []string
-	Steps  map[string]LifecycleCommand
-	Exists bool
-}
-
-type ForwardPorts []string
-
-func (p ForwardPorts) MarshalJSON() ([]byte, error) {
-	values := make([]any, 0, len(p))
-	for _, port := range p {
-		if port == "" {
-			continue
-		}
-		if normalized, ok := parseLocalhostPort(port); ok {
-			values = append(values, normalized)
-			continue
-		}
-		values = append(values, port)
-	}
-	if len(values) == 0 {
-		return []byte("null"), nil
-	}
-	return json.Marshal(values)
-}
-
-func (p *ForwardPorts) UnmarshalJSON(data []byte) error {
-	if string(data) == "null" {
-		*p = nil
-		return nil
-	}
-	var raw []any
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return err
-	}
-	ports, err := NormalizeForwardPorts(raw)
-	if err != nil {
-		return err
-	}
-	*p = ports
-	return nil
-}
-
-func (c LifecycleCommand) MarshalJSON() ([]byte, error) {
-	switch c.Kind {
-	case "string":
-		return json.Marshal(c.Value)
-	case "array":
-		return json.Marshal(c.Args)
-	case "object":
-		if c.Steps == nil {
-			return []byte("{}"), nil
-		}
-		return json.Marshal(c.Steps)
-	default:
-		return []byte("null"), nil
-	}
-}
-
-func (c *LifecycleCommand) UnmarshalJSON(data []byte) error {
-	c.Exists = true
-	if string(data) == "null" {
-		*c = LifecycleCommand{}
-		return nil
-	}
-
-	var s string
-	if err := json.Unmarshal(data, &s); err == nil {
-		c.Kind = "string"
-		c.Value = s
-		return nil
-	}
-
-	var arr []string
-	if err := json.Unmarshal(data, &arr); err == nil {
-		c.Kind = "array"
-		c.Args = arr
-		return nil
-	}
-
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return err
-	}
-	c.Kind = "object"
-	c.Steps = make(map[string]LifecycleCommand, len(obj))
-	for key, raw := range obj {
-		var child LifecycleCommand
-		if err := json.Unmarshal(raw, &child); err != nil {
-			return fmt.Errorf("parse lifecycle command %q: %w", key, err)
-		}
-		c.Steps[key] = child
-	}
-	return nil
-}
-
-func (c LifecycleCommand) Empty() bool {
-	return !c.Exists || c.Kind == ""
-}
-
-func (c LifecycleCommand) SortedSteps() []LifecycleStep {
-	if c.Kind != "object" {
-		return nil
-	}
-	keys := make([]string, 0, len(c.Steps))
-	for key := range c.Steps {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	steps := make([]LifecycleStep, 0, len(keys))
-	for _, key := range keys {
-		steps = append(steps, LifecycleStep{Name: key, Command: c.Steps[key]})
-	}
-	return steps
-}
-
-type LifecycleStep struct {
-	Name    string
-	Command LifecycleCommand
-}
+type (
+	Config           = spec.Config
+	BuildConfig      = spec.BuildConfig
+	LifecycleCommand = spec.LifecycleCommand
+	ForwardPorts     = spec.ForwardPorts
+	LifecycleStep    = spec.LifecycleStep
+	WorkspaceSpec    = spec.WorkspaceSpec
+)
 
 type ResolvedConfig struct {
 	WorkspaceFolder string
@@ -253,78 +91,36 @@ func ResolveReadOnlyWithOptions(ctx context.Context, workspaceArg string, config
 
 func resolve(ctx context.Context, workspaceArg string, configArg string, opts ResolveOptions) (ResolvedConfig, error) {
 	persistence := resolverPersistence{}
-	workspace, err := resolveWorkspace(workspaceArg)
+	workspaceSpec, err := spec.ResolveWorkspaceSpec(workspaceArg, configArg)
 	if err != nil {
 		return ResolvedConfig{}, err
 	}
-
-	configPath, err := resolveConfigPath(workspace, configArg)
+	stateDir, cacheDir, err := workspaceOutputDirs(workspaceSpec.WorkspaceFolder, workspaceSpec.ConfigPath, opts)
 	if err != nil {
 		return ResolvedConfig{}, err
 	}
-
-	config, err := Load(configPath)
-	if err != nil {
-		return ResolvedConfig{}, err
-	}
-
-	configDir := filepath.Dir(configPath)
-	remoteWorkspace := config.WorkspaceFolder
-	sourceKind := "image"
-	composeFiles, err := ResolveComposeFiles(configDir, config.DockerComposeFile)
-	if err != nil {
-		return ResolvedConfig{}, err
-	}
-	stateDir, cacheDir, err := workspaceOutputDirs(workspace, configPath, opts)
-	if err != nil {
-		return ResolvedConfig{}, err
-	}
-	cacheKey, err := resolvedPlanCacheKey(configPath, configDir, config, composeFiles)
+	cacheKey, err := resolvedPlanCacheKey(workspaceSpec.ConfigPath, workspaceSpec.ConfigDir, workspaceSpec.Config, workspaceSpec.ComposeFiles)
 	if err != nil {
 		return ResolvedConfig{}, err
 	}
 	if cached, ok, err := persistence.ReadPlanCache(cacheDir, cacheKey, opts); err != nil {
 		return ResolvedConfig{}, err
 	} else if ok {
-		if err := persistence.WriteCachedArtifacts(configPath, stateDir, cached, opts); err != nil {
+		if err := persistence.WriteCachedArtifacts(workspaceSpec.ConfigPath, stateDir, cached, opts); err != nil {
 			return ResolvedConfig{}, err
 		}
 		return cached, nil
 	}
-	if config.Service != "" || len(composeFiles) > 0 {
-		sourceKind = "compose"
-		if config.Service == "" {
-			return ResolvedConfig{}, errors.New("compose-based devcontainers must set \"service\"")
-		}
-		if len(composeFiles) == 0 {
-			return ResolvedConfig{}, errors.New("compose-based devcontainers must set \"dockerComposeFile\"")
-		}
-		if remoteWorkspace == "" {
-			return ResolvedConfig{}, errors.New("compose-based devcontainers must set \"workspaceFolder\"")
-		}
-	}
-	if remoteWorkspace == "" {
-		remoteWorkspace = filepath.ToSlash(filepath.Join("/workspaces", filepath.Base(workspace)))
-	}
 
-	workspaceMount := config.WorkspaceMount
-	if workspaceMount == "" {
-		workspaceMount = fmt.Sprintf("type=bind,source=%s,target=%s", workspace, remoteWorkspace)
-	}
-
-	imageName := ImageName(workspace, configPath)
-	if sourceKind != "compose" && config.Image == "" {
-		sourceKind = "dockerfile"
-	}
-
-	containerName := ContainerName(workspace, configPath)
+	imageName := ImageName(workspaceSpec.WorkspaceFolder, workspaceSpec.ConfigPath)
+	containerName := ContainerName(workspaceSpec.WorkspaceFolder, workspaceSpec.ConfigPath)
 	labels := map[string]string{
-		HostFolderLabel: workspace,
-		ConfigFileLabel: configPath,
+		HostFolderLabel: workspaceSpec.WorkspaceFolder,
+		ConfigFileLabel: workspaceSpec.ConfigPath,
 		ManagedByLabel:  ManagedByValue,
 	}
 
-	features, err := ResolveFeatures(ctx, configPath, configDir, filepath.Join(cacheDir, "features-cache"), config.Features, FeatureResolveOptions{
+	features, err := ResolveFeatures(ctx, workspaceSpec.ConfigPath, workspaceSpec.ConfigDir, filepath.Join(cacheDir, "features-cache"), workspaceSpec.Config.Features, FeatureResolveOptions{
 		AllowNetwork:   opts.AllowNetwork,
 		StateDir:       stateDir,
 		HTTPTimeout:    opts.FeatureHTTPTimeout,
@@ -334,7 +130,7 @@ func resolve(ctx context.Context, workspaceArg string, configArg string, opts Re
 	if err != nil {
 		return ResolvedConfig{}, err
 	}
-	if err := persistence.WriteResolvedArtifacts(configPath, stateDir, features, opts); err != nil {
+	if err := persistence.WriteResolvedArtifacts(workspaceSpec.ConfigPath, stateDir, features, opts); err != nil {
 		return ResolvedConfig{}, err
 	}
 	metadata := make([]MetadataEntry, 0, len(features))
@@ -343,25 +139,25 @@ func resolve(ctx context.Context, workspaceArg string, configArg string, opts Re
 	}
 
 	resolved := ResolvedConfig{
-		WorkspaceFolder: workspace,
-		ConfigPath:      configPath,
-		ConfigDir:       configDir,
-		Config:          config,
+		WorkspaceFolder: workspaceSpec.WorkspaceFolder,
+		ConfigPath:      workspaceSpec.ConfigPath,
+		ConfigDir:       workspaceSpec.ConfigDir,
+		Config:          workspaceSpec.Config,
 		Features:        features,
-		Merged:          MergeMetadata(config, metadata),
+		Merged:          MergeMetadata(workspaceSpec.Config, metadata),
 		StateDir:        stateDir,
 		CacheDir:        cacheDir,
-		WorkspaceMount:  workspaceMount,
-		RemoteWorkspace: remoteWorkspace,
+		WorkspaceMount:  workspaceSpec.WorkspaceMount,
+		RemoteWorkspace: workspaceSpec.RemoteWorkspace,
 		ImageName:       imageName,
-		SourceKind:      sourceKind,
+		SourceKind:      workspaceSpec.SourceKind,
 		ContainerName:   containerName,
-		ComposeFiles:    composeFiles,
-		ComposeService:  config.Service,
-		ComposeProject:  ComposeProjectName(workspace, configPath),
+		ComposeFiles:    workspaceSpec.ComposeFiles,
+		ComposeService:  workspaceSpec.ComposeService,
+		ComposeProject:  ComposeProjectName(workspaceSpec.WorkspaceFolder, workspaceSpec.ConfigPath),
 		Labels:          labels,
 	}
-	cacheKey, err = resolvedPlanCacheKey(configPath, configDir, config, composeFiles)
+	cacheKey, err = resolvedPlanCacheKey(workspaceSpec.ConfigPath, workspaceSpec.ConfigDir, workspaceSpec.Config, workspaceSpec.ComposeFiles)
 	if err != nil {
 		return ResolvedConfig{}, err
 	}
@@ -388,181 +184,53 @@ func workspaceOutputDirs(workspace string, configPath string, opts ResolveOption
 }
 
 func Load(configPath string) (Config, error) {
-	contents, err := os.ReadFile(configPath)
-	if err != nil {
-		return Config{}, err
-	}
-	standardized, err := standardizeJSONC(configPath, contents)
-	if err != nil {
-		return Config{}, err
-	}
-
-	var raw map[string]any
-	if err := json.Unmarshal(standardized, &raw); err != nil {
-		return Config{}, err
-	}
-
-	var cfg Config
-	if err := json.Unmarshal(standardized, &cfg); err != nil {
-		return Config{}, err
-	}
-	cfg.Raw = raw
-	return cfg, nil
+	return spec.Load(configPath)
 }
 
 func resolveWorkspace(workspaceArg string) (string, error) {
-	if workspaceArg == "" {
-		return os.Getwd()
-	}
-	return filepath.Abs(workspaceArg)
+	return spec.ResolveWorkspacePath(workspaceArg)
 }
 
 func ResolveWorkspacePath(workspaceArg string) (string, error) {
-	return resolveWorkspace(workspaceArg)
+	return spec.ResolveWorkspacePath(workspaceArg)
 }
 
 func resolveConfigPath(workspace string, configArg string) (string, error) {
-	if configArg != "" {
-		return filepath.Abs(configArg)
-	}
-	paths := []string{
-		filepath.Join(workspace, ".devcontainer", "devcontainer.json"),
-		filepath.Join(workspace, ".devcontainer.json"),
-	}
-	for _, candidate := range paths {
-		if _, err := os.Stat(candidate); err == nil {
-			return candidate, nil
-		}
-	}
-	return "", fmt.Errorf("no devcontainer config found in %s\nLooked for:\n- %s\n- %s\nAdd a devcontainer config in one of those locations or rerun with --config <path>", workspace, paths[0], paths[1])
+	return spec.ResolveConfigPath(workspace, configArg)
 }
 
 func ResolveConfigPath(workspace string, configArg string) (string, error) {
-	return resolveConfigPath(workspace, configArg)
+	return spec.ResolveConfigPath(workspace, configArg)
 }
 
 func EffectiveDockerfile(config Config) string {
-	switch {
-	case config.DockerFile != "":
-		return config.DockerFile
-	case config.Build != nil && config.Build.Dockerfile != "":
-		return config.Build.Dockerfile
-	default:
-		return "Dockerfile"
-	}
+	return spec.EffectiveDockerfile(config)
 }
 
 func EffectiveContext(config Config) string {
-	if config.Build != nil && config.Build.Context != "" {
-		return config.Build.Context
-	}
-	return "."
+	return spec.EffectiveContext(config)
 }
 
 func ContainerCommand(config Config) []string {
-	override := true
-	if config.OverrideCommand != nil {
-		override = *config.OverrideCommand
-	}
-	if !override {
-		return nil
-	}
-	return []string{"/bin/sh", "-lc", KeepAliveCommand()}
+	return spec.ContainerCommand(config)
 }
 
 func KeepAliveCommand() string {
-	return "exec sleep infinity"
+	return spec.KeepAliveCommand()
 }
 
 func RemoteExecUser(config Config) string {
-	if config.RemoteUser != "" {
-		return config.RemoteUser
-	}
-	if config.ContainerUser != "" {
-		return config.ContainerUser
-	}
-	return ""
+	return spec.RemoteExecUser(config)
 }
 
 func ShellQuote(value string) string {
-	return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'"
+	return spec.ShellQuote(value)
 }
 
 func NormalizeForwardPorts(raw []any) (ForwardPorts, error) {
-	if len(raw) == 0 {
-		return nil, nil
-	}
-	result := make([]string, 0, len(raw))
-	seen := map[string]struct{}{}
-	for _, value := range raw {
-		port, err := normalizeForwardPort(value)
-		if err != nil {
-			return nil, err
-		}
-		if _, ok := seen[port]; ok {
-			continue
-		}
-		seen[port] = struct{}{}
-		result = append(result, port)
-	}
-	if len(result) == 0 {
-		return nil, nil
-	}
-	return ForwardPorts(result), nil
-}
-
-func normalizeForwardPort(value any) (string, error) {
-	switch v := value.(type) {
-	case string:
-		v = strings.TrimSpace(v)
-		if v == "" {
-			return "", fmt.Errorf("forwardPorts entries cannot be empty")
-		}
-		if strings.HasPrefix(v, "localhost:") {
-			if port, ok := parseLocalhostPort(v); ok {
-				return fmt.Sprintf("localhost:%d", port), nil
-			}
-		}
-		return v, nil
-	case float64:
-		if v != float64(int(v)) {
-			return "", fmt.Errorf("invalid forward port %v: expected an integer", v)
-		}
-		return fmt.Sprintf("localhost:%d", int(v)), nil
-	default:
-		return "", fmt.Errorf("invalid forward port value of type %T", value)
-	}
+	return spec.NormalizeForwardPorts(raw)
 }
 
 func MergeForwardPorts(entries ...ForwardPorts) ForwardPorts {
-	seen := map[string]struct{}{}
-	var result []string
-	for _, entry := range entries {
-		for _, port := range entry {
-			if port == "" {
-				continue
-			}
-			if _, ok := seen[port]; ok {
-				continue
-			}
-			seen[port] = struct{}{}
-			result = append(result, port)
-		}
-	}
-	if len(result) == 0 {
-		return nil
-	}
-	return ForwardPorts(result)
-}
-
-func parseLocalhostPort(value string) (int, bool) {
-	if !strings.HasPrefix(value, "localhost:") {
-		return 0, false
-	}
-	var port int
-	_, err := fmt.Sscanf(value, "localhost:%d", &port)
-	if err != nil || port <= 0 {
-		return 0, false
-	}
-	return port, true
+	return spec.MergeForwardPorts(entries...)
 }

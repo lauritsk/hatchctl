@@ -1,0 +1,189 @@
+package spec
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+func TestLoadSupportsJSONC(t *testing.T) {
+	t.Parallel()
+
+	configPath := filepath.Join(t.TempDir(), "devcontainer.json")
+	writeSpecTestFile(t, configPath, `{
+		// comment
+		"image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+		"workspaceFolder": "/workspaces/demo",
+		"containerEnv": {
+			"FOO": "bar",
+		},
+		"postStartCommand": "echo ready",
+	}`)
+
+	config, err := Load(configPath)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if config.Image != "mcr.microsoft.com/devcontainers/base:ubuntu" {
+		t.Fatalf("unexpected image %q", config.Image)
+	}
+	if config.WorkspaceFolder != "/workspaces/demo" {
+		t.Fatalf("unexpected workspace folder %q", config.WorkspaceFolder)
+	}
+	if config.ContainerEnv["FOO"] != "bar" {
+		t.Fatalf("unexpected container env %#v", config.ContainerEnv)
+	}
+	if config.PostStartCommand.Empty() {
+		t.Fatal("expected postStartCommand to be parsed")
+	}
+}
+
+func TestResolveWorkspaceSpecBuildsPureWorkspaceShape(t *testing.T) {
+	t.Parallel()
+
+	workspace := t.TempDir()
+	configDir := filepath.Join(workspace, ".devcontainer")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(configDir, "devcontainer.json")
+	writeSpecTestFile(t, configPath, `{
+		"name": "demo",
+		"dockerFile": "Dockerfile",
+		"workspaceFolder": "/workspaces/demo",
+		"initializeCommand": ["/bin/sh", "-lc", "echo init"],
+		"postAttachCommand": {
+			"a": "echo one",
+			"b": "echo two"
+		}
+	}`)
+
+	resolved, err := ResolveWorkspaceSpec(workspace, "")
+	if err != nil {
+		t.Fatalf("resolve workspace spec: %v", err)
+	}
+	if resolved.ConfigPath != configPath {
+		t.Fatalf("unexpected config path %q", resolved.ConfigPath)
+	}
+	if resolved.SourceKind != "dockerfile" {
+		t.Fatalf("unexpected source kind %q", resolved.SourceKind)
+	}
+	if resolved.RemoteWorkspace != "/workspaces/demo" {
+		t.Fatalf("unexpected remote workspace %q", resolved.RemoteWorkspace)
+	}
+	if !strings.Contains(resolved.WorkspaceMount, workspace) {
+		t.Fatalf("workspace mount %q does not reference workspace", resolved.WorkspaceMount)
+	}
+	if resolved.Config.InitializeCommand.Empty() {
+		t.Fatal("expected initializeCommand to be populated")
+	}
+	steps := resolved.Config.PostAttachCommand.SortedSteps()
+	if len(steps) != 2 {
+		t.Fatalf("expected 2 attach steps, got %d", len(steps))
+	}
+	if steps[0].Name != "a" || steps[1].Name != "b" {
+		t.Fatalf("unexpected lifecycle step order %#v", steps)
+	}
+	if len(resolved.Merged.Metadata) != 1 {
+		t.Fatalf("expected config-derived metadata entry, got %#v", resolved.Merged.Metadata)
+	}
+}
+
+func TestMergeMetadataMatchesExpectedPrecedence(t *testing.T) {
+	t.Parallel()
+
+	falseValue := false
+	trueValue := true
+	merged := MergeMetadata(Config{
+		RemoteUser:    "config-remote",
+		ContainerUser: "config-container",
+		ForwardPorts:  ForwardPorts{"localhost:3000", "service:9000"},
+		RemoteEnv: map[string]string{
+			"BASE":   "config",
+			"CONFIG": "yes",
+		},
+		ContainerEnv: map[string]string{
+			"KEEP":   "config",
+			"CONFIG": "yes",
+		},
+		Mounts: []string{
+			"type=volume,target=/config-only",
+			"type=bind,source=/config,target=/shared",
+		},
+		CapAdd:          []string{"SYS_PTRACE"},
+		SecurityOpt:     []string{"seccomp=unconfined"},
+		OverrideCommand: &falseValue,
+		OnCreateCommand: LifecycleCommand{Kind: "string", Value: "config-create", Exists: true},
+	}, []MetadataEntry{{
+		RemoteUser:      "image-remote",
+		ContainerUser:   "image-container",
+		ForwardPorts:    ForwardPorts{"localhost:3000", "localhost:8080"},
+		RemoteEnv:       map[string]string{"BASE": "image", "IMAGE": "yes"},
+		ContainerEnv:    map[string]string{"KEEP": "image", "IMAGE": "yes"},
+		Mounts:          []string{"type=bind,source=/image,target=/shared", "type=volume,target=/image-only"},
+		CapAdd:          []string{"NET_ADMIN"},
+		SecurityOpt:     []string{"label=disable"},
+		OverrideCommand: &trueValue,
+		OnCreateCommand: LifecycleCommand{Kind: "string", Value: "image-create", Exists: true},
+	}})
+
+	if merged.RemoteUser != "config-remote" {
+		t.Fatalf("unexpected remote user %q", merged.RemoteUser)
+	}
+	if merged.ContainerUser != "config-container" {
+		t.Fatalf("unexpected container user %q", merged.ContainerUser)
+	}
+	if merged.RemoteEnv["BASE"] != "config" || merged.RemoteEnv["IMAGE"] != "yes" || merged.RemoteEnv["CONFIG"] != "yes" {
+		t.Fatalf("unexpected remote env %#v", merged.RemoteEnv)
+	}
+	if merged.ContainerEnv["KEEP"] != "config" || merged.ContainerEnv["IMAGE"] != "yes" || merged.ContainerEnv["CONFIG"] != "yes" {
+		t.Fatalf("unexpected container env %#v", merged.ContainerEnv)
+	}
+	if len(merged.Mounts) != 3 {
+		t.Fatalf("unexpected mounts %#v", merged.Mounts)
+	}
+	if merged.Mounts[2] != "type=bind,source=/config,target=/shared" {
+		t.Fatalf("expected config mount to override shared target, got %#v", merged.Mounts)
+	}
+	if len(merged.CapAdd) != 2 || len(merged.SecurityOpt) != 2 {
+		t.Fatalf("unexpected merged security values %#v %#v", merged.CapAdd, merged.SecurityOpt)
+	}
+	if got := []string(merged.ForwardPorts); strings.Join(got, ",") != "localhost:3000,localhost:8080,service:9000" {
+		t.Fatalf("unexpected merged forward ports %#v", got)
+	}
+	if merged.OverrideCommand == nil || *merged.OverrideCommand {
+		t.Fatalf("unexpected overrideCommand %#v", merged.OverrideCommand)
+	}
+	if len(merged.OnCreateCommands) != 2 {
+		t.Fatalf("unexpected onCreate commands %#v", merged.OnCreateCommands)
+	}
+	if merged.OnCreateCommands[0].Value != "image-create" || merged.OnCreateCommands[1].Value != "config-create" {
+		t.Fatalf("unexpected lifecycle order %#v", merged.OnCreateCommands)
+	}
+}
+
+func TestParseMountSpecSupportsAliasesAndOptions(t *testing.T) {
+	t.Parallel()
+
+	spec, ok := ParseMountSpec("type=bind,src=/workspace,dst=/workspaces/demo,ro=1,bind-propagation=rshared,create-host-path=false")
+	if !ok {
+		t.Fatal("expected mount spec to parse")
+	}
+	if spec.Type != "bind" || spec.Source != "/workspace" || spec.Target != "/workspaces/demo" {
+		t.Fatalf("unexpected parsed mount %#v", spec)
+	}
+	if !spec.ReadOnly || spec.BindPropagation != "rshared" {
+		t.Fatalf("unexpected mount options %#v", spec)
+	}
+	if spec.CreateHostPath == nil || *spec.CreateHostPath {
+		t.Fatalf("expected create-host-path=false, got %#v", spec.CreateHostPath)
+	}
+}
+
+func writeSpecTestFile(t *testing.T, path string, contents string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(contents), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
