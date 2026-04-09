@@ -189,22 +189,6 @@ func copyDir(src string, dst string) error {
 	return os.CopyFS(dst, os.DirFS(src))
 }
 
-func (r *Runner) ensureImage(ctx context.Context, resolved devcontainer.ResolvedConfig, events ui.Sink) (string, error) {
-	if resolved.SourceKind == "compose" {
-		return r.ensureComposeImage(ctx, resolved, "", events)
-	}
-	if len(resolved.Features) > 0 {
-		return r.ensureImageWithFeatures(ctx, resolved, "", events)
-	}
-	if resolved.Config.Image != "" {
-		if err := r.verifyImageReference(ctx, resolved.Config.Image, events); err != nil {
-			return "", err
-		}
-		return resolved.Config.Image, nil
-	}
-	return resolved.ImageName, r.buildDockerfileImage(ctx, resolved, resolved.ImageName, "", events)
-}
-
 func (r *Runner) buildDockerfileImage(ctx context.Context, resolved devcontainer.ResolvedConfig, imageName string, imageKey string, events ui.Sink) error {
 	dockerfile := resolved.ConfigDir
 	contextDir := resolved.ConfigDir

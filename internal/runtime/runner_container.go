@@ -222,66 +222,6 @@ func isNumericUser(value string) bool {
 	return true
 }
 
-func (r *Runner) ensureContainer(ctx context.Context, resolved devcontainer.ResolvedConfig, image string, bridgeEnabled bool, sshAgent bool, overridePath string, events ui.Sink) (string, bool, error) {
-	if resolved.SourceKind == "compose" {
-		return r.ensureComposeContainer(ctx, resolved, bridgeEnabled, sshAgent, overridePath, events)
-	}
-	containerID, err := r.findContainer(ctx, resolved)
-	if err != nil && !errors.Is(err, errManagedContainerNotFound) {
-		return "", false, err
-	}
-	if err == nil && containerID != "" {
-		reusedID, reused, err := r.ensureReusableContainer(ctx, containerID, containerReuseRequirements{BridgeEnabled: bridgeEnabled, SSHAgent: sshAgent}, events)
-		if err != nil {
-			return "", false, err
-		}
-		if reused {
-			return reusedID, false, nil
-		}
-	}
-
-	stateMount := fmt.Sprintf("type=bind,source=%s,target=%s", resolved.StateDir, "/var/run/hatchctl")
-	metadataLabel, err := devcontainer.MetadataLabelValue(resolved.Merged.Metadata)
-	if err != nil {
-		return "", false, err
-	}
-
-	labels := map[string]string{}
-	for key, value := range resolved.Labels {
-		labels[key] = value
-	}
-	if metadataLabel != "" {
-		labels[devcontainer.ImageMetadataLabel] = metadataLabel
-	}
-	if bridgeEnabled {
-		labels[devcontainer.BridgeEnabledLabel] = "true"
-	}
-	if sshAgent {
-		labels[devcontainer.SSHAgentLabel] = "true"
-	}
-	env := map[string]string{}
-	for key, value := range resolved.Merged.ContainerEnv {
-		env[key] = value
-	}
-	containerID, err = r.backend.RunDetachedContainer(ctx, dockercli.RunDetachedContainerRequest{
-		Name:        resolved.ContainerName,
-		Labels:      labels,
-		Mounts:      append([]string{resolved.WorkspaceMount, stateMount}, resolved.Merged.Mounts...),
-		Init:        resolved.Merged.Init,
-		Privileged:  resolved.Merged.Privileged,
-		CapAdd:      resolved.Merged.CapAdd,
-		SecurityOpt: resolved.Merged.SecurityOpt,
-		Env:         env,
-		ExtraArgs:   resolved.Config.RunArgs,
-		Image:       image,
-		Command:     devcontainer.ContainerCommand(resolved.Config),
-	})
-	if err != nil {
-		return "", false, err
-	}
-	return containerID, true, nil
-}
-
 func (r *Runner) createContainer(ctx context.Context, resolved devcontainer.ResolvedConfig, image string, containerKey string, bridgeEnabled bool, sshAgent bool, overridePath string, events ui.Sink) (string, error) {
 	if resolved.SourceKind == "compose" {
 		return r.createComposeContainer(ctx, resolved, image, containerKey, overridePath, events)
