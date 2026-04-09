@@ -2,6 +2,27 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## [v0.6.5](https://github.com/lauritsk/hatchctl/compare/edbc1b88d66365c2342b2c4048910517390f7335..v0.6.5) - 2026-04-09
+#### Bug Fixes
+- (**runtime**) Use managed runtime metadata for exec and dotfiles - ([2d59e16](https://github.com/lauritsk/hatchctl/commit/2d59e16d6e93f402be6d80bde3f6b369307897b7)) - Karl Hans Laurits
+#### Refactoring
+- (**capability**) Extract runtime capabilities into dedicated packages - ([ce0ff7e](https://github.com/lauritsk/hatchctl/commit/ce0ff7e8cc4b30f01fb10f042bb4a9c062c8214e)) - Karl Hans Laurits
+- (**engine**) Route runtime exec flows through typed engine requests - ([5afee49](https://github.com/lauritsk/hatchctl/commit/5afee49755f6b5b431c264c2c8dbc02bf985b5ce)) - Karl Hans Laurits
+- (**plan**) Introduce workspace plans for runtime flows - ([4001930](https://github.com/lauritsk/hatchctl/commit/40019305ce1dc05bb6d92053558a208371063fba)) - Karl Hans Laurits
+- (**reconcile**) Add first image and container reconciler - ([405dd7e](https://github.com/lauritsk/hatchctl/commit/405dd7e18dd0fcfdc46c094494c3e050297c09b6)) - Karl Hans Laurits
+- (**runtime**) Finish the plan observe reconcile migration - ([812384d](https://github.com/lauritsk/hatchctl/commit/812384d5cb55f813af4e52b2867cf601175bebef)) - Karl Hans Laurits
+- (**runtime**) Move shipped orchestration and persistence out of runtime - ([b1b8bb1](https://github.com/lauritsk/hatchctl/commit/b1b8bb1b92deaee3eedb4795d1aa137f90ea6c7b)) - Karl Hans Laurits
+- (**runtime**) Reduce runtime runner to a thin command facade - ([6054276](https://github.com/lauritsk/hatchctl/commit/60542761ea0e0b731de1bb33477dcdbd305fddc6)) - Karl Hans Laurits
+- (**runtime**) Move exec and lifecycle onto observed targets - ([88252f8](https://github.com/lauritsk/hatchctl/commit/88252f8d3be24844fa44003ae09903169f6978d0)) - Karl Hans Laurits
+- (**runtime**) Add engine and observation seams for runtime actions - ([36900f2](https://github.com/lauritsk/hatchctl/commit/36900f231268a6eacb71141a5bfbffa02cf875c3)) - Karl Hans Laurits
+- (**runtime**) Prepare the refactor with app, policy, and store seams - ([b91131c](https://github.com/lauritsk/hatchctl/commit/b91131c686f22d350fedf26d11bea5cba8d2c8b8)) - Karl Hans Laurits
+- (**spec**) Extract pure devcontainer spec loading - ([35b53b0](https://github.com/lauritsk/hatchctl/commit/35b53b041d4e3df6c283ac342b3daca13715c084)) - Karl Hans Laurits
+#### Miscellaneous Chores
+- (**deps**) bump github.com/BurntSushi/toml from 1.5.0 to 1.6.0 - ([bf3aa19](https://github.com/lauritsk/hatchctl/commit/bf3aa19f36f892c1cdce38de00ae777b8e4949f7)) - dependabot[bot]
+- (**mise**) Update hatchctl tool - ([edbc1b8](https://github.com/lauritsk/hatchctl/commit/edbc1b88d66365c2342b2c4048910517390f7335)) - Karl Hans Laurits
+
+- - -
+
 ## [v0.6.4](https://github.com/lauritsk/hatchctl/compare/9eacadfce9ebc22255a4b52d33ac1cd185e5c7d3..v0.6.4) - 2026-04-09
 #### Bug Fixes
 - (**docker**) Keep build progress visible after trust prompts - ([9eacadf](https://github.com/lauritsk/hatchctl/commit/9eacadfce9ebc22255a4b52d33ac1cd185e5c7d3)) - Karl Hans Laurits
