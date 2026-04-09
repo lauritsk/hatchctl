@@ -2,6 +2,13 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## [v0.6.7](https://github.com/lauritsk/hatchctl/compare/d162e2fa39be7c18940437ce3dfdc0e4267bb294..v0.6.7) - 2026-04-09
+#### Bug Fixes
+- (**repo**) Surface cache warnings and verify supported runtimes - ([d162e2f](https://github.com/lauritsk/hatchctl/commit/d162e2fa39be7c18940437ce3dfdc0e4267bb294)) - Karl Hans Laurits
+- (**runtime**) Pull source images before feature metadata resolution - ([7b28d91](https://github.com/lauritsk/hatchctl/commit/7b28d912f512bf0a1bdedbb034bf79b8387d262b)) - Karl Hans Laurits
+
+- - -
+
 ## [v0.6.6](https://github.com/lauritsk/hatchctl/compare/624e7b9e43fa9eb3429547ae8c0aadea1c08f72f..v0.6.6) - 2026-04-09
 #### Bug Fixes
 - (**runtime**) Restore source-image users and dotfiles on recreate - ([624e7b9](https://github.com/lauritsk/hatchctl/commit/624e7b9e43fa9eb3429547ae8c0aadea1c08f72f)) - Karl Hans Laurits
