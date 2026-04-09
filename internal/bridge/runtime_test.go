@@ -250,6 +250,7 @@ func TestHelperBinaryDataUsesConfiguredPath(t *testing.T) {
 }
 
 func TestHelperBinaryDataUsesEmbeddedHelper(t *testing.T) {
+	t.Setenv(helperBinaryEnvVar, "")
 	original := embeddedHelpers
 	embeddedHelpers = map[string][]byte{"amd64": []byte("embedded-helper")}
 	t.Cleanup(func() { embeddedHelpers = original })
@@ -264,6 +265,7 @@ func TestHelperBinaryDataUsesEmbeddedHelper(t *testing.T) {
 }
 
 func TestHelperBinaryDataFailsWithoutEmbeddedHelperOrOverride(t *testing.T) {
+	t.Setenv(helperBinaryEnvVar, "")
 	original := embeddedHelpers
 	embeddedHelpers = map[string][]byte{}
 	t.Cleanup(func() { embeddedHelpers = original })

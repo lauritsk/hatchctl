@@ -11,6 +11,8 @@ Common tasks:
 - `mise run release:check`
 - `mise run hatchctl -- <args>`
 
+Dependabot updates Go modules, GitHub Actions, and devcontainer metadata. Tool versions pinned in `mise.toml` are still a manual maintenance responsibility and should be reviewed when changing CI, release, or security tooling.
+
 ## Commits
 
 Commits must follow the Conventional Commits format. Cocogitto enforces this in local checks and CI.

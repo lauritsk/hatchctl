@@ -2,6 +2,7 @@ package plan
 
 import (
 	"context"
+	"reflect"
 	"testing"
 	"time"
 
@@ -111,5 +112,24 @@ func TestResolverMaterializeUsesReadOnlyResolverOptions(t *testing.T) {
 	}
 	if !called {
 		t.Fatal("expected read-only resolver to be called")
+	}
+}
+
+func TestResolverMaterializeForwardsWarningHook(t *testing.T) {
+	t.Parallel()
+
+	wantWarn := func(string) {}
+	resolver := NewResolver()
+	resolver.Warn = wantWarn
+	resolver.Resolve = func(_ context.Context, _ string, _ string, opts devcontainer.ResolveOptions) (devcontainer.ResolvedConfig, error) {
+		if reflect.ValueOf(opts.Warn).Pointer() != reflect.ValueOf(wantWarn).Pointer() {
+			t.Fatalf("expected warning hook to be forwarded")
+		}
+		return devcontainer.ResolvedConfig{}, nil
+	}
+
+	_, err := resolver.Materialize(context.Background(), WorkspacePlan{}, nil)
+	if err != nil {
+		t.Fatalf("materialize plan: %v", err)
 	}
 }

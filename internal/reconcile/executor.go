@@ -215,6 +215,11 @@ func (e *Executor) VerifyResolvedFeatures(resolved devcontainer.ResolvedConfig, 
 
 func (e *Executor) Materialize(ctx context.Context, workspacePlan workspaceplan.WorkspacePlan, debug bool, events ui.Sink, phase string, label string) (devcontainer.ResolvedConfig, error) {
 	e.emitPhaseProgress(events, phase, label)
+	if e.planner != nil {
+		e.planner.Warn = func(message string) {
+			e.emitWarning(events, message)
+		}
+	}
 	resolved, err := e.planner.Materialize(ctx, workspacePlan, e.VerificationCheck())
 	if err != nil {
 		return devcontainer.ResolvedConfig{}, err
@@ -248,6 +253,19 @@ func (e *Executor) clearProgress(events ui.Sink) {
 		return
 	}
 	events.Emit(ui.Event{Kind: ui.EventClear})
+}
+
+func (e *Executor) emitWarning(events ui.Sink, message string) {
+	if message == "" {
+		return
+	}
+	if events != nil {
+		events.Emit(ui.Event{Kind: ui.EventWarning, Message: message})
+		return
+	}
+	if e.stderr != nil {
+		_, _ = fmt.Fprintf(e.stderr, "warning: %s\n", message)
+	}
 }
 
 func (e *Executor) emitResolvedPlan(events ui.Sink, resolved devcontainer.ResolvedConfig) {

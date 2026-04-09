@@ -53,6 +53,7 @@ type ResolveOptions struct {
 	WritePlanCache     bool
 	WriteFeatureLock   bool
 	WriteFeatureState  bool
+	Warn               func(string)
 	StateBaseDir       string
 	CacheBaseDir       string
 	VerifyImage        func(context.Context, string) security.VerificationResult

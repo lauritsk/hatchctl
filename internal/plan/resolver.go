@@ -10,6 +10,7 @@ import (
 type Resolver struct {
 	Resolve         func(context.Context, string, string, devcontainer.ResolveOptions) (devcontainer.ResolvedConfig, error)
 	ResolveReadOnly func(context.Context, string, string, devcontainer.ResolveOptions) (devcontainer.ResolvedConfig, error)
+	Warn            func(string)
 }
 
 func NewResolver() *Resolver {
@@ -27,6 +28,7 @@ func (r *Resolver) Clone() *Resolver {
 func (r *Resolver) Materialize(ctx context.Context, workspacePlan WorkspacePlan, verifyImage func(context.Context, string) security.VerificationResult) (devcontainer.ResolvedConfig, error) {
 	r = r.withDefaults()
 	resolveOpts := workspacePlan.ResolveOptions(verifyImage)
+	resolveOpts.Warn = r.Warn
 	if workspacePlan.ReadOnly {
 		return r.ResolveReadOnly(ctx, workspacePlan.Immutable.Workspace, workspacePlan.Immutable.ConfigPath, resolveOpts)
 	}

@@ -25,14 +25,14 @@ func ReadResolvedPlanCache[T any](cacheDir string, key string, version int, vali
 	}
 	var cache resolvedPlanCache[T]
 	if err := json.Unmarshal(data, &cache); err != nil {
-		return zero, false, nil
+		return zero, false, err
 	}
 	if cache.Version != version || cache.Key != key {
 		return zero, false, nil
 	}
 	if validate != nil {
 		if err := validate(cache.Resolved); err != nil {
-			return zero, false, nil
+			return zero, false, err
 		}
 	}
 	return cache.Resolved, true, nil

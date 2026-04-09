@@ -758,6 +758,7 @@ func TestResolveIgnoresPlanCacheWriteFailures(t *testing.T) {
 	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
+	warnings := make([]string, 0)
 	if err := os.Chmod(cacheDir, 0o500); err != nil {
 		t.Fatal(err)
 	}
@@ -768,14 +769,64 @@ func TestResolveIgnoresPlanCacheWriteFailures(t *testing.T) {
 	resolved, err := ResolveWithOptions(context.Background(), workspace, "", ResolveOptions{
 		ReadPlanCache:  true,
 		WritePlanCache: true,
-		StateBaseDir:   t.TempDir(),
-		CacheBaseDir:   cacheRoot,
+		Warn: func(message string) {
+			warnings = append(warnings, message)
+		},
+		StateBaseDir: t.TempDir(),
+		CacheBaseDir: cacheRoot,
 	})
 	if err != nil {
 		t.Fatalf("resolve with unwritable cache dir: %v", err)
 	}
 	if resolved.ConfigPath != configPath {
 		t.Fatalf("unexpected resolved config path %q", resolved.ConfigPath)
+	}
+	if len(warnings) != 1 || !strings.Contains(warnings[0], "unable to write resolved plan cache") {
+		t.Fatalf("expected plan cache warning, got %#v", warnings)
+	}
+}
+
+func TestResolveWarnsAndContinuesWhenPlanCacheIsCorrupt(t *testing.T) {
+	t.Parallel()
+
+	workspace := t.TempDir()
+	configDir := filepath.Join(workspace, ".devcontainer")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(configDir, "devcontainer.json")
+	if err := os.WriteFile(configPath, []byte(`{
+		"image": "alpine:3.20",
+		"workspaceFolder": "/workspace"
+	}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cacheRoot := t.TempDir()
+	cacheDir := storefs.WorkspaceScopedDir(cacheRoot, workspace, configPath)
+	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cacheDir, "resolved-plan.json"), []byte("{not-json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var warnings []string
+
+	resolved, err := ResolveWithOptions(context.Background(), workspace, "", ResolveOptions{
+		ReadPlanCache: true,
+		Warn: func(message string) {
+			warnings = append(warnings, message)
+		},
+		StateBaseDir: t.TempDir(),
+		CacheBaseDir: cacheRoot,
+	})
+	if err != nil {
+		t.Fatalf("resolve with corrupt cache: %v", err)
+	}
+	if resolved.ConfigPath != configPath {
+		t.Fatalf("unexpected resolved config path %q", resolved.ConfigPath)
+	}
+	if len(warnings) != 1 || !strings.Contains(warnings[0], "ignoring resolved plan cache") {
+		t.Fatalf("expected corrupt cache warning, got %#v", warnings)
 	}
 }
 

@@ -1,5 +1,5 @@
 [tools]
-"github:lauritsk/hatchctl" = "0.6.5"
+"github:lauritsk/hatchctl" = "0.6.6"
 go = "1.26.2"
 
 [hooks]
@@ -79,8 +79,8 @@ description = "Validate GoReleaser configuration"
 run = "goreleaser check"
 
 [tasks."release:publish"]
-tools.cosign = "3.0.5"
-tools.goreleaser = "2.15.0"
+tools.cosign = "3.0.6"
+tools.goreleaser = "2.15.2"
 description = "Publish release artifacts for the current tag"
 depends = ["check"]
 run = "goreleaser release --clean"
