@@ -8,6 +8,7 @@ import (
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	ui "github.com/lauritsk/hatchctl/internal/display"
 	"github.com/lauritsk/hatchctl/internal/policy"
+	"github.com/lauritsk/hatchctl/internal/reconcile"
 )
 
 type commandIO struct {
@@ -63,6 +64,25 @@ func (r *Runner) runLifecycleForUp(ctx context.Context, resolved devcontainer.Re
 		return err
 	}
 	return r.runAttachLifecycle(ctx, resolved, containerID, events)
+}
+
+func (r *Runner) runLifecyclePlan(ctx context.Context, resolved devcontainer.ResolvedConfig, containerID string, state devcontainer.State, dotfiles DotfilesOptions, allowHostLifecycle bool, events ui.Sink, plan reconcile.LifecyclePlan) error {
+	if plan.RunCreate {
+		if err := r.runCreateLifecycle(ctx, resolved, containerID, state, dotfiles, true, allowHostLifecycle, events); err != nil {
+			return err
+		}
+	}
+	if plan.RunStart {
+		if err := r.runStartLifecycle(ctx, resolved, containerID, events); err != nil {
+			return err
+		}
+	}
+	if plan.RunAttach {
+		if err := r.runAttachLifecycle(ctx, resolved, containerID, events); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (r *Runner) runLifecyclePhase(ctx context.Context, resolved devcontainer.ResolvedConfig, containerID string, phase string, state devcontainer.State, dotfiles DotfilesOptions, runDotfiles bool, allowHostLifecycle bool, events ui.Sink) error {

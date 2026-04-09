@@ -26,7 +26,7 @@ func TestWriteFeatureBuildContextUsesOwnerOnlyGeneratedFiles(t *testing.T) {
 		Path:    featureDir,
 		Options: map[string]string{"SECRET_TOKEN": "top-secret"},
 	}}
-	if err := writeFeatureBuildContext(buildDir, baseImage, features, "root", "vscode", nil); err != nil {
+	if err := writeFeatureBuildContext(buildDir, baseImage, features, "root", "vscode", nil, "image-key"); err != nil {
 		t.Fatalf("write feature build context: %v", err)
 	}
 

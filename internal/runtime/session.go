@@ -143,12 +143,20 @@ func (t *workspaceStateTracker) Persist() error {
 	return devcontainer.WriteState(t.stateDir, t.state)
 }
 
-func (t *workspaceStateTracker) BeginContainer(containerID string) {
+func (t *workspaceStateTracker) BeginContainer(containerID string, containerKey string) {
 	t.state.ContainerID = containerID
+	t.state.ContainerKey = containerKey
 	t.state.LifecycleReady = false
+	t.state.LifecycleKey = ""
+	t.state.Transition = nil
 	t.state.BridgeEnabled = false
 	t.state.BridgeSessionID = ""
 	t.setDotfiles(DotfilesOptions{}, false)
+}
+
+func (t *workspaceStateTracker) SetContainer(containerID string, containerKey string) {
+	t.state.ContainerID = containerID
+	t.state.ContainerKey = containerKey
 }
 
 func (t *workspaceStateTracker) SetBridge(enabled bool, sessionID string) {
@@ -157,7 +165,21 @@ func (t *workspaceStateTracker) SetBridge(enabled bool, sessionID string) {
 }
 
 func (t *workspaceStateTracker) MarkLifecycleReady(dotfiles DotfilesOptions) {
+	t.state.Transition = nil
 	t.state.LifecycleReady = true
+	t.setDotfiles(dotfiles, dotfiles.Enabled())
+}
+
+func (t *workspaceStateTracker) BeginLifecycle(kind string, key string) {
+	t.state.Transition = &devcontainer.StateTransition{Kind: kind, Key: key}
+	t.state.LifecycleReady = false
+	t.state.LifecycleKey = ""
+}
+
+func (t *workspaceStateTracker) CompleteLifecycle(key string, dotfiles DotfilesOptions) {
+	t.state.Transition = nil
+	t.state.LifecycleReady = true
+	t.state.LifecycleKey = key
 	t.setDotfiles(dotfiles, dotfiles.Enabled())
 }
 

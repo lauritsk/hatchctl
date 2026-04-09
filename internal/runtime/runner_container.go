@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 
@@ -11,6 +12,7 @@ import (
 	ui "github.com/lauritsk/hatchctl/internal/display"
 	"github.com/lauritsk/hatchctl/internal/docker"
 	"github.com/lauritsk/hatchctl/internal/engine/dockercli"
+	"github.com/lauritsk/hatchctl/internal/reconcile"
 )
 
 var errManagedContainerNotFound = errors.New("managed container not found")
@@ -278,6 +280,76 @@ func (r *Runner) ensureContainer(ctx context.Context, resolved devcontainer.Reso
 		return "", false, err
 	}
 	return containerID, true, nil
+}
+
+func (r *Runner) createContainer(ctx context.Context, resolved devcontainer.ResolvedConfig, image string, containerKey string, bridgeEnabled bool, sshAgent bool, overridePath string, events ui.Sink) (string, error) {
+	if resolved.SourceKind == "compose" {
+		return r.createComposeContainer(ctx, resolved, image, containerKey, overridePath, events)
+	}
+	return r.createManagedContainer(ctx, resolved, image, containerKey, bridgeEnabled, sshAgent)
+}
+
+func (r *Runner) createManagedContainer(ctx context.Context, resolved devcontainer.ResolvedConfig, image string, containerKey string, bridgeEnabled bool, sshAgent bool) (string, error) {
+	stateMount := fmt.Sprintf("type=bind,source=%s,target=%s", resolved.StateDir, "/var/run/hatchctl")
+	metadataLabel, err := devcontainer.MetadataLabelValue(resolved.Merged.Metadata)
+	if err != nil {
+		return "", err
+	}
+
+	labels := map[string]string{}
+	for key, value := range resolved.Labels {
+		labels[key] = value
+	}
+	if metadataLabel != "" {
+		labels[devcontainer.ImageMetadataLabel] = metadataLabel
+	}
+	if containerKey != "" {
+		labels[reconcile.ContainerKeyLabel] = containerKey
+	}
+	if bridgeEnabled {
+		labels[devcontainer.BridgeEnabledLabel] = "true"
+	}
+	if sshAgent {
+		labels[devcontainer.SSHAgentLabel] = "true"
+	}
+	env := map[string]string{}
+	for key, value := range resolved.Merged.ContainerEnv {
+		env[key] = value
+	}
+	return r.backend.RunDetachedContainer(ctx, dockercli.RunDetachedContainerRequest{
+		Name:        resolved.ContainerName,
+		Labels:      labels,
+		Mounts:      append([]string{resolved.WorkspaceMount, stateMount}, resolved.Merged.Mounts...),
+		Init:        resolved.Merged.Init,
+		Privileged:  resolved.Merged.Privileged,
+		CapAdd:      resolved.Merged.CapAdd,
+		SecurityOpt: resolved.Merged.SecurityOpt,
+		Env:         env,
+		ExtraArgs:   resolved.Config.RunArgs,
+		Image:       image,
+		Command:     devcontainer.ContainerCommand(resolved.Config),
+	})
+}
+
+func (r *Runner) createComposeContainer(ctx context.Context, resolved devcontainer.ResolvedConfig, image string, containerKey string, overridePath string, events ui.Sink) (string, error) {
+	path := overridePath
+	var err error
+	if path == "" {
+		path, err = writeComposeOverride(resolved, image, containerKey)
+		if err != nil {
+			return "", err
+		}
+		defer os.Remove(path)
+	}
+	stdout, stderr := r.progressWriters(events, phaseContainer, fmt.Sprintf("Starting compose service %s", resolved.ComposeService), r.stdout, r.stderr)
+	target := dockercli.ComposeTarget{Files: append([]string(nil), resolved.ComposeFiles...), Project: resolved.ComposeProject, Dir: resolved.ConfigDir}
+	if path != "" {
+		target.Files = append(target.Files, path)
+	}
+	if err := r.backend.ComposeUp(ctx, dockercli.ComposeUpRequest{Target: target, Services: []string{resolved.ComposeService}, NoBuild: true, Detach: true, Streams: dockercli.Streams{Stdout: stdout, Stderr: stderr}}); err != nil {
+		return "", err
+	}
+	return r.findComposeContainer(ctx, resolved)
 }
 
 func (r *Runner) ensureComposeContainer(ctx context.Context, resolved devcontainer.ResolvedConfig, bridgeEnabled bool, sshAgent bool, overridePath string, events ui.Sink) (string, bool, error) {

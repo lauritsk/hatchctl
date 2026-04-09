@@ -11,15 +11,26 @@ import (
 )
 
 type State struct {
-	ContainerID     string `json:"containerId,omitempty"`
-	LifecycleReady  bool   `json:"lifecycleReady,omitempty"`
-	BridgeEnabled   bool   `json:"bridgeEnabled,omitempty"`
-	BridgeSessionID string `json:"bridgeSessionId,omitempty"`
-	DotfilesReady   bool   `json:"dotfilesReady,omitempty"`
-	DotfilesRepo    string `json:"dotfilesRepo,omitempty"`
-	DotfilesInstall string `json:"dotfilesInstall,omitempty"`
-	DotfilesTarget  string `json:"dotfilesTarget,omitempty"`
+	Version         int              `json:"version,omitempty"`
+	ContainerID     string           `json:"containerId,omitempty"`
+	ContainerKey    string           `json:"containerKey,omitempty"`
+	LifecycleReady  bool             `json:"lifecycleReady,omitempty"`
+	LifecycleKey    string           `json:"lifecycleKey,omitempty"`
+	Transition      *StateTransition `json:"transition,omitempty"`
+	BridgeEnabled   bool             `json:"bridgeEnabled,omitempty"`
+	BridgeSessionID string           `json:"bridgeSessionId,omitempty"`
+	DotfilesReady   bool             `json:"dotfilesReady,omitempty"`
+	DotfilesRepo    string           `json:"dotfilesRepo,omitempty"`
+	DotfilesInstall string           `json:"dotfilesInstall,omitempty"`
+	DotfilesTarget  string           `json:"dotfilesTarget,omitempty"`
 }
+
+type StateTransition struct {
+	Kind string `json:"kind,omitempty"`
+	Key  string `json:"key,omitempty"`
+}
+
+const stateSchemaVersion = 1
 
 type OutputRoots = storefs.OutputRoots
 
@@ -78,6 +89,9 @@ func ReadState(stateDir string) (State, error) {
 	if err := json.Unmarshal(data, &state); err != nil {
 		return State{}, err
 	}
+	if state.Version == 0 {
+		state.Version = stateSchemaVersion
+	}
 	return state, nil
 }
 
@@ -86,6 +100,9 @@ func WriteState(stateDir string, state State) error {
 		return err
 	}
 	path := filepath.Join(stateDir, "state.json")
+	if state.Version == 0 {
+		state.Version = stateSchemaVersion
+	}
 	data, err := json.MarshalIndent(state, "", "  ")
 	if err != nil {
 		return err

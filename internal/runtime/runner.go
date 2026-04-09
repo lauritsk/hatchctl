@@ -263,12 +263,14 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 		return UpResult{}, err
 	}
 	session, err := runner.prepareSession(ctx, workspaceSessionOptions{
-		Plan:          workspacePlan,
-		ProgressPhase: phaseResolve,
-		ProgressLabel: "Resolving development container",
-		Debug:         opts.Debug,
-		Events:        opts.Events,
-		LoadState:     true,
+		Plan:                  workspacePlan,
+		ProgressPhase:         phaseResolve,
+		ProgressLabel:         "Resolving development container",
+		Debug:                 opts.Debug,
+		Events:                opts.Events,
+		LoadState:             true,
+		AllowMissingContainer: true,
+		InspectContainer:      true,
 	})
 	if err != nil {
 		return UpResult{}, err
@@ -282,20 +284,8 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 	}
 	state := session.State()
 	tracker := newWorkspaceStateTracker(resolved.StateDir, state)
-
-	if opts.Recreate && state.ContainerID != "" {
-		runner.emitPhaseProgress(opts.Events, phaseContainer, "Recreating managed container")
-		_ = runner.removeContainer(ctx, state.ContainerID, opts.Events)
-		tracker.BeginContainer("")
-		if err := tracker.Persist(); err != nil {
-			return UpResult{}, err
-		}
-		state = tracker.State()
-		session.SetState(state)
-	}
-
-	runner.emitPhaseProgress(opts.Events, phaseImage, "Ensuring container image")
-	image, err := runner.ensureImage(ctx, resolved, opts.Events)
+	runner.emitPhaseProgress(opts.Events, phaseImage, "Reconciling container image")
+	image, imagePlan, err := runner.reconcileImage(ctx, workspacePlan, resolved, opts.Events)
 	if err != nil {
 		return UpResult{}, err
 	}
@@ -325,22 +315,16 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 	if err != nil {
 		return UpResult{}, err
 	}
-	overridePath := ""
-	if resolved.SourceKind == "compose" {
-		runner.emitPhaseProgress(opts.Events, phaseContainer, "Preparing Compose override")
-		overridePath, err = writeComposeOverride(resolved, image)
-		if err != nil {
-			return UpResult{}, err
-		}
-		defer os.Remove(overridePath)
-	}
-
-	runner.emitPhaseProgress(opts.Events, phaseContainer, "Ensuring managed container")
-	containerID, created, err := runner.ensureContainer(ctx, resolved, image, workspacePlan.Preferences.BridgeEnabled, workspacePlan.Preferences.SSHAgent, overridePath, opts.Events)
+	runner.emitPhaseProgress(opts.Events, phaseContainer, "Reconciling managed container")
+	containerID, containerKey, created, err := runner.reconcileContainer(ctx, session.prepared.observed, resolved, image, imagePlan, workspacePlan.Preferences.BridgeEnabled, workspacePlan.Preferences.SSHAgent, opts.Recreate, opts.Events)
 	if err != nil {
 		return UpResult{}, err
 	}
-	tracker.BeginContainer(containerID)
+	if created {
+		tracker.BeginContainer(containerID, containerKey)
+	} else {
+		tracker.SetContainer(containerID, containerKey)
+	}
 	if err := tracker.Persist(); err != nil {
 		return UpResult{}, err
 	}
@@ -363,12 +347,21 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 		}
 	}
 
+	lifecycleKey, err := runner.desiredLifecycleKey(resolved, containerKey, dotfiles)
+	if err != nil {
+		return UpResult{}, err
+	}
+	lifecyclePlan := reconcile.PlanUpLifecycle(session.prepared.observed, reconcile.DesiredLifecycle{Key: lifecycleKey, Dotfiles: reconcile.DotfilesConfig{Repository: dotfiles.Repository, InstallCommand: dotfiles.InstallCommand, TargetPath: dotfiles.TargetPath}, Created: created})
+	tracker.BeginLifecycle(string(lifecyclePlan.TransitionKind), lifecycleKey)
+	if err := tracker.Persist(); err != nil {
+		return UpResult{}, err
+	}
 	runner.emitPhaseProgress(opts.Events, phaseLifecycle, "Running lifecycle commands")
-	if err := runner.runLifecycleForUp(ctx, resolved, containerID, created, state, dotfiles, workspacePlan.Trust.HostLifecycleAllowed, opts.Events); err != nil {
+	if err := runner.runLifecyclePlan(ctx, resolved, containerID, state, dotfiles, workspacePlan.Trust.HostLifecycleAllowed, opts.Events, lifecyclePlan); err != nil {
 		return UpResult{}, err
 	}
 
-	tracker.MarkLifecycleReady(dotfiles)
+	tracker.CompleteLifecycle(lifecycleKey, dotfiles)
 	if bridgeReport == nil {
 		tracker.SetBridge(false, "")
 	}
@@ -406,8 +399,8 @@ func (r *Runner) Build(ctx context.Context, opts BuildOptions) (BuildResult, err
 	if err := policy.EnsureWorkspaceTrust(resolved, workspacePlan.Trust.WorkspaceAllowed); err != nil {
 		return BuildResult{}, err
 	}
-	runner.emitPhaseProgress(opts.Events, phaseImage, "Ensuring container image")
-	image, err := runner.ensureImage(ctx, resolved, opts.Events)
+	runner.emitPhaseProgress(opts.Events, phaseImage, "Reconciling container image")
+	image, _, err := runner.reconcileImage(ctx, workspacePlan, resolved, opts.Events)
 	if err != nil {
 		return BuildResult{}, err
 	}
@@ -595,14 +588,24 @@ func (r *Runner) RunLifecycle(ctx context.Context, opts RunLifecycleOptions) (Ru
 	if phase == "" {
 		phase = "all"
 	}
-	runner.emitPhaseProgress(opts.Events, phaseLifecycle, "Running lifecycle commands")
-	runDotfiles := phase == "all" || phase == "create"
-	if err := runner.runLifecyclePhase(ctx, resolved, session.ContainerID(), phase, state, dotfiles, runDotfiles, workspacePlan.Trust.HostLifecycleAllowed, opts.Events); err != nil {
+	lifecycleKey, err := runner.desiredLifecycleKey(resolved, state.ContainerKey, dotfiles)
+	if err != nil {
 		return RunLifecycleResult{}, err
 	}
-	if runDotfiles {
-		tracker := newWorkspaceStateTracker(resolved.StateDir, state)
-		tracker.MarkLifecycleReady(dotfiles)
+	lifecyclePlan := reconcile.PlanLifecycleCommand(session.prepared.observed, reconcile.DesiredLifecycle{Key: lifecycleKey, Requested: phase, Dotfiles: reconcile.DotfilesConfig{Repository: dotfiles.Repository, InstallCommand: dotfiles.InstallCommand, TargetPath: dotfiles.TargetPath}})
+	tracker := newWorkspaceStateTracker(resolved.StateDir, state)
+	if lifecyclePlan.RunCreate {
+		tracker.BeginLifecycle(string(lifecyclePlan.TransitionKind), lifecyclePlan.Key)
+		if err := tracker.Persist(); err != nil {
+			return RunLifecycleResult{}, err
+		}
+	}
+	runner.emitPhaseProgress(opts.Events, phaseLifecycle, "Running lifecycle commands")
+	if err := runner.runLifecyclePlan(ctx, resolved, session.ContainerID(), state, dotfiles, workspacePlan.Trust.HostLifecycleAllowed, opts.Events, lifecyclePlan); err != nil {
+		return RunLifecycleResult{}, err
+	}
+	if lifecyclePlan.RunCreate {
+		tracker.CompleteLifecycle(lifecycleKey, dotfiles)
 		if err := tracker.Persist(); err != nil {
 			return RunLifecycleResult{}, err
 		}

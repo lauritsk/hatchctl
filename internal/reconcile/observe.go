@@ -214,7 +214,7 @@ func (o *Observer) observeTarget(ctx context.Context, resolved devcontainer.Reso
 	if container != nil {
 		target.PrimaryContainer = container.ID
 		if previousContainerID != "" && previousContainerID != container.ID {
-			state.LifecycleReady = false
+			state = clearedState(state)
 		}
 		state.ContainerID = container.ID
 	}
@@ -325,7 +325,7 @@ func bestContainer(inspects []docker.ContainerInspect) docker.ContainerInspect {
 }
 
 func clearedState(state devcontainer.State) devcontainer.State {
-	return devcontainer.State{BridgeEnabled: state.BridgeEnabled, BridgeSessionID: state.BridgeSessionID}
+	return devcontainer.State{Version: state.Version, BridgeEnabled: state.BridgeEnabled, BridgeSessionID: state.BridgeSessionID}
 }
 
 func targetKind(resolved devcontainer.ResolvedConfig) TargetKind {

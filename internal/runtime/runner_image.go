@@ -13,6 +13,7 @@ import (
 	"github.com/lauritsk/hatchctl/internal/docker"
 	"github.com/lauritsk/hatchctl/internal/engine/dockercli"
 	"github.com/lauritsk/hatchctl/internal/fileutil"
+	"github.com/lauritsk/hatchctl/internal/reconcile"
 )
 
 const featureInstallHelper = `#!/bin/sh
@@ -113,7 +114,7 @@ func isManagedImage(resolved *devcontainer.ResolvedConfig, image string) bool {
 	return image == resolved.ImageName || strings.HasPrefix(image, resolved.ImageName+"-")
 }
 
-func writeFeatureBuildContext(buildDir string, baseImage string, features []devcontainer.ResolvedFeature, containerUser string, remoteUser string, metadata []devcontainer.MetadataEntry) error {
+func writeFeatureBuildContext(buildDir string, baseImage string, features []devcontainer.ResolvedFeature, containerUser string, remoteUser string, metadata []devcontainer.MetadataEntry, imageKey string) error {
 	metadataLabel, err := devcontainer.MetadataLabelValue(metadata)
 	if err != nil {
 		return err
@@ -155,6 +156,9 @@ func writeFeatureBuildContext(buildDir string, baseImage string, features []devc
 	if metadataLabel != "" {
 		dockerfile.WriteString("LABEL " + devcontainer.ImageMetadataLabel + "=" + dockerfileQuotedValue(metadataLabel) + "\n")
 	}
+	if imageKey != "" {
+		dockerfile.WriteString("LABEL " + reconcile.ImageKeyLabel + "=" + dockerfileQuotedValue(imageKey) + "\n")
+	}
 	return fileutil.WriteFile(filepath.Join(buildDir, "Dockerfile"), []byte(dockerfile.String()), 0o600)
 }
 
@@ -186,10 +190,10 @@ func copyDir(src string, dst string) error {
 
 func (r *Runner) ensureImage(ctx context.Context, resolved devcontainer.ResolvedConfig, events ui.Sink) (string, error) {
 	if resolved.SourceKind == "compose" {
-		return r.ensureComposeImage(ctx, resolved, events)
+		return r.ensureComposeImage(ctx, resolved, "", events)
 	}
 	if len(resolved.Features) > 0 {
-		return r.ensureImageWithFeatures(ctx, resolved, events)
+		return r.ensureImageWithFeatures(ctx, resolved, "", events)
 	}
 	if resolved.Config.Image != "" {
 		if err := r.verifyImageReference(ctx, resolved.Config.Image, events); err != nil {
@@ -197,10 +201,10 @@ func (r *Runner) ensureImage(ctx context.Context, resolved devcontainer.Resolved
 		}
 		return resolved.Config.Image, nil
 	}
-	return resolved.ImageName, r.buildDockerfileImage(ctx, resolved, resolved.ImageName, events)
+	return resolved.ImageName, r.buildDockerfileImage(ctx, resolved, resolved.ImageName, "", events)
 }
 
-func (r *Runner) buildDockerfileImage(ctx context.Context, resolved devcontainer.ResolvedConfig, imageName string, events ui.Sink) error {
+func (r *Runner) buildDockerfileImage(ctx context.Context, resolved devcontainer.ResolvedConfig, imageName string, imageKey string, events ui.Sink) error {
 	dockerfile := resolved.ConfigDir
 	contextDir := resolved.ConfigDir
 	if rel := devcontainer.EffectiveDockerfile(resolved.Config); rel != "" {
@@ -216,6 +220,9 @@ func (r *Runner) buildDockerfileImage(ctx context.Context, resolved devcontainer
 	}
 	if metadataLabel != "" {
 		labels[devcontainer.ImageMetadataLabel] = metadataLabel
+	}
+	if imageKey != "" {
+		labels[reconcile.ImageKeyLabel] = imageKey
 	}
 	buildArgs := map[string]string{}
 	extraOptions := []string(nil)
@@ -233,20 +240,20 @@ func (r *Runner) buildDockerfileImage(ctx context.Context, resolved devcontainer
 	return r.backend.BuildImage(ctx, dockercli.BuildImageRequest{ContextDir: contextDir, Dockerfile: dockerfile, Tag: imageName, Labels: labels, BuildArgs: buildArgs, Target: target, ExtraOptions: extraOptions, Streams: dockercli.Streams{Stdout: stdout, Stderr: stderr}})
 }
 
-func (r *Runner) ensureImageWithFeatures(ctx context.Context, resolved devcontainer.ResolvedConfig, events ui.Sink) (string, error) {
+func (r *Runner) ensureImageWithFeatures(ctx context.Context, resolved devcontainer.ResolvedConfig, imageKey string, events ui.Sink) (string, error) {
 	baseImage := resolved.Config.Image
 	if baseImage == "" {
 		baseImage = resolved.ImageName + "-base"
-		if err := r.buildDockerfileImage(ctx, resolved, baseImage, events); err != nil {
+		if err := r.buildDockerfileImage(ctx, resolved, baseImage, "", events); err != nil {
 			return "", err
 		}
 	} else if err := r.verifyImageReference(ctx, baseImage, events); err != nil {
 		return "", err
 	}
-	return r.ensureFeaturesImageFromBase(ctx, resolved, baseImage, events)
+	return r.ensureFeaturesImageFromBase(ctx, resolved, baseImage, imageKey, events)
 }
 
-func (r *Runner) ensureFeaturesImageFromBase(ctx context.Context, resolved devcontainer.ResolvedConfig, baseImage string, events ui.Sink) (string, error) {
+func (r *Runner) ensureFeaturesImageFromBase(ctx context.Context, resolved devcontainer.ResolvedConfig, baseImage string, imageKey string, events ui.Sink) (string, error) {
 	imageUser, err := r.inspectImageUser(ctx, baseImage)
 	if err != nil {
 		return "", err
@@ -270,7 +277,7 @@ func (r *Runner) ensureFeaturesImageFromBase(ctx context.Context, resolved devco
 	} else if !docker.IsNotFound(err) {
 		return "", err
 	}
-	if err := writeFeatureBuildContext(buildDir, baseImage, resolved.Features, containerUser, remoteUser, managedMetadata); err != nil {
+	if err := writeFeatureBuildContext(buildDir, baseImage, resolved.Features, containerUser, remoteUser, managedMetadata, imageKey); err != nil {
 		return "", err
 	}
 	if _, err := os.Stat(filepath.Join(buildDir, "Dockerfile")); err != nil {
@@ -288,7 +295,7 @@ func (r *Runner) ensureFeaturesImageFromBase(ctx context.Context, resolved devco
 	return resolved.ImageName, nil
 }
 
-func (r *Runner) ensureComposeImage(ctx context.Context, resolved devcontainer.ResolvedConfig, events ui.Sink) (string, error) {
+func (r *Runner) ensureComposeImage(ctx context.Context, resolved devcontainer.ResolvedConfig, imageKey string, events ui.Sink) (string, error) {
 	config, err := r.readComposeConfig(ctx, &resolved)
 	if err != nil {
 		return "", err
@@ -316,7 +323,7 @@ func (r *Runner) ensureComposeImage(ctx context.Context, resolved devcontainer.R
 		if baseImage == "" {
 			return "", fmt.Errorf("compose service %q needs an image or build result for features", resolved.ComposeService)
 		}
-		return r.ensureFeaturesImageFromBase(ctx, resolved, baseImage, events)
+		return r.ensureFeaturesImageFromBase(ctx, resolved, baseImage, imageKey, events)
 	}
 	if baseImage != "" {
 		return baseImage, nil

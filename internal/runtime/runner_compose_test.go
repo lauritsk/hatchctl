@@ -21,7 +21,7 @@ func TestRenderComposeOverridePreservesMountSemantics(t *testing.T) {
 		},
 	}
 
-	contents, err := renderComposeOverride(resolved, "image:latest")
+	contents, err := renderComposeOverride(resolved, "image:latest", "container-key")
 	if err != nil {
 		t.Fatalf("render compose override: %v", err)
 	}
@@ -78,7 +78,7 @@ func TestWriteComposeOverrideUsesOwnerOnlyPermissions(t *testing.T) {
 		Labels:         map[string]string{},
 	}
 
-	path, err := writeComposeOverride(resolved, "image:latest")
+	path, err := writeComposeOverride(resolved, "image:latest", "container-key")
 	if err != nil {
 		t.Fatalf("write compose override: %v", err)
 	}

@@ -9,6 +9,7 @@ import (
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	"github.com/lauritsk/hatchctl/internal/engine/dockercli"
 	"github.com/lauritsk/hatchctl/internal/fileutil"
+	"github.com/lauritsk/hatchctl/internal/reconcile"
 	"go.yaml.in/yaml/v3"
 )
 
@@ -128,12 +129,12 @@ func (r *Runner) findComposeContainer(ctx context.Context, resolved devcontainer
 	return r.selectBestContainerID(ctx, result)
 }
 
-func writeComposeOverride(resolved devcontainer.ResolvedConfig, image string) (string, error) {
+func writeComposeOverride(resolved devcontainer.ResolvedConfig, image string, containerKey string) (string, error) {
 	if err := os.MkdirAll(resolved.StateDir, 0o755); err != nil {
 		return "", err
 	}
 	path := devcontainer.ComposeOverrideFile(resolved.StateDir)
-	contents, err := renderComposeOverride(resolved, image)
+	contents, err := renderComposeOverride(resolved, image, containerKey)
 	if err != nil {
 		return "", err
 	}
@@ -143,7 +144,7 @@ func writeComposeOverride(resolved devcontainer.ResolvedConfig, image string) (s
 	return path, nil
 }
 
-func renderComposeOverride(resolved devcontainer.ResolvedConfig, image string) (string, error) {
+func renderComposeOverride(resolved devcontainer.ResolvedConfig, image string, containerKey string) (string, error) {
 	service := composeOverrideService{}
 	if len(resolved.Features) > 0 {
 		service.PullPolicy = "never"
@@ -160,6 +161,9 @@ func renderComposeOverride(resolved devcontainer.ResolvedConfig, image string) (
 	}
 	if metadataLabel, err := devcontainer.MetadataLabelValue(resolved.Merged.Metadata); err == nil && metadataLabel != "" {
 		labels[devcontainer.ImageMetadataLabel] = metadataLabel
+	}
+	if containerKey != "" {
+		labels[reconcile.ContainerKeyLabel] = containerKey
 	}
 	for _, key := range devcontainer.SortedMapKeys(labels) {
 		service.Labels = append(service.Labels, key+"="+labels[key])
