@@ -10,6 +10,8 @@ import (
 )
 
 func TestImageVerificationPolicyApplyWarnsWhenNotStrict(t *testing.T) {
+	t.Parallel()
+
 	sink := &recordedSink{}
 	policy := &imageVerificationPolicy{trust: map[string]struct{}{}}
 	result := security.VerificationResult{Ref: "example.com/demo/app:latest", Reason: "no signatures found"}
@@ -22,6 +24,8 @@ func TestImageVerificationPolicyApplyWarnsWhenNotStrict(t *testing.T) {
 }
 
 func TestImageVerificationPolicyApplyFailsWhenStrict(t *testing.T) {
+	t.Parallel()
+
 	policy := &imageVerificationPolicy{strict: true, trust: map[string]struct{}{}}
 	result := security.VerificationResult{Ref: "example.com/demo/app:latest", Reason: "no signatures found"}
 	if err := policy.ApplyImage(result, nil); err == nil || !strings.Contains(err.Error(), "unable to verify example.com/demo/app:latest") {
@@ -30,6 +34,8 @@ func TestImageVerificationPolicyApplyFailsWhenStrict(t *testing.T) {
 }
 
 func TestImageVerificationPolicyApplyImageAllowsPromptedTrust(t *testing.T) {
+	t.Parallel()
+
 	policy := &imageVerificationPolicy{
 		trust: map[string]struct{}{},
 		prompt: func(prompt string) (bool, bool, error) {
@@ -46,6 +52,8 @@ func TestImageVerificationPolicyApplyImageAllowsPromptedTrust(t *testing.T) {
 }
 
 func TestImageVerificationPolicyApplyFeatureRequiresTrust(t *testing.T) {
+	t.Parallel()
+
 	policy := &imageVerificationPolicy{
 		trust: map[string]struct{}{},
 		prompt: func(prompt string) (bool, bool, error) {
@@ -62,6 +70,8 @@ func TestImageVerificationPolicyApplyFeatureRequiresTrust(t *testing.T) {
 }
 
 func TestVerifyResolvedFeaturesAppliesFeatureVerificationPolicy(t *testing.T) {
+	t.Parallel()
+
 	runner := &Runner{imageVerifier: &imageVerificationPolicy{strict: true, trust: map[string]struct{}{}}}
 	resolved := devcontainer.ResolvedConfig{Features: []devcontainer.ResolvedFeature{{
 		Source:       "ghcr.io/devcontainers/features/go:1",

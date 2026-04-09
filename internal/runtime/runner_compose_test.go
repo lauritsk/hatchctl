@@ -10,6 +10,8 @@ import (
 )
 
 func TestRenderComposeOverridePreservesMountSemantics(t *testing.T) {
+	t.Parallel()
+
 	resolved := devcontainer.ResolvedConfig{
 		ComposeService: "app",
 		WorkspaceMount: "type=bind,source=/workspace,target=/workspaces/demo,readonly=true,bind-propagation=rshared,create-host-path=false",
@@ -55,6 +57,8 @@ func TestRenderComposeOverridePreservesMountSemantics(t *testing.T) {
 }
 
 func TestComposeMountValueSkipsUnsupportedMounts(t *testing.T) {
+	t.Parallel()
+
 	if _, ok := composeMountValue("type=tmpfs,target=/tmp"); ok {
 		t.Fatal("expected tmpfs mount to be skipped")
 	}
@@ -64,6 +68,8 @@ func TestComposeMountValueSkipsUnsupportedMounts(t *testing.T) {
 }
 
 func TestWriteComposeOverrideUsesOwnerOnlyPermissions(t *testing.T) {
+	t.Parallel()
+
 	resolved := devcontainer.ResolvedConfig{
 		StateDir:       t.TempDir(),
 		ComposeService: "app",

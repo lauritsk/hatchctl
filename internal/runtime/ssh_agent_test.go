@@ -48,6 +48,8 @@ func TestInjectSSHAgentRejectsMissingSocket(t *testing.T) {
 }
 
 func TestEnsureContainerHasSSHAgentAcceptsLabelOrMount(t *testing.T) {
+	t.Parallel()
+
 	inspect := &docker.ContainerInspect{Config: docker.InspectConfig{Labels: map[string]string{devcontainer.SSHAgentLabel: "true"}}}
 	if err := ensureContainerHasSSHAgent(inspect, sshAgentContainerSocketPath); err != nil {
 		t.Fatalf("expected label to satisfy ssh-agent check, got %v", err)
@@ -60,6 +62,8 @@ func TestEnsureContainerHasSSHAgentAcceptsLabelOrMount(t *testing.T) {
 }
 
 func TestEnsureContainerHasSSHAgentRejectsMissingMount(t *testing.T) {
+	t.Parallel()
+
 	err := ensureContainerHasSSHAgent(&docker.ContainerInspect{}, sshAgentContainerSocketPath)
 	if err == nil || !strings.Contains(err.Error(), "rerun 'hatchctl up --ssh --recreate'") {
 		t.Fatalf("expected recreate guidance, got %v", err)

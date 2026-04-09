@@ -1,3 +1,5 @@
+//go:build integration
+
 package runtime
 
 import (
@@ -26,6 +28,11 @@ var cachedIntegrationFixtures struct {
 	plainImage        string
 	plainWithCMDImage string
 	appUserImage      string
+}
+
+var dockerAvailabilityForTests struct {
+	once sync.Once
+	err  error
 }
 
 func TestBuildPersistsMetadataLabel(t *testing.T) {
@@ -1711,8 +1718,11 @@ func dockerClientForTest(t *testing.T) *docker.Client {
 		t.Skip("skipping Docker integration test in short mode")
 	}
 	client := docker.NewClient("docker")
-	if _, err := client.Output(context.Background(), "version", "--format", "{{.Server.Version}}"); err != nil {
-		t.Skipf("docker unavailable: %v", err)
+	dockerAvailabilityForTests.once.Do(func() {
+		_, dockerAvailabilityForTests.err = client.Output(context.Background(), "version", "--format", "{{.Server.Version}}")
+	})
+	if dockerAvailabilityForTests.err != nil {
+		t.Skipf("docker unavailable: %v", dockerAvailabilityForTests.err)
 	}
 	return client
 }

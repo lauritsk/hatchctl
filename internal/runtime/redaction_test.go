@@ -3,6 +3,8 @@ package runtime
 import "testing"
 
 func TestRedactSensitiveMapRedactsSensitiveKeys(t *testing.T) {
+	t.Parallel()
+
 	values := map[string]string{
 		"API_TOKEN": "secret",
 		"PATH":      "/usr/bin",

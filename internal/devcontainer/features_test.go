@@ -21,6 +21,8 @@ import (
 var featureResolveOpts = FeatureResolveOptions{AllowNetwork: true, WriteLockFile: true}
 
 func TestResolveFeaturesFrozenLockfileRequiresPinnedRemoteFeature(t *testing.T) {
+	t.Parallel()
+
 	configPath := filepath.Join(t.TempDir(), ".devcontainer.json")
 	_, err := ResolveFeatures(context.Background(), configPath, filepath.Dir(configPath), t.TempDir(), map[string]any{
 		"ghcr.io/devcontainers/features/go:1": true,
@@ -31,6 +33,8 @@ func TestResolveFeaturesFrozenLockfileRequiresPinnedRemoteFeature(t *testing.T) 
 }
 
 func TestResolveFeaturesUpdateLockfileRequiresNetwork(t *testing.T) {
+	t.Parallel()
+
 	configPath := filepath.Join(t.TempDir(), ".devcontainer.json")
 	_, err := ResolveFeatures(context.Background(), configPath, filepath.Dir(configPath), t.TempDir(), map[string]any{
 		"ghcr.io/devcontainers/features/go:1": true,
@@ -41,6 +45,8 @@ func TestResolveFeaturesUpdateLockfileRequiresNetwork(t *testing.T) {
 }
 
 func TestResolveFeaturesOrdersDependenciesAndInstallsAfter(t *testing.T) {
+	t.Parallel()
+
 	configDir := t.TempDir()
 	writeFeatureFixture(t, filepath.Join(configDir, "alpha"), `{
 		"id": "alpha",
@@ -75,6 +81,8 @@ func TestResolveFeaturesOrdersDependenciesAndInstallsAfter(t *testing.T) {
 }
 
 func TestResolveFeaturesMaterializesOptionEnvironment(t *testing.T) {
+	t.Parallel()
+
 	configDir := t.TempDir()
 	writeFeatureFixture(t, filepath.Join(configDir, "tool"), `{
 		"id": "tool",
@@ -106,6 +114,8 @@ func TestResolveFeaturesMaterializesOptionEnvironment(t *testing.T) {
 }
 
 func TestResolveFeaturesFetchesOCIRegistryFeature(t *testing.T) {
+	t.Parallel()
+
 	layer := buildFeatureLayer(t, map[string]string{
 		"devcontainer-feature.json": `{"id":"remote-tool","containerEnv":{"REMOTE":"yes"}}`,
 		"install.sh":                "#!/bin/sh\nexit 0\n",
@@ -162,6 +172,8 @@ func TestResolveFeaturesFetchesOCIRegistryFeature(t *testing.T) {
 }
 
 func TestResolveFeaturesRecordsUnsignedOCIVerificationResult(t *testing.T) {
+	t.Parallel()
+
 	layer := buildFeatureLayer(t, map[string]string{
 		"devcontainer-feature.json": `{"id":"remote-tool"}`,
 		"install.sh":                "#!/bin/sh\nexit 0\n",
@@ -223,12 +235,16 @@ func TestResolveFeaturesAllowsUnsignedOCIWhenExplicitlyEnabled(t *testing.T) {
 }
 
 func TestIsLoopbackHostAcceptsLoopbackLiterals(t *testing.T) {
+	t.Parallel()
+
 	if !isLoopbackHost("localhost") || !isLoopbackHost("127.0.0.1") {
 		t.Fatal("expected loopback hosts to be accepted")
 	}
 }
 
 func TestResolveFeaturesFetchesTarballFeatureAndPinsIntegrity(t *testing.T) {
+	t.Parallel()
+
 	layer := buildFeatureLayer(t, map[string]string{
 		"devcontainer-feature.json": `{"id":"tarball-tool","containerEnv":{"TARBALL":"yes"}}`,
 		"install.sh":                "#!/bin/sh\nexit 0\n",
@@ -271,6 +287,8 @@ func TestResolveFeaturesFetchesTarballFeatureAndPinsIntegrity(t *testing.T) {
 }
 
 func TestResolveFeaturesRejectsNonLoopbackHTTPFeatureTarballs(t *testing.T) {
+	t.Parallel()
+
 	configPath := filepath.Join(t.TempDir(), ".devcontainer.json")
 	_, err := ResolveFeatures(context.Background(), configPath, filepath.Dir(configPath), t.TempDir(), map[string]any{"http://example.com/feature.tgz": true}, featureResolveOpts)
 	if err == nil || !strings.Contains(err.Error(), "must use https or loopback http") {
@@ -279,6 +297,8 @@ func TestResolveFeaturesRejectsNonLoopbackHTTPFeatureTarballs(t *testing.T) {
 }
 
 func TestValidateTarballRedirectRejectsNonLoopbackHTTPTargets(t *testing.T) {
+	t.Parallel()
+
 	req, err := http.NewRequest(http.MethodGet, "http://example.com/feature.tgz", nil)
 	if err != nil {
 		t.Fatal(err)
@@ -293,6 +313,8 @@ func TestValidateTarballRedirectRejectsNonLoopbackHTTPTargets(t *testing.T) {
 }
 
 func TestFetchRegistryBearerTokenRejectsUnexpectedRealmHost(t *testing.T) {
+	t.Parallel()
+
 	_, err := fetchRegistryBearerToken(context.Background(), "https://registry.example/v2/features/tool/manifests/latest", `Bearer realm="https://evil.example/token",service="registry.test"`, 5*time.Second)
 	if err == nil || !strings.Contains(err.Error(), "unexpected host") {
 		t.Fatalf("expected unexpected host error, got %v", err)
@@ -344,18 +366,17 @@ func TestResolveFeaturesFetchesDeprecatedGitHubShorthandFeature(t *testing.T) {
 
 func TestResolveFeaturesHonorsContextTimeoutForTarballs(t *testing.T) {
 	previousTimeout := featureHTTPTimeout
-	featureHTTPTimeout = 200 * time.Millisecond
+	featureHTTPTimeout = 50 * time.Millisecond
 	t.Cleanup(func() {
 		featureHTTPTimeout = previousTimeout
 	})
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		time.Sleep(750 * time.Millisecond)
-		_, _ = w.Write([]byte("late"))
+		<-r.Context().Done()
 	}))
 	defer server.Close()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	configPath := filepath.Join(t.TempDir(), ".devcontainer.json")
 	_, err := ResolveFeatures(ctx, configPath, filepath.Dir(configPath), t.TempDir(), map[string]any{server.URL + "/feature.tgz": true}, featureResolveOpts)
@@ -423,6 +444,8 @@ func TestParseFeatureSourceClassifiesInputs(t *testing.T) {
 }
 
 func TestExtractFeatureLayerSkipsNonLocalAndDotDotArchivePaths(t *testing.T) {
+	t.Parallel()
+
 	dstDir := t.TempDir()
 	parentDir := filepath.Dir(dstDir)
 	layer := buildFeatureLayerEntries(t, []featureLayerEntry{

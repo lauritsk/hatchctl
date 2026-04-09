@@ -10,6 +10,8 @@ import (
 )
 
 func TestWriteFeatureBuildContextUsesOwnerOnlyGeneratedFiles(t *testing.T) {
+	t.Parallel()
+
 	buildDir := t.TempDir()
 	featureDir := filepath.Join(t.TempDir(), "feature-a")
 	baseImage := "mcr.microsoft.com/devcontainers/base:ubuntu"
@@ -56,6 +58,8 @@ func TestWriteFeatureBuildContextUsesOwnerOnlyGeneratedFiles(t *testing.T) {
 }
 
 func TestMergeManagedImageMetadataPreservesBaseImageEntries(t *testing.T) {
+	t.Parallel()
+
 	base := []devcontainer.MetadataEntry{{RemoteUser: "vscode"}}
 	overlay := []devcontainer.MetadataEntry{{ID: "mise"}}
 

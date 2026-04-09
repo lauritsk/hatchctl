@@ -29,8 +29,16 @@ description = "Check Go formatting and vet packages"
 run = "test -z \"$(gofumpt -l $(git ls-files '*.go'))\" && go vet ./..."
 
 [tasks.test]
-description = "Run Go tests"
+description = "Run fast Go tests"
 run = "go test ./..."
+
+[tasks."test:integration"]
+description = "Run Docker integration tests"
+run = "go test -tags=integration ./internal/runtime"
+
+[tasks."test:all"]
+description = "Run all Go tests"
+depends = ["test", "test:integration"]
 
 [tasks.build]
 description = "Build Go packages"

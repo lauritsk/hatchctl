@@ -8,6 +8,8 @@ import (
 )
 
 func TestEnsureWorkspaceTrustRejectsPrivilegedWorkspaceByDefault(t *testing.T) {
+	t.Parallel()
+
 	resolved := devcontainer.ResolvedConfig{
 		WorkspaceFolder: t.TempDir(),
 		ConfigDir:       t.TempDir(),
@@ -20,6 +22,8 @@ func TestEnsureWorkspaceTrustRejectsPrivilegedWorkspaceByDefault(t *testing.T) {
 }
 
 func TestEnsureWorkspaceTrustRejectsBuildContextOutsideWorkspace(t *testing.T) {
+	t.Parallel()
+
 	workspace := t.TempDir()
 	resolved := devcontainer.ResolvedConfig{
 		WorkspaceFolder: workspace,
@@ -34,6 +38,8 @@ func TestEnsureWorkspaceTrustRejectsBuildContextOutsideWorkspace(t *testing.T) {
 }
 
 func TestEnsureWorkspaceTrustAllowsExplicitTrust(t *testing.T) {
+	t.Parallel()
+
 	resolved := devcontainer.ResolvedConfig{
 		WorkspaceFolder: t.TempDir(),
 		ConfigDir:       t.TempDir(),
