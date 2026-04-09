@@ -8,6 +8,7 @@ import (
 	"io"
 	"os/exec"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/lauritsk/hatchctl/internal/command"
@@ -69,19 +70,18 @@ func NewClient(binary string) *Client {
 func (c *Client) Run(ctx context.Context, opts RunOptions) error {
 	const maxAttempts = 5
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		if shouldUseCombinedOutput(opts.Args) {
-			data, err := c.runner.CombinedOutput(ctx, command.Command{Binary: c.Binary, Args: opts.Args, Dir: opts.Dir, Env: opts.Env, Stdin: opts.Stdin})
-			if data != "" && opts.Stdout != nil {
-				_, _ = io.WriteString(opts.Stdout, data)
-				if !strings.HasSuffix(data, "\n") {
-					_, _ = io.WriteString(opts.Stdout, "\n")
-				}
+		if shouldCombineStreams(opts.Args) {
+			target := opts.Stdout
+			if target == nil {
+				target = opts.Stderr
 			}
+			combined := &capturingWriter{target: target}
+			err := c.runner.Run(ctx, command.Command{Binary: c.Binary, Args: opts.Args, Dir: opts.Dir, Env: opts.Env, Stdin: opts.Stdin, Stdout: combined, Stderr: combined})
 			if err == nil {
 				return nil
 			}
 			if !retryableExit255(err) || attempt == maxAttempts || ctx.Err() != nil {
-				return &Error{Args: append([]string(nil), opts.Args...), Stderr: data, Err: err}
+				return &Error{Args: append([]string(nil), opts.Args...), Stderr: combined.String(), Err: err}
 			}
 			time.Sleep(time.Duration(attempt) * time.Second)
 			continue
@@ -111,7 +111,7 @@ func retryableExit255(err error) bool {
 	return exitErr.ExitCode() == 255
 }
 
-func shouldUseCombinedOutput(args []string) bool {
+func shouldCombineStreams(args []string) bool {
 	if len(args) == 0 {
 		return false
 	}
@@ -127,6 +127,31 @@ func shouldUseCombinedOutput(args []string) bool {
 		}
 	}
 	return false
+}
+
+type capturingWriter struct {
+	target  io.Writer
+	mu      sync.Mutex
+	capture bytes.Buffer
+}
+
+func (w *capturingWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.target != nil {
+		n, err := w.target.Write(p)
+		if n > 0 {
+			_, _ = w.capture.Write(p[:n])
+		}
+		return n, err
+	}
+	return w.capture.Write(p)
+}
+
+func (w *capturingWriter) String() string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.capture.String()
 }
 
 func (c *Client) Output(ctx context.Context, args ...string) (string, error) {
