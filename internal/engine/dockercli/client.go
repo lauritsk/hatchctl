@@ -40,6 +40,11 @@ type BuildImageRequest struct {
 	Streams
 }
 
+type PullImageRequest struct {
+	Reference string
+	Streams
+}
+
 type RunDetachedContainerRequest struct {
 	Name        string
 	Labels      map[string]string
@@ -154,6 +159,10 @@ func (c *Client) BuildImage(ctx context.Context, req BuildImageRequest) error {
 	args = append(args, req.ExtraOptions...)
 	args = append(args, req.ContextDir)
 	return c.Run(ctx, CommandRequest{Args: args, Streams: req.Streams})
+}
+
+func (c *Client) PullImage(ctx context.Context, req PullImageRequest) error {
+	return c.Run(ctx, CommandRequest{Args: []string{"pull", req.Reference}, Streams: req.Streams})
 }
 
 func (c *Client) RunDetachedContainer(ctx context.Context, req RunDetachedContainerRequest) (string, error) {

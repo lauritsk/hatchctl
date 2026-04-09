@@ -22,6 +22,7 @@ type engine interface {
 	InspectImage(context.Context, dockercli.InspectImageRequest) (docker.ImageInspect, error)
 	InspectContainer(context.Context, dockercli.InspectContainerRequest) (docker.ContainerInspect, error)
 	BuildImage(context.Context, dockercli.BuildImageRequest) error
+	PullImage(context.Context, dockercli.PullImageRequest) error
 	RunDetachedContainer(context.Context, dockercli.RunDetachedContainerRequest) (string, error)
 	StartContainer(context.Context, dockercli.StartContainerRequest) error
 	RemoveContainer(context.Context, dockercli.RemoveContainerRequest) error

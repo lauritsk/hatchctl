@@ -19,6 +19,7 @@ type fakeExecutorEngine struct {
 	inspectImageFunc     func(context.Context, dockercli.InspectImageRequest) (docker.ImageInspect, error)
 	inspectContainerFunc func(context.Context, dockercli.InspectContainerRequest) (docker.ContainerInspect, error)
 	buildImageFunc       func(context.Context, dockercli.BuildImageRequest) error
+	pullImageFunc        func(context.Context, dockercli.PullImageRequest) error
 	runDetachedFunc      func(context.Context, dockercli.RunDetachedContainerRequest) (string, error)
 	startContainerFunc   func(context.Context, dockercli.StartContainerRequest) error
 	removeContainerFunc  func(context.Context, dockercli.RemoveContainerRequest) error
@@ -49,6 +50,13 @@ func (f *fakeExecutorEngine) BuildImage(ctx context.Context, req dockercli.Build
 		return f.buildImageFunc(ctx, req)
 	}
 	return errors.New("unexpected build image")
+}
+
+func (f *fakeExecutorEngine) PullImage(ctx context.Context, req dockercli.PullImageRequest) error {
+	if f.pullImageFunc != nil {
+		return f.pullImageFunc(ctx, req)
+	}
+	return errors.New("unexpected pull image")
 }
 
 func (f *fakeExecutorEngine) RunDetachedContainer(ctx context.Context, req dockercli.RunDetachedContainerRequest) (string, error) {
@@ -136,8 +144,16 @@ func TestUpUsesEnrichedResolvedMetadataForDotfilesTargetPath(t *testing.T) {
 
 	var execRequests []dockercli.ExecRequest
 	var containerLabels map[string]string
+	baseImagePulled := false
 	imageBuilt := false
 	engine := &fakeExecutorEngine{
+		pullImageFunc: func(_ context.Context, req dockercli.PullImageRequest) error {
+			if req.Reference != "mcr.microsoft.com/devcontainers/base:ubuntu" {
+				t.Fatalf("unexpected pull image ref %q", req.Reference)
+			}
+			baseImagePulled = true
+			return nil
+		},
 		listContainersFunc: func(context.Context, dockercli.ListContainersRequest) (string, error) {
 			return "", nil
 		},
@@ -148,6 +164,9 @@ func TestUpUsesEnrichedResolvedMetadataForDotfilesTargetPath(t *testing.T) {
 		inspectImageFunc: func(_ context.Context, req dockercli.InspectImageRequest) (docker.ImageInspect, error) {
 			switch req.Reference {
 			case "mcr.microsoft.com/devcontainers/base:ubuntu":
+				if !baseImagePulled {
+					return docker.ImageInspect{}, &docker.Error{Args: []string{"image", "inspect", req.Reference}, Stderr: "No such image", Err: errors.New("not found")}
+				}
 				return docker.ImageInspect{
 					Architecture: "arm64",
 					Config:       docker.InspectConfig{Labels: map[string]string{devcontainer.ImageMetadataLabel: sourceMetadataLabel}},
@@ -282,8 +301,16 @@ func TestUpRecreateReinstallsDotfilesForNewContainer(t *testing.T) {
 	}
 
 	var execRequests []dockercli.ExecRequest
+	baseImagePulled := false
 	imageBuilt := false
 	engine := &fakeExecutorEngine{
+		pullImageFunc: func(_ context.Context, req dockercli.PullImageRequest) error {
+			if req.Reference != "mcr.microsoft.com/devcontainers/base:ubuntu" {
+				t.Fatalf("unexpected pull image ref %q", req.Reference)
+			}
+			baseImagePulled = true
+			return nil
+		},
 		listContainersFunc: func(context.Context, dockercli.ListContainersRequest) (string, error) {
 			return "container-old\n", nil
 		},
@@ -294,6 +321,9 @@ func TestUpRecreateReinstallsDotfilesForNewContainer(t *testing.T) {
 		inspectImageFunc: func(_ context.Context, req dockercli.InspectImageRequest) (docker.ImageInspect, error) {
 			switch req.Reference {
 			case "mcr.microsoft.com/devcontainers/base:ubuntu":
+				if !baseImagePulled {
+					return docker.ImageInspect{}, &docker.Error{Args: []string{"image", "inspect", req.Reference}, Stderr: "No such image", Err: errors.New("not found")}
+				}
 				return docker.ImageInspect{Architecture: "arm64", Config: docker.InspectConfig{Labels: map[string]string{devcontainer.ImageMetadataLabel: sourceMetadataLabel}}}, nil
 			case "hatchctl-demo":
 				if !imageBuilt {

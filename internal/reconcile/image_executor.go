@@ -321,8 +321,22 @@ func (e *Executor) ensureImageWithFeatures(ctx context.Context, resolved devcont
 		}
 	} else if err := e.verifyImageReference(ctx, baseImage, events); err != nil {
 		return "", err
+	} else if err := e.ensureLocalImage(ctx, baseImage, events); err != nil {
+		return "", err
 	}
 	return e.ensureFeaturesImageFromBase(ctx, resolved, baseImage, imageKey, events)
+}
+
+func (e *Executor) ensureLocalImage(ctx context.Context, image string, events ui.Sink) error {
+	_, err := e.engine.InspectImage(ctx, dockercli.InspectImageRequest{Reference: image})
+	if err == nil {
+		return nil
+	}
+	if !docker.IsNotFound(err) {
+		return err
+	}
+	stdout, stderr := e.progressWriters(events, phaseImage, "Pulling source image", e.stdout, e.stderr)
+	return e.engine.PullImage(ctx, dockercli.PullImageRequest{Reference: image, Streams: dockercli.Streams{Stdout: stdout, Stderr: stderr}})
 }
 
 func (e *Executor) ensureFeaturesImageFromBase(ctx context.Context, resolved devcontainer.ResolvedConfig, baseImage string, imageKey string, events ui.Sink) (string, error) {
