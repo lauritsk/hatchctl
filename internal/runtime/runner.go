@@ -15,6 +15,7 @@ import (
 	"github.com/lauritsk/hatchctl/internal/docker"
 	workspaceplan "github.com/lauritsk/hatchctl/internal/plan"
 	"github.com/lauritsk/hatchctl/internal/policy"
+	"github.com/lauritsk/hatchctl/internal/reconcile"
 	"golang.org/x/term"
 )
 
@@ -162,6 +163,7 @@ type preparedWorkspace struct {
 	state            devcontainer.State
 	containerID      string
 	containerInspect *docker.ContainerInspect
+	observed         reconcile.ObservedState
 }
 
 type ManagedContainer struct {
@@ -442,6 +444,9 @@ func (r *Runner) Exec(ctx context.Context, opts ExecOptions) (int, error) {
 		if err := ensureContainerHasSSHAgent(session.ContainerInspect(), sshAgentContainerSocketPath); err != nil {
 			return 0, err
 		}
+	}
+	if err := session.RevalidateReadTarget(ctx); err != nil {
+		return 0, err
 	}
 	interactive := shouldAllocateTTY(opts.Stdin, opts.Stdout)
 	args, err := r.dockerExecArgs(ctx, session.ContainerID(), resolved, opts.Stdin != nil, interactive, opts.RemoteEnv, opts.Args)

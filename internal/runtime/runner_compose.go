@@ -7,6 +7,7 @@ import (
 	"slices"
 
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
+	"github.com/lauritsk/hatchctl/internal/engine/dockercli"
 	"github.com/lauritsk/hatchctl/internal/fileutil"
 	"go.yaml.in/yaml/v3"
 )
@@ -97,8 +98,7 @@ func (r *Runner) readComposeConfig(ctx context.Context, resolved *devcontainer.R
 	if resolved == nil {
 		return composeConfig{}, nil
 	}
-	args := append(composeBaseArgs(*resolved), "config", "--format", "json")
-	output, err := r.backend.Output(ctx, runtimeCommand{Kind: runtimeCommandDocker, Args: args, Dir: resolved.ConfigDir})
+	output, err := r.backend.ComposeConfig(ctx, dockercli.ComposeConfigRequest{Target: dockercli.ComposeTarget{Files: resolved.ComposeFiles, Project: resolved.ComposeProject, Dir: resolved.ConfigDir}, Format: "json"})
 	if err != nil {
 		return composeConfig{}, err
 	}
@@ -121,8 +121,7 @@ func (r *Runner) findComposeContainer(ctx context.Context, resolved devcontainer
 		}
 		project = firstNonEmpty(config.Name, resolved.ComposeProject)
 	}
-	args := []string{"ps", "-aq", "--filter", "label=com.docker.compose.project=" + project, "--filter", "label=com.docker.compose.service=" + resolved.ComposeService}
-	result, err := r.backend.Output(ctx, runtimeCommand{Kind: runtimeCommandDocker, Args: args})
+	result, err := r.backend.ListContainers(ctx, dockercli.ListContainersRequest{All: true, Quiet: true, Filters: []string{"label=com.docker.compose.project=" + project, "label=com.docker.compose.service=" + resolved.ComposeService}})
 	if err != nil {
 		return "", err
 	}

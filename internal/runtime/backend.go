@@ -7,6 +7,7 @@ import (
 	"github.com/lauritsk/hatchctl/internal/command"
 	ui "github.com/lauritsk/hatchctl/internal/display"
 	"github.com/lauritsk/hatchctl/internal/docker"
+	"github.com/lauritsk/hatchctl/internal/engine/dockercli"
 )
 
 type runtimeBackend interface {
@@ -14,6 +15,14 @@ type runtimeBackend interface {
 	Output(context.Context, runtimeCommand) (string, error)
 	InspectImage(context.Context, string) (docker.ImageInspect, error)
 	InspectContainer(context.Context, string) (docker.ContainerInspect, error)
+	BuildImage(context.Context, dockercli.BuildImageRequest) error
+	RunDetachedContainer(context.Context, dockercli.RunDetachedContainerRequest) (string, error)
+	StartContainer(context.Context, dockercli.StartContainerRequest) error
+	RemoveContainer(context.Context, dockercli.RemoveContainerRequest) error
+	ListContainers(context.Context, dockercli.ListContainersRequest) (string, error)
+	ComposeConfig(context.Context, dockercli.ComposeConfigRequest) (string, error)
+	ComposeBuild(context.Context, dockercli.ComposeBuildRequest) error
+	ComposeUp(context.Context, dockercli.ComposeUpRequest) error
 }
 
 type runtimeCommandKind string
@@ -39,12 +48,12 @@ type runtimeCommand struct {
 
 type localRuntimeBackend struct {
 	runner      *Runner
-	docker      *docker.Client
+	docker      *dockercli.Client
 	hostCommand command.Runner
 }
 
 func newLocalRuntimeBackend(runner *Runner, dockerClient *docker.Client) runtimeBackend {
-	return &localRuntimeBackend{runner: runner, docker: dockerClient, hostCommand: command.Local{}}
+	return &localRuntimeBackend{runner: runner, docker: dockercli.New(dockerClient), hostCommand: command.Local{}}
 }
 
 func (b *localRuntimeBackend) Run(ctx context.Context, cmd runtimeCommand) error {
@@ -53,7 +62,8 @@ func (b *localRuntimeBackend) Run(ctx context.Context, cmd runtimeCommand) error
 		if len(cmd.Args) == 0 {
 			return nil
 		}
-		return b.docker.Run(ctx, b.runner.progressDockerRunOptions(cmd.Events, cmd.Phase, cmd.Label, docker.RunOptions{Args: cmd.Args, Dir: cmd.Dir, Env: cmd.Env, Stdin: cmd.Stdin, Stdout: cmd.Stdout, Stderr: cmd.Stderr}))
+		opts := b.runner.progressDockerRunOptions(cmd.Events, cmd.Phase, cmd.Label, docker.RunOptions{Args: cmd.Args, Dir: cmd.Dir, Env: cmd.Env, Stdin: cmd.Stdin, Stdout: cmd.Stdout, Stderr: cmd.Stderr})
+		return b.docker.Run(ctx, dockercli.CommandRequest{Args: opts.Args, Dir: opts.Dir, Env: opts.Env, Streams: dockercli.Streams{Stdin: opts.Stdin, Stdout: opts.Stdout, Stderr: opts.Stderr}})
 	case runtimeCommandHost:
 		if cmd.Binary == "" {
 			return nil
@@ -65,11 +75,11 @@ func (b *localRuntimeBackend) Run(ctx context.Context, cmd runtimeCommand) error
 }
 
 func (b *localRuntimeBackend) InspectImage(ctx context.Context, image string) (docker.ImageInspect, error) {
-	return b.docker.InspectImage(ctx, image)
+	return b.docker.InspectImage(ctx, dockercli.InspectImageRequest{Reference: image})
 }
 
 func (b *localRuntimeBackend) InspectContainer(ctx context.Context, containerID string) (docker.ContainerInspect, error) {
-	return b.docker.InspectContainer(ctx, containerID)
+	return b.docker.InspectContainer(ctx, dockercli.InspectContainerRequest{ContainerID: containerID})
 }
 
 func (b *localRuntimeBackend) Output(ctx context.Context, cmd runtimeCommand) (string, error) {
@@ -78,7 +88,7 @@ func (b *localRuntimeBackend) Output(ctx context.Context, cmd runtimeCommand) (s
 		if len(cmd.Args) == 0 {
 			return "", nil
 		}
-		return b.docker.OutputOptions(ctx, docker.RunOptions{Args: cmd.Args, Dir: cmd.Dir, Env: cmd.Env, Stdin: cmd.Stdin})
+		return b.docker.Output(ctx, dockercli.CommandRequest{Args: cmd.Args, Dir: cmd.Dir, Env: cmd.Env, Streams: dockercli.Streams{Stdin: cmd.Stdin}})
 	case runtimeCommandHost:
 		if cmd.Binary == "" {
 			return "", nil
@@ -88,6 +98,38 @@ func (b *localRuntimeBackend) Output(ctx context.Context, cmd runtimeCommand) (s
 	default:
 		return "", nil
 	}
+}
+
+func (b *localRuntimeBackend) BuildImage(ctx context.Context, req dockercli.BuildImageRequest) error {
+	return b.docker.BuildImage(ctx, req)
+}
+
+func (b *localRuntimeBackend) RunDetachedContainer(ctx context.Context, req dockercli.RunDetachedContainerRequest) (string, error) {
+	return b.docker.RunDetachedContainer(ctx, req)
+}
+
+func (b *localRuntimeBackend) StartContainer(ctx context.Context, req dockercli.StartContainerRequest) error {
+	return b.docker.StartContainer(ctx, req)
+}
+
+func (b *localRuntimeBackend) RemoveContainer(ctx context.Context, req dockercli.RemoveContainerRequest) error {
+	return b.docker.RemoveContainer(ctx, req)
+}
+
+func (b *localRuntimeBackend) ListContainers(ctx context.Context, req dockercli.ListContainersRequest) (string, error) {
+	return b.docker.ListContainers(ctx, req)
+}
+
+func (b *localRuntimeBackend) ComposeConfig(ctx context.Context, req dockercli.ComposeConfigRequest) (string, error) {
+	return b.docker.ComposeConfig(ctx, req)
+}
+
+func (b *localRuntimeBackend) ComposeBuild(ctx context.Context, req dockercli.ComposeBuildRequest) error {
+	return b.docker.ComposeBuild(ctx, req)
+}
+
+func (b *localRuntimeBackend) ComposeUp(ctx context.Context, req dockercli.ComposeUpRequest) error {
+	return b.docker.ComposeUp(ctx, req)
 }
 
 var _ runtimeBackend = (*localRuntimeBackend)(nil)

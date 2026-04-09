@@ -2,12 +2,12 @@ package runtime
 
 import (
 	"context"
-	"errors"
 
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	ui "github.com/lauritsk/hatchctl/internal/display"
 	"github.com/lauritsk/hatchctl/internal/docker"
 	workspaceplan "github.com/lauritsk/hatchctl/internal/plan"
+	"github.com/lauritsk/hatchctl/internal/reconcile"
 )
 
 type workspaceSessionOptions struct {
@@ -52,36 +52,23 @@ func (r *Runner) prepareSession(ctx context.Context, opts workspaceSessionOption
 			return nil, err
 		}
 	}
-	if opts.LoadState {
-		state, err := devcontainer.ReadState(prepared.resolved.StateDir)
-		if err != nil {
-			return nil, err
-		}
-		state, err = r.reconcileState(ctx, prepared.resolved, state)
-		if err != nil {
-			return nil, err
-		}
-		prepared.state = state
-		prepared.containerID = state.ContainerID
+	observed, err := reconcile.NewObserver(r.backend).Observe(ctx, reconcile.ObserveRequest{
+		Plan:               opts.Plan,
+		Resolved:           prepared.resolved,
+		ImageRef:           prepared.image,
+		LoadControlState:   opts.LoadState || opts.FindContainer || opts.InspectContainer,
+		ObserveTarget:      opts.LoadState || opts.FindContainer || opts.InspectContainer,
+		InspectTarget:      opts.InspectContainer,
+		AllowMissingTarget: opts.AllowMissingContainer,
+	})
+	if err != nil {
+		return nil, err
 	}
-	if opts.FindContainer && prepared.containerID == "" {
-		r.emitPhaseProgress(opts.Events, phaseContainer, "Finding managed container")
-		containerID, err := r.findContainer(ctx, prepared.resolved)
-		if err != nil {
-			if opts.AllowMissingContainer && errors.Is(err, errManagedContainerNotFound) {
-				return &workspaceSession{runner: r, prepared: prepared}, nil
-			}
-			return nil, err
-		}
-		prepared.containerID = containerID
-	}
-	if opts.InspectContainer && prepared.containerID != "" {
-		inspect, err := r.backend.InspectContainer(ctx, prepared.containerID)
-		if err != nil {
-			return nil, err
-		}
-		prepared.containerInspect = &inspect
-	}
+	prepared.resolved = observed.Resolved
+	prepared.state = observed.Control.WorkspaceState
+	prepared.containerID = observed.Target.PrimaryContainer
+	prepared.containerInspect = observed.Container
+	prepared.observed = observed
 	return &workspaceSession{runner: r, prepared: prepared}, nil
 }
 
@@ -135,6 +122,13 @@ func (s *workspaceSession) EffectiveRemoteUser(ctx context.Context) (string, err
 
 func (s *workspaceSession) ManagedContainer() (*ManagedContainer, error) {
 	return s.runner.readManagedContainerState(s.prepared)
+}
+
+func (s *workspaceSession) RevalidateReadTarget(ctx context.Context) error {
+	if s.prepared.observed.ReadTarget.PrimaryContainer == "" {
+		return nil
+	}
+	return reconcile.NewObserver(s.runner.backend).RevalidateReadToken(ctx, s.prepared.observed)
 }
 
 func newWorkspaceStateTracker(stateDir string, state devcontainer.State) *workspaceStateTracker {

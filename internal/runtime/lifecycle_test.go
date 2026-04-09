@@ -8,6 +8,7 @@ import (
 
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	"github.com/lauritsk/hatchctl/internal/docker"
+	"github.com/lauritsk/hatchctl/internal/engine/dockercli"
 	"github.com/lauritsk/hatchctl/internal/policy"
 )
 
@@ -32,6 +33,38 @@ func (b hostOnlyBackend) InspectImage(context.Context, string) (docker.ImageInsp
 
 func (b hostOnlyBackend) InspectContainer(context.Context, string) (docker.ContainerInspect, error) {
 	panic("unexpected InspectContainer call")
+}
+
+func (b hostOnlyBackend) BuildImage(context.Context, dockercli.BuildImageRequest) error {
+	panic("unexpected BuildImage call")
+}
+
+func (b hostOnlyBackend) RunDetachedContainer(context.Context, dockercli.RunDetachedContainerRequest) (string, error) {
+	panic("unexpected RunDetachedContainer call")
+}
+
+func (b hostOnlyBackend) StartContainer(context.Context, dockercli.StartContainerRequest) error {
+	panic("unexpected StartContainer call")
+}
+
+func (b hostOnlyBackend) RemoveContainer(context.Context, dockercli.RemoveContainerRequest) error {
+	panic("unexpected RemoveContainer call")
+}
+
+func (b hostOnlyBackend) ListContainers(context.Context, dockercli.ListContainersRequest) (string, error) {
+	panic("unexpected ListContainers call")
+}
+
+func (b hostOnlyBackend) ComposeConfig(context.Context, dockercli.ComposeConfigRequest) (string, error) {
+	panic("unexpected ComposeConfig call")
+}
+
+func (b hostOnlyBackend) ComposeBuild(context.Context, dockercli.ComposeBuildRequest) error {
+	panic("unexpected ComposeBuild call")
+}
+
+func (b hostOnlyBackend) ComposeUp(context.Context, dockercli.ComposeUpRequest) error {
+	panic("unexpected ComposeUp call")
 }
 
 func TestRunHostLifecycleUsesInjectedRunnerAndStreams(t *testing.T) {

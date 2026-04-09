@@ -11,6 +11,7 @@ import (
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	ui "github.com/lauritsk/hatchctl/internal/display"
 	"github.com/lauritsk/hatchctl/internal/docker"
+	"github.com/lauritsk/hatchctl/internal/engine/dockercli"
 	"github.com/lauritsk/hatchctl/internal/fileutil"
 )
 
@@ -208,25 +209,28 @@ func (r *Runner) buildDockerfileImage(ctx context.Context, resolved devcontainer
 	if rel := devcontainer.EffectiveContext(resolved.Config); rel != "" {
 		contextDir = filepath.Join(resolved.ConfigDir, rel)
 	}
-	args := []string{"build", "-f", dockerfile, "-t", imageName}
+	labels := map[string]string{}
 	metadataLabel, err := devcontainer.MetadataLabelValue(resolved.Merged.Metadata)
 	if err != nil {
 		return err
 	}
 	if metadataLabel != "" {
-		args = append(args, "--label", devcontainer.ImageMetadataLabel+"="+metadataLabel)
+		labels[devcontainer.ImageMetadataLabel] = metadataLabel
 	}
+	buildArgs := map[string]string{}
+	extraOptions := []string(nil)
+	target := ""
 	if resolved.Config.Build != nil && resolved.Config.Build.Target != "" {
-		args = append(args, "--target", resolved.Config.Build.Target)
+		target = resolved.Config.Build.Target
 	}
 	if resolved.Config.Build != nil {
 		for key, value := range resolved.Config.Build.Args {
-			args = append(args, "--build-arg", key+"="+value)
+			buildArgs[key] = value
 		}
-		args = append(args, resolved.Config.Build.Options...)
+		extraOptions = append(extraOptions, resolved.Config.Build.Options...)
 	}
-	args = append(args, contextDir)
-	return r.backend.Run(ctx, runtimeCommand{Kind: runtimeCommandDocker, Phase: phaseImage, Label: "Building container image", Args: args, Dir: "", Stdout: r.stdout, Stderr: r.stderr, Events: events})
+	stdout, stderr := r.progressWriters(events, phaseImage, "Building container image", r.stdout, r.stderr)
+	return r.backend.BuildImage(ctx, dockercli.BuildImageRequest{ContextDir: contextDir, Dockerfile: dockerfile, Tag: imageName, Labels: labels, BuildArgs: buildArgs, Target: target, ExtraOptions: extraOptions, Streams: dockercli.Streams{Stdout: stdout, Stderr: stderr}})
 }
 
 func (r *Runner) ensureImageWithFeatures(ctx context.Context, resolved devcontainer.ResolvedConfig, events ui.Sink) (string, error) {
@@ -272,8 +276,8 @@ func (r *Runner) ensureFeaturesImageFromBase(ctx context.Context, resolved devco
 	if _, err := os.Stat(filepath.Join(buildDir, "Dockerfile")); err != nil {
 		return "", fmt.Errorf("generated feature Dockerfile missing in %s: %w", buildDir, err)
 	}
-	args := []string{"build", "-f", filepath.Join(buildDir, "Dockerfile"), "-t", resolved.ImageName, buildDir}
-	if err := r.backend.Run(ctx, runtimeCommand{Kind: runtimeCommandDocker, Phase: phaseImage, Label: "Building features image", Args: args, Dir: "", Stdout: r.stdout, Stderr: r.stderr, Events: events}); err != nil {
+	stdout, stderr := r.progressWriters(events, phaseImage, "Building features image", r.stdout, r.stderr)
+	if err := r.backend.BuildImage(ctx, dockercli.BuildImageRequest{ContextDir: buildDir, Dockerfile: filepath.Join(buildDir, "Dockerfile"), Tag: resolved.ImageName, Streams: dockercli.Streams{Stdout: stdout, Stderr: stderr}}); err != nil {
 		entries, _ := os.ReadDir(buildDir)
 		names := make([]string, 0, len(entries))
 		for _, entry := range entries {
@@ -295,7 +299,8 @@ func (r *Runner) ensureComposeImage(ctx context.Context, resolved devcontainer.R
 	}
 	baseImage := service.Image
 	if service.Build.Enabled() {
-		if err := r.backend.Run(ctx, runtimeCommand{Kind: runtimeCommandDocker, Phase: phaseImage, Label: fmt.Sprintf("Building compose service %s", resolved.ComposeService), Args: append(composeBaseArgs(resolved), "build", resolved.ComposeService), Dir: resolved.ConfigDir, Stdout: r.stdout, Stderr: r.stderr, Events: events}); err != nil {
+		stdout, stderr := r.progressWriters(events, phaseImage, fmt.Sprintf("Building compose service %s", resolved.ComposeService), r.stdout, r.stderr)
+		if err := r.backend.ComposeBuild(ctx, dockercli.ComposeBuildRequest{Target: dockercli.ComposeTarget{Files: resolved.ComposeFiles, Project: resolved.ComposeProject, Dir: resolved.ConfigDir}, Services: []string{resolved.ComposeService}, Streams: dockercli.Streams{Stdout: stdout, Stderr: stderr}}); err != nil {
 			return "", err
 		}
 		if baseImage == "" {

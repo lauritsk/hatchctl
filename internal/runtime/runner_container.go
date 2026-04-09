@@ -10,6 +10,7 @@ import (
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	ui "github.com/lauritsk/hatchctl/internal/display"
 	"github.com/lauritsk/hatchctl/internal/docker"
+	"github.com/lauritsk/hatchctl/internal/engine/dockercli"
 )
 
 var errManagedContainerNotFound = errors.New("managed container not found")
@@ -45,7 +46,8 @@ func (r *Runner) ensureReusableContainer(ctx context.Context, containerID string
 		return "", false, nil
 	}
 	if !inspect.State.Running {
-		if err := r.backend.Run(ctx, runtimeCommand{Kind: runtimeCommandDocker, Phase: phaseContainer, Label: fmt.Sprintf("Starting existing container %s", inspect.ID), Args: []string{"start", inspect.ID}, Stdout: r.stdout, Stderr: r.stderr, Events: events}); err != nil {
+		stdout, stderr := r.progressWriters(events, phaseContainer, fmt.Sprintf("Starting existing container %s", inspect.ID), r.stdout, r.stderr)
+		if err := r.backend.StartContainer(ctx, dockercli.StartContainerRequest{ContainerID: inspect.ID, Streams: dockercli.Streams{Stdout: stdout, Stderr: stderr}}); err != nil {
 			return "", false, err
 		}
 	}
@@ -56,11 +58,11 @@ func (r *Runner) findContainer(ctx context.Context, resolved devcontainer.Resolv
 	if resolved.SourceKind == "compose" {
 		return r.findComposeContainer(ctx, resolved)
 	}
-	args := []string{"ps", "-aq"}
+	filters := make([]string, 0, len(resolved.Labels))
 	for key, value := range resolved.Labels {
-		args = append(args, "--filter", "label="+key+"="+value)
+		filters = append(filters, "label="+key+"="+value)
 	}
-	result, err := r.backend.Output(ctx, runtimeCommand{Kind: runtimeCommandDocker, Args: args})
+	result, err := r.backend.ListContainers(ctx, dockercli.ListContainersRequest{All: true, Quiet: true, Filters: filters})
 	if err != nil {
 		return "", err
 	}
@@ -68,7 +70,8 @@ func (r *Runner) findContainer(ctx context.Context, resolved devcontainer.Resolv
 }
 
 func (r *Runner) removeContainer(ctx context.Context, containerID string, events ui.Sink) error {
-	return r.backend.Run(ctx, runtimeCommand{Kind: runtimeCommandDocker, Phase: phaseContainer, Label: fmt.Sprintf("Removing managed container %s", containerID), Args: []string{"rm", "-f", containerID}, Stdout: r.stdout, Stderr: r.stderr, Events: events})
+	stdout, stderr := r.progressWriters(events, phaseContainer, fmt.Sprintf("Removing managed container %s", containerID), r.stdout, r.stderr)
+	return r.backend.RemoveContainer(ctx, dockercli.RemoveContainerRequest{ContainerID: containerID, Force: true, Streams: dockercli.Streams{Stdout: stdout, Stderr: stderr}})
 }
 
 func (r *Runner) reconcileState(ctx context.Context, resolved devcontainer.ResolvedConfig, state devcontainer.State) (devcontainer.State, error) {
@@ -236,47 +239,41 @@ func (r *Runner) ensureContainer(ctx context.Context, resolved devcontainer.Reso
 	}
 
 	stateMount := fmt.Sprintf("type=bind,source=%s,target=%s", resolved.StateDir, "/var/run/hatchctl")
-	args := []string{"run", "-d", "--name", resolved.ContainerName}
 	metadataLabel, err := devcontainer.MetadataLabelValue(resolved.Merged.Metadata)
 	if err != nil {
 		return "", false, err
 	}
+
+	labels := map[string]string{}
 	for key, value := range resolved.Labels {
-		args = append(args, "--label", key+"="+value)
+		labels[key] = value
 	}
 	if metadataLabel != "" {
-		args = append(args, "--label", devcontainer.ImageMetadataLabel+"="+metadataLabel)
+		labels[devcontainer.ImageMetadataLabel] = metadataLabel
 	}
 	if bridgeEnabled {
-		args = append(args, "--label", devcontainer.BridgeEnabledLabel+"=true")
+		labels[devcontainer.BridgeEnabledLabel] = "true"
 	}
 	if sshAgent {
-		args = append(args, "--label", devcontainer.SSHAgentLabel+"=true")
+		labels[devcontainer.SSHAgentLabel] = "true"
 	}
-	args = append(args, "--mount", resolved.WorkspaceMount, "--mount", stateMount)
-	if resolved.Merged.Init {
-		args = append(args, "--init")
+	env := map[string]string{}
+	for key, value := range resolved.Merged.ContainerEnv {
+		env[key] = value
 	}
-	if resolved.Merged.Privileged {
-		args = append(args, "--privileged")
-	}
-	for _, cap := range resolved.Merged.CapAdd {
-		args = append(args, "--cap-add", cap)
-	}
-	for _, sec := range resolved.Merged.SecurityOpt {
-		args = append(args, "--security-opt", sec)
-	}
-	for _, key := range devcontainer.SortedMapKeys(resolved.Merged.ContainerEnv) {
-		args = append(args, "-e", key+"="+resolved.Merged.ContainerEnv[key])
-	}
-	for _, mount := range resolved.Merged.Mounts {
-		args = append(args, "--mount", mount)
-	}
-	args = append(args, resolved.Config.RunArgs...)
-	args = append(args, image)
-	args = append(args, devcontainer.ContainerCommand(resolved.Config)...)
-
-	containerID, err = r.backend.Output(ctx, runtimeCommand{Kind: runtimeCommandDocker, Args: args})
+	containerID, err = r.backend.RunDetachedContainer(ctx, dockercli.RunDetachedContainerRequest{
+		Name:        resolved.ContainerName,
+		Labels:      labels,
+		Mounts:      append([]string{resolved.WorkspaceMount, stateMount}, resolved.Merged.Mounts...),
+		Init:        resolved.Merged.Init,
+		Privileged:  resolved.Merged.Privileged,
+		CapAdd:      resolved.Merged.CapAdd,
+		SecurityOpt: resolved.Merged.SecurityOpt,
+		Env:         env,
+		ExtraArgs:   resolved.Config.RunArgs,
+		Image:       image,
+		Command:     devcontainer.ContainerCommand(resolved.Config),
+	})
 	if err != nil {
 		return "", false, err
 	}
@@ -297,7 +294,12 @@ func (r *Runner) ensureComposeContainer(ctx context.Context, resolved devcontain
 			return reusedID, false, nil
 		}
 	}
-	if err := r.backend.Run(ctx, runtimeCommand{Kind: runtimeCommandDocker, Phase: phaseContainer, Label: fmt.Sprintf("Starting compose service %s", resolved.ComposeService), Args: append(composeArgs(resolved, overridePath), "up", "--no-build", "-d", resolved.ComposeService), Dir: resolved.ConfigDir, Stdout: r.stdout, Stderr: r.stderr, Events: events}); err != nil {
+	stdout, stderr := r.progressWriters(events, phaseContainer, fmt.Sprintf("Starting compose service %s", resolved.ComposeService), r.stdout, r.stderr)
+	target := dockercli.ComposeTarget{Files: append([]string(nil), resolved.ComposeFiles...), Project: resolved.ComposeProject, Dir: resolved.ConfigDir}
+	if overridePath != "" {
+		target.Files = append(target.Files, overridePath)
+	}
+	if err := r.backend.ComposeUp(ctx, dockercli.ComposeUpRequest{Target: target, Services: []string{resolved.ComposeService}, NoBuild: true, Detach: true, Streams: dockercli.Streams{Stdout: stdout, Stderr: stderr}}); err != nil {
 		return "", false, err
 	}
 	containerID, err = r.findComposeContainer(ctx, resolved)
