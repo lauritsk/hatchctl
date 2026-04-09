@@ -2,6 +2,15 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## [v0.6.2](https://github.com/lauritsk/hatchctl/compare/fcaa81d87c54d69e96664bc873ca1dd1dc27f8c2..v0.6.2) - 2026-04-09
+#### Bug Fixes
+- (**runtime**) Preserve prompt rendering and SSH agent mounts - ([9ab5c9a](https://github.com/lauritsk/hatchctl/commit/9ab5c9a53160b5922ae603e7e9bea8d0b05a8b8f)) - Karl Hans Laurits
+- Promote BurntSushi/toml to a direct dependency - ([fcaa81d](https://github.com/lauritsk/hatchctl/commit/fcaa81d87c54d69e96664bc873ca1dd1dc27f8c2)) - Karl Hans Laurits
+#### Miscellaneous Chores
+- Update hatchctl tool to v0.6.1 - ([8dd4d5b](https://github.com/lauritsk/hatchctl/commit/8dd4d5beef8a86b5a58706e1ea5bd7844467aef1)) - Karl Hans Laurits
+
+- - -
+
 ## [v0.6.1](https://github.com/lauritsk/hatchctl/compare/cfa13d8fa5cc2e9d62416908a4a5258e363b1fdb..v0.6.1) - 2026-04-09
 #### Bug Fixes
 - (**runtime**) Avoid closing live descriptors during TTY detection - ([82ec2ae](https://github.com/lauritsk/hatchctl/commit/82ec2ae25c23b03f4e663776154da66b118cb5bb)) - Karl Hans Laurits
