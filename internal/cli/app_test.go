@@ -25,23 +25,6 @@ type stubRunner struct {
 	bridgeDoctor func(context.Context, runtime.BridgeDoctorOptions) (bridge.Report, error)
 }
 
-func isolateConfigHome(t *testing.T) {
-	t.Helper()
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
-	t.Setenv("APPDATA", filepath.Join(home, "AppData", "Roaming"))
-}
-
-func assertContainsAll(t *testing.T, got string, want ...string) {
-	t.Helper()
-	for _, part := range want {
-		if !strings.Contains(got, part) {
-			t.Fatalf("expected output to contain %q, got %q", part, got)
-		}
-	}
-}
-
 func (s stubRunner) Up(ctx context.Context, opts runtime.UpOptions) (runtime.UpResult, error) {
 	if s.up != nil {
 		return s.up(ctx, opts)
@@ -85,17 +68,13 @@ func (s stubRunner) BridgeDoctor(ctx context.Context, opts runtime.BridgeDoctorO
 }
 
 func TestParseGlobalOptionsStripsLeadingVerboseFlags(t *testing.T) {
-	isolateConfigHome(t)
-
-	var out bytes.Buffer
-	var errOut bytes.Buffer
 	var got runtime.UpOptions
-	app := NewWithRunner(&out, &errOut, stubRunner{up: func(_ context.Context, opts runtime.UpOptions) (runtime.UpResult, error) {
+	h := newAppHarness(t, stubRunner{up: func(_ context.Context, opts runtime.UpOptions) (runtime.UpResult, error) {
 		got = opts
 		return runtime.UpResult{}, nil
 	}})
 
-	if err := app.Run(context.Background(), []string{"--verbose", "--debug", "up", "--workspace", "/tmp/demo"}); err != nil {
+	if err := h.run("--verbose", "--debug", "up", "--workspace", "/tmp/demo"); err != nil {
 		t.Fatalf("run app: %v", err)
 	}
 	if !got.Verbose || !got.Debug {
@@ -110,17 +89,13 @@ func TestParseGlobalOptionsStripsLeadingVerboseFlags(t *testing.T) {
 }
 
 func TestRunUpPassesFeatureTimeoutFlag(t *testing.T) {
-	isolateConfigHome(t)
-
-	var out bytes.Buffer
-	var errOut bytes.Buffer
 	var got runtime.UpOptions
-	app := NewWithRunner(&out, &errOut, stubRunner{up: func(_ context.Context, opts runtime.UpOptions) (runtime.UpResult, error) {
+	h := newAppHarness(t, stubRunner{up: func(_ context.Context, opts runtime.UpOptions) (runtime.UpResult, error) {
 		got = opts
 		return runtime.UpResult{}, nil
 	}})
 
-	if err := app.Run(context.Background(), []string{"up", "--feature-timeout", "45s"}); err != nil {
+	if err := h.run("up", "--feature-timeout", "45s"); err != nil {
 		t.Fatalf("run app: %v", err)
 	}
 	if got.FeatureTimeout != 45*time.Second {
@@ -129,17 +104,13 @@ func TestRunUpPassesFeatureTimeoutFlag(t *testing.T) {
 }
 
 func TestRunUpPassesDotfilesFlags(t *testing.T) {
-	isolateConfigHome(t)
-
-	var out bytes.Buffer
-	var errOut bytes.Buffer
 	var got runtime.UpOptions
-	app := NewWithRunner(&out, &errOut, stubRunner{up: func(_ context.Context, opts runtime.UpOptions) (runtime.UpResult, error) {
+	h := newAppHarness(t, stubRunner{up: func(_ context.Context, opts runtime.UpOptions) (runtime.UpResult, error) {
 		got = opts
 		return runtime.UpResult{}, nil
 	}})
 
-	if err := app.Run(context.Background(), []string{"up", "--dotfiles", "github.com/lauritsk/dotfiles", "--dotfiles-install-command", "install", "--dotfiles-target-path", "~/dotfiles"}); err != nil {
+	if err := h.run("up", "--dotfiles", "github.com/lauritsk/dotfiles", "--dotfiles-install-command", "install", "--dotfiles-target-path", "~/dotfiles"); err != nil {
 		t.Fatalf("run app: %v", err)
 	}
 	if got.Dotfiles.Repository != "github.com/lauritsk/dotfiles" || got.Dotfiles.InstallCommand != "install" || got.Dotfiles.TargetPath != "~/dotfiles" {
@@ -148,17 +119,13 @@ func TestRunUpPassesDotfilesFlags(t *testing.T) {
 }
 
 func TestRunUpAcceptsExplicitDotfilesRepositoryFlag(t *testing.T) {
-	isolateConfigHome(t)
-
-	var out bytes.Buffer
-	var errOut bytes.Buffer
 	var got runtime.UpOptions
-	app := NewWithRunner(&out, &errOut, stubRunner{up: func(_ context.Context, opts runtime.UpOptions) (runtime.UpResult, error) {
+	h := newAppHarness(t, stubRunner{up: func(_ context.Context, opts runtime.UpOptions) (runtime.UpResult, error) {
 		got = opts
 		return runtime.UpResult{}, nil
 	}})
 
-	if err := app.Run(context.Background(), []string{"up", "--dotfiles-repository", "github.com/lauritsk/dotfiles"}); err != nil {
+	if err := h.run("up", "--dotfiles-repository", "github.com/lauritsk/dotfiles"); err != nil {
 		t.Fatalf("run app: %v", err)
 	}
 	if got.Dotfiles.Repository != "github.com/lauritsk/dotfiles" {
@@ -167,25 +134,17 @@ func TestRunUpAcceptsExplicitDotfilesRepositoryFlag(t *testing.T) {
 }
 
 func TestRunBuildRejectsDotfilesFlags(t *testing.T) {
-	isolateConfigHome(t)
+	h := newAppHarness(t, stubRunner{})
 
-	var out bytes.Buffer
-	var errOut bytes.Buffer
-	app := NewWithRunner(&out, &errOut, stubRunner{})
-
-	err := app.Run(context.Background(), []string{"build", "--dotfiles", "github.com/example/dotfiles"})
+	err := h.run("build", "--dotfiles", "github.com/example/dotfiles")
 	if err == nil || !strings.Contains(err.Error(), "unknown flag: --dotfiles") {
 		t.Fatalf("expected unknown dotfiles flag error, got %v", err)
 	}
 }
 
 func TestRunUpUsesGlobalDebugForProgressAndPlan(t *testing.T) {
-	isolateConfigHome(t)
-
-	var out bytes.Buffer
-	var errOut bytes.Buffer
 	called := false
-	app := NewWithRunner(&out, &errOut, stubRunner{up: func(_ context.Context, opts runtime.UpOptions) (runtime.UpResult, error) {
+	h := newAppHarness(t, stubRunner{up: func(_ context.Context, opts runtime.UpOptions) (runtime.UpResult, error) {
 		called = true
 		if !opts.Verbose || !opts.Debug {
 			t.Fatalf("expected verbose+debug options, got %#v", opts)
@@ -198,30 +157,26 @@ func TestRunUpUsesGlobalDebugForProgressAndPlan(t *testing.T) {
 		return runtime.UpResult{ContainerID: "abc123", Image: "hatchctl-demo", RemoteWorkspaceFolder: "/workspace", StateDir: "/tmp/state"}, nil
 	}})
 
-	if err := app.Run(context.Background(), []string{"--debug", "up"}); err != nil {
+	if err := h.run("--debug", "up"); err != nil {
 		t.Fatalf("run app: %v", err)
 	}
 	if !called {
 		t.Fatal("expected up runner to be called")
 	}
-	assertContainsAll(t, errOut.String(), "==> Resolving development container\n", "plan source=image", "target-image=hatchctl-demo")
-	assertContainsAll(t, out.String(), "Container: abc123\n", "Image: hatchctl-demo\n", "Workspace: /workspace\n", "\nNext:\n", "  hatchctl exec\n", "  hatchctl exec -- pwd\n", "  hatchctl exec -- go test ./...\n")
+	assertContainsAll(t, h.stderr(), "==> Resolving development container\n", "plan source=image", "target-image=hatchctl-demo")
+	assertContainsAll(t, h.stdout(), "Container: abc123\n", "Image: hatchctl-demo\n", "Workspace: /workspace\n", "\nNext:\n", "  hatchctl exec\n", "  hatchctl exec -- pwd\n", "  hatchctl exec -- go test ./...\n")
 }
 
 func TestRunUpPrintsSuggestedExecCommands(t *testing.T) {
-	isolateConfigHome(t)
-
-	var out bytes.Buffer
-	var errOut bytes.Buffer
-	app := NewWithRunner(&out, &errOut, stubRunner{up: func(_ context.Context, _ runtime.UpOptions) (runtime.UpResult, error) {
+	h := newAppHarness(t, stubRunner{up: func(_ context.Context, _ runtime.UpOptions) (runtime.UpResult, error) {
 		return runtime.UpResult{ContainerID: "abc123", Image: "hatchctl-demo", RemoteWorkspaceFolder: "/workspace", StateDir: "/tmp/state"}, nil
 	}})
 
-	if err := app.Run(context.Background(), []string{"up", "--workspace", "../my project", "--config", "dev/container.json", "--feature-timeout", "45s", "--lockfile-policy", "frozen"}); err != nil {
+	if err := h.run("up", "--workspace", "../my project", "--config", "dev/container.json", "--feature-timeout", "45s", "--lockfile-policy", "frozen"); err != nil {
 		t.Fatalf("run app: %v", err)
 	}
 
-	assertContainsAll(t, out.String(),
+	assertContainsAll(t, h.stdout(),
 		"Container: abc123\n",
 		"Image: hatchctl-demo\n",
 		"Workspace: /workspace\n",
@@ -232,55 +187,43 @@ func TestRunUpPrintsSuggestedExecCommands(t *testing.T) {
 }
 
 func TestRunUpWithSSHPrintsSuggestedExecCommandsWithSSH(t *testing.T) {
-	isolateConfigHome(t)
-
-	var out bytes.Buffer
-	var errOut bytes.Buffer
-	app := NewWithRunner(&out, &errOut, stubRunner{up: func(_ context.Context, opts runtime.UpOptions) (runtime.UpResult, error) {
+	h := newAppHarness(t, stubRunner{up: func(_ context.Context, opts runtime.UpOptions) (runtime.UpResult, error) {
 		if !opts.SSHAgent {
 			t.Fatal("expected ssh-agent passthrough to be enabled")
 		}
 		return runtime.UpResult{ContainerID: "abc123", Image: "hatchctl-demo", RemoteWorkspaceFolder: "/workspace", StateDir: "/tmp/state"}, nil
 	}})
 
-	if err := app.Run(context.Background(), []string{"up", "--ssh"}); err != nil {
+	if err := h.run("up", "--ssh"); err != nil {
 		t.Fatalf("run app: %v", err)
 	}
-	if got := out.String(); !strings.Contains(got, "hatchctl exec --ssh") {
+	if got := h.stdout(); !strings.Contains(got, "hatchctl exec --ssh") {
 		t.Fatalf("expected suggested ssh exec commands, got %q", got)
 	}
 }
 
 func TestRunUpJSONDisablesProgressOutput(t *testing.T) {
-	isolateConfigHome(t)
-
-	var out bytes.Buffer
-	var errOut bytes.Buffer
-	app := NewWithRunner(&out, &errOut, stubRunner{up: func(_ context.Context, opts runtime.UpOptions) (runtime.UpResult, error) {
+	h := newAppHarness(t, stubRunner{up: func(_ context.Context, opts runtime.UpOptions) (runtime.UpResult, error) {
 		if opts.Events != nil {
 			t.Fatal("expected no event sink for json output")
 		}
 		return runtime.UpResult{ContainerID: "abc123", Image: "hatchctl-demo", RemoteWorkspaceFolder: "/workspace", StateDir: "/tmp/state"}, nil
 	}})
 
-	if err := app.Run(context.Background(), []string{"--verbose", "up", "--json"}); err != nil {
+	if err := h.run("--verbose", "up", "--json"); err != nil {
 		t.Fatalf("run app: %v", err)
 	}
-	if errOut.Len() != 0 {
-		t.Fatalf("expected no stderr output, got %q", errOut.String())
+	if h.stderr() != "" {
+		t.Fatalf("expected no stderr output, got %q", h.stderr())
 	}
-	if got := out.String(); got == "" || got[0] != '{' {
+	if got := h.stdout(); got == "" || got[0] != '{' {
 		t.Fatalf("expected json output, got %q", got)
 	}
 }
 
 func TestRunExecAllowsMissingCommand(t *testing.T) {
-	isolateConfigHome(t)
-
-	var out bytes.Buffer
-	var errOut bytes.Buffer
 	called := false
-	app := NewWithRunner(&out, &errOut, stubRunner{exec: func(_ context.Context, opts runtime.ExecOptions) (int, error) {
+	h := newAppHarness(t, stubRunner{exec: func(_ context.Context, opts runtime.ExecOptions) (int, error) {
 		called = true
 		if len(opts.Args) != 0 {
 			t.Fatalf("expected no exec args, got %#v", opts.Args)
@@ -288,7 +231,7 @@ func TestRunExecAllowsMissingCommand(t *testing.T) {
 		return 0, nil
 	}})
 
-	if err := app.Run(context.Background(), []string{"exec"}); err != nil {
+	if err := h.run("exec"); err != nil {
 		t.Fatalf("run app: %v", err)
 	}
 	if !called {

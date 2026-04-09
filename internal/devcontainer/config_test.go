@@ -27,9 +27,7 @@ func TestLoadSupportsJSONC(t *testing.T) {
 		},
 		"postStartCommand": "echo ready",
 	}`
-	if err := os.WriteFile(configPath, []byte(contents), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	writeTestFile(t, configPath, contents)
 
 	config, err := Load(configPath)
 	if err != nil {
@@ -58,9 +56,7 @@ func TestLoadWrapsJSONCParseErrorsWithContext(t *testing.T) {
 		"image": "mcr.microsoft.com/devcontainers/base:ubuntu"
 		"workspaceFolder": "/workspaces/demo"
 	}`
-	if err := os.WriteFile(configPath, []byte(contents), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	writeTestFile(t, configPath, contents)
 
 	_, err := Load(configPath)
 	if err == nil {
@@ -77,11 +73,7 @@ func TestLoadWrapsJSONCParseErrorsWithContext(t *testing.T) {
 func TestResolveFindsDefaultConfigAndBuildsRuntimeShape(t *testing.T) {
 	t.Parallel()
 
-	workspace := t.TempDir()
-	configDir := filepath.Join(workspace, ".devcontainer")
-	if err := os.MkdirAll(configDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
+	workspace, configDir := newTestWorkspace(t)
 	configPath := filepath.Join(configDir, "devcontainer.json")
 	contents := `{
 		"name": "demo",
@@ -93,9 +85,7 @@ func TestResolveFindsDefaultConfigAndBuildsRuntimeShape(t *testing.T) {
 			"b": "echo two"
 		}
 	}`
-	if err := os.WriteFile(configPath, []byte(contents), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	writeTestFile(t, configPath, contents)
 
 	resolved, err := Resolve(context.Background(), workspace, "")
 	if err != nil {
@@ -250,9 +240,7 @@ func TestLoadNormalizesForwardPorts(t *testing.T) {
 		"image": "alpine:3.20",
 		"forwardPorts": [3000, "localhost:3000", "service:9000"]
 	}`
-	if err := os.WriteFile(configPath, []byte(contents), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	writeTestFile(t, configPath, contents)
 
 	config, err := Load(configPath)
 	if err != nil {
@@ -266,23 +254,15 @@ func TestLoadNormalizesForwardPorts(t *testing.T) {
 func TestResolveComposeConfigParsesComposeFiles(t *testing.T) {
 	t.Parallel()
 
-	workspace := t.TempDir()
-	configDir := filepath.Join(workspace, ".devcontainer")
-	if err := os.MkdirAll(configDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
+	workspace, configDir := newTestWorkspace(t)
 	composePath := filepath.Join(configDir, "compose.yaml")
-	if err := os.WriteFile(composePath, []byte("services:\n  app:\n    image: alpine:3.20\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	writeTestFile(t, composePath, "services:\n  app:\n    image: alpine:3.20\n")
 	configPath := filepath.Join(configDir, "devcontainer.json")
-	if err := os.WriteFile(configPath, []byte(`{
+	writeTestFile(t, configPath, `{
 		"dockerComposeFile": ["compose.yaml"],
 		"service": "app",
 		"workspaceFolder": "/workspace"
-	}`), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	}`)
 
 	resolved, err := Resolve(context.Background(), workspace, "")
 	if err != nil {
@@ -305,25 +285,15 @@ func TestResolveComposeConfigParsesComposeFiles(t *testing.T) {
 func TestResolveComposeConfigRequiresServiceAndWorkspaceFolder(t *testing.T) {
 	t.Parallel()
 
-	workspace := t.TempDir()
-	configDir := filepath.Join(workspace, ".devcontainer")
-	if err := os.MkdirAll(configDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
+	workspace, configDir := newTestWorkspace(t)
 	composePath := filepath.Join(configDir, "compose.yaml")
-	if err := os.WriteFile(composePath, []byte("services:\n  app:\n    image: alpine:3.20\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	writeTestFile(t, composePath, "services:\n  app:\n    image: alpine:3.20\n")
 	configPath := filepath.Join(configDir, "devcontainer.json")
-	if err := os.WriteFile(configPath, []byte(`{"dockerComposeFile":"compose.yaml"}`), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	writeTestFile(t, configPath, `{"dockerComposeFile":"compose.yaml"}`)
 	if _, err := Resolve(context.Background(), workspace, ""); err == nil || !strings.Contains(err.Error(), `must set "service"`) {
 		t.Fatalf("expected missing service error, got %v", err)
 	}
-	if err := os.WriteFile(configPath, []byte(`{"dockerComposeFile":"compose.yaml","service":"app"}`), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	writeTestFile(t, configPath, `{"dockerComposeFile":"compose.yaml","service":"app"}`)
 	if _, err := Resolve(context.Background(), workspace, ""); err == nil || !strings.Contains(err.Error(), `must set "workspaceFolder"`) {
 		t.Fatalf("expected missing workspaceFolder error, got %v", err)
 	}
@@ -332,21 +302,13 @@ func TestResolveComposeConfigRequiresServiceAndWorkspaceFolder(t *testing.T) {
 func TestResolveSupportsContainerfile(t *testing.T) {
 	t.Parallel()
 
-	workspace := t.TempDir()
-	configDir := filepath.Join(workspace, ".devcontainer")
-	if err := os.MkdirAll(configDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(configDir, "Containerfile"), []byte("FROM alpine:3.20\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	workspace, configDir := newTestWorkspace(t)
+	writeTestFile(t, filepath.Join(configDir, "Containerfile"), "FROM alpine:3.20\n")
 	configPath := filepath.Join(configDir, "devcontainer.json")
-	if err := os.WriteFile(configPath, []byte(`{
+	writeTestFile(t, configPath, `{
 		"dockerFile": "Containerfile",
 		"workspaceFolder": "/workspace"
-	}`), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	}`)
 
 	resolved, err := Resolve(context.Background(), workspace, "")
 	if err != nil {
@@ -828,74 +790,13 @@ func TestOutputRootsFollowPlatformConventions(t *testing.T) {
 	}
 }
 
-func copyFixtureWorkspace(t *testing.T, fixture string) string {
-	t.Helper()
-	source := filepath.Join("testdata", fixture)
-	workspace := t.TempDir()
-	if err := filepath.WalkDir(source, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		rel, err := filepath.Rel(source, path)
-		if err != nil {
-			return err
-		}
-		if rel == "." {
-			return nil
-		}
-		target := filepath.Join(workspace, rel)
-		if d.IsDir() {
-			return os.MkdirAll(target, 0o755)
-		}
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		return os.WriteFile(target, data, 0o644)
-	}); err != nil {
-		t.Fatalf("copy fixture workspace %s: %v", fixture, err)
-	}
-	return workspace
-}
-
-func rewriteFixturePlaceholders(t *testing.T, path string, replacements map[string]string) {
-	t.Helper()
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("read fixture file %s: %v", path, err)
-	}
-	contents := string(data)
-	for oldValue, newValue := range replacements {
-		contents = strings.ReplaceAll(contents, oldValue, newValue)
-	}
-	if err := os.WriteFile(path, []byte(contents), 0o644); err != nil {
-		t.Fatalf("rewrite fixture file %s: %v", path, err)
-	}
-}
-
 func TestResolveSupportsComposeFileArraysWithRealFiles(t *testing.T) {
 	t.Parallel()
 
-	workspace := t.TempDir()
+	workspace := copyFixtureWorkspace(t, "compose-files/real-array")
 	configDir := filepath.Join(workspace, ".devcontainer")
-	if err := os.MkdirAll(configDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
 	first := filepath.Join(configDir, "compose.yml")
 	second := filepath.Join(configDir, "docker-compose.override.yml")
-	if err := os.WriteFile(first, []byte("services:\n  app:\n    image: alpine:3.20\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(second, []byte("services:\n  app:\n    environment:\n      EXTRA: one\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(configDir, "devcontainer.json"), []byte(`{
-		"dockerComposeFile": ["compose.yml", "docker-compose.override.yml"],
-		"service": "app",
-		"workspaceFolder": "/workspace"
-	}`), 0o644); err != nil {
-		t.Fatal(err)
-	}
 
 	resolved, err := Resolve(context.Background(), workspace, "")
 	if err != nil {
