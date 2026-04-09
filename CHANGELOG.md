@@ -2,6 +2,14 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## [v0.6.4](https://github.com/lauritsk/hatchctl/compare/9eacadfce9ebc22255a4b52d33ac1cd185e5c7d3..v0.6.4) - 2026-04-09
+#### Bug Fixes
+- (**docker**) Keep build progress visible after trust prompts - ([9eacadf](https://github.com/lauritsk/hatchctl/commit/9eacadfce9ebc22255a4b52d33ac1cd185e5c7d3)) - Karl Hans Laurits
+#### Miscellaneous Chores
+- (**mise**) Update hatchctl tool to v0.6.3 - ([96cae57](https://github.com/lauritsk/hatchctl/commit/96cae5761f33672f550e250091b22d51e216c834)) - Karl Hans Laurits
+
+- - -
+
 ## [v0.6.3](https://github.com/lauritsk/hatchctl/compare/ad0d9cac12d3ba2e35b99102fc7c638e82bf432b..v0.6.3) - 2026-04-09
 #### Bug Fixes
 - (**runtime**) Preserve macOS SSH forwarding and feature runtime metadata - ([3248e38](https://github.com/lauritsk/hatchctl/commit/3248e38ac9219b0e91cf98f56ac1d50adc03edc4)) - Karl Hans Laurits
