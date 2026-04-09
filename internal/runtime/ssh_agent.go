@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	"github.com/lauritsk/hatchctl/internal/docker"
@@ -17,6 +18,10 @@ func injectSSHAgent(merged devcontainer.MergedConfig) (devcontainer.MergedConfig
 	hostSocket := os.Getenv("SSH_AUTH_SOCK")
 	if hostSocket == "" {
 		return merged, errSSHAgentUnavailable
+	}
+	resolvedSocket, err := filepath.EvalSymlinks(hostSocket)
+	if err == nil && resolvedSocket != "" {
+		hostSocket = resolvedSocket
 	}
 	info, err := os.Stat(hostSocket)
 	if err != nil {

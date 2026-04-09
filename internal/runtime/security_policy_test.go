@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 
@@ -50,6 +51,73 @@ func TestImageVerificationPolicyApplyImageAllowsPromptedTrust(t *testing.T) {
 		t.Fatalf("apply prompted image verification: %v", err)
 	}
 }
+
+func TestImageVerificationPolicyCloneWithIOCopiesTrust(t *testing.T) {
+	t.Parallel()
+
+	policy := &imageVerificationPolicy{strict: true, trust: map[string]struct{}{"example.com/demo/app:latest": {}}}
+	clone := policy.cloneWithIO(nil, nil)
+
+	if clone == policy {
+		t.Fatal("expected clone to allocate a new policy")
+	}
+	if !clone.strict {
+		t.Fatal("expected clone to preserve strict mode")
+	}
+	if !clone.approved("example.com/demo/app:latest") {
+		t.Fatal("expected clone to preserve trusted references")
+	}
+}
+
+func TestRunnerWithCommandIORebindsImageVerifierPrompt(t *testing.T) {
+	t.Parallel()
+
+	previousIsTerminal := isTerminal
+	isTerminal = func(int) bool { return true }
+	defer func() { isTerminal = previousIsTerminal }()
+
+	var promptErr bytes.Buffer
+	runner := &Runner{
+		imageVerifier: &imageVerificationPolicy{
+			trust: map[string]struct{}{"trusted.example/app:latest": {}},
+			prompt: func(string) (bool, bool, error) {
+				return false, false, nil
+			},
+		},
+	}
+
+	clone := runner.withCommandIO(commandIO{Stdin: ttyBuffer{Buffer: bytes.NewBufferString("n\n")}, Stderr: ttyBufferWriter{Buffer: &promptErr}})
+	result := security.VerificationResult{Ref: "example.com/demo/app:latest", Reason: "no signatures found"}
+	if err := clone.imageVerifier.ApplyImage(result, nil); err != nil {
+		t.Fatalf("apply image verification: %v", err)
+	}
+
+	out := promptErr.String()
+	if !strings.Contains(out, result.Error()) {
+		t.Fatalf("expected prompt stderr to contain verification error, got %q", out)
+	}
+	if !strings.Contains(out, "Continue with unsigned image for this run only? [y/N]: ") {
+		t.Fatalf("expected prompt stderr to contain approval prompt, got %q", out)
+	}
+	if !clone.imageVerifier.approved("trusted.example/app:latest") {
+		t.Fatal("expected cloned verifier to preserve prior approvals")
+	}
+	if clone.imageVerifier == runner.imageVerifier {
+		t.Fatal("expected withCommandIO to clone image verifier")
+	}
+}
+
+type ttyBuffer struct {
+	*bytes.Buffer
+}
+
+func (ttyBuffer) Fd() uintptr { return 1 }
+
+type ttyBufferWriter struct {
+	*bytes.Buffer
+}
+
+func (ttyBufferWriter) Fd() uintptr { return 2 }
 
 func TestImageVerificationPolicyApplyFeatureRequiresTrust(t *testing.T) {
 	t.Parallel()

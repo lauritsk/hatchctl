@@ -32,7 +32,11 @@ func TestInjectSSHAgentAddsMountAndEnv(t *testing.T) {
 	if merged.ContainerEnv["SSH_AUTH_SOCK"] != sshAgentContainerSocketPath {
 		t.Fatalf("unexpected container env %#v", merged.ContainerEnv)
 	}
-	wantMount := "type=bind,source=" + socketPath + ",target=" + sshAgentContainerSocketPath
+	resolvedSocketPath, err := filepath.EvalSymlinks(socketPath)
+	if err != nil {
+		t.Fatalf("resolve socket path: %v", err)
+	}
+	wantMount := "type=bind,source=" + resolvedSocketPath + ",target=" + sshAgentContainerSocketPath
 	if len(merged.Mounts) != 1 || merged.Mounts[0] != wantMount {
 		t.Fatalf("unexpected mounts %#v", merged.Mounts)
 	}
@@ -44,6 +48,41 @@ func TestInjectSSHAgentRejectsMissingSocket(t *testing.T) {
 	_, err := injectSSHAgent(devcontainer.MergedConfig{})
 	if err == nil || !strings.Contains(err.Error(), "ssh-agent passthrough requires SSH_AUTH_SOCK") {
 		t.Fatalf("expected ssh-agent error, got %v", err)
+	}
+}
+
+func TestInjectSSHAgentResolvesSymlinkedSocketPath(t *testing.T) {
+	socketDir, err := os.MkdirTemp("/tmp", "hc-ssh-")
+	if err != nil {
+		t.Fatalf("create temp socket dir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(socketDir) })
+	socketPath := filepath.Join(socketDir, "agent.sock")
+	listener := newUnixSocketListener(t, socketPath)
+	defer listener.Close()
+
+	linkDir, err := os.MkdirTemp("/tmp", "hc-ssh-link-")
+	if err != nil {
+		t.Fatalf("create temp symlink dir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(linkDir) })
+	linkPath := filepath.Join(linkDir, "agent-link.sock")
+	if err := os.Symlink(socketPath, linkPath); err != nil {
+		t.Fatalf("create symlink: %v", err)
+	}
+	t.Setenv("SSH_AUTH_SOCK", linkPath)
+
+	merged, err := injectSSHAgent(devcontainer.MergedConfig{})
+	if err != nil {
+		t.Fatalf("inject ssh agent through symlink: %v", err)
+	}
+	resolvedSocketPath, err := filepath.EvalSymlinks(socketPath)
+	if err != nil {
+		t.Fatalf("resolve socket path: %v", err)
+	}
+	wantMount := "type=bind,source=" + resolvedSocketPath + ",target=" + sshAgentContainerSocketPath
+	if len(merged.Mounts) != 1 || merged.Mounts[0] != wantMount {
+		t.Fatalf("unexpected mounts %#v", merged.Mounts)
 	}
 }
 

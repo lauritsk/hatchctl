@@ -16,6 +16,8 @@ import (
 	"golang.org/x/term"
 )
 
+var isTerminal = term.IsTerminal
+
 type Runner struct {
 	stdin         io.Reader
 	stdout        io.Writer
@@ -698,6 +700,7 @@ func (r *Runner) withCommandIO(streams commandIO) *Runner {
 	clone.stdin = streams.Stdin
 	clone.stdout = streams.Stdout
 	clone.stderr = streams.Stderr
+	clone.imageVerifier = r.imageVerifier.cloneWithIO(clone.stdin, clone.stderr)
 	if backend, ok := r.backend.(*localRuntimeBackend); ok {
 		clone.backend = &localRuntimeBackend{runner: &clone, docker: backend.docker, hostCommand: backend.hostCommand}
 	}
@@ -772,7 +775,7 @@ func isTerminalStream(stream any) bool {
 	if !ok {
 		return false
 	}
-	return term.IsTerminal(int(fd))
+	return isTerminal(int(fd))
 }
 
 func streamFileDescriptor(stream any) (uintptr, bool) {

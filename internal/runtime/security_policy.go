@@ -38,6 +38,23 @@ func newImageVerificationPolicy(stdin io.Reader, stderr io.Writer) *imageVerific
 	}
 }
 
+func (p *imageVerificationPolicy) cloneWithIO(stdin io.Reader, stderr io.Writer) *imageVerificationPolicy {
+	if p == nil {
+		return newImageVerificationPolicy(stdin, stderr)
+	}
+	clone := &imageVerificationPolicy{
+		strict: p.strict,
+		prompt: newVerificationPrompter(stdin, stderr),
+		trust:  map[string]struct{}{},
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for ref := range p.trust {
+		clone.trust[ref] = struct{}{}
+	}
+	return clone
+}
+
 func (p *imageVerificationPolicy) Check(ctx context.Context, ref string) security.VerificationResult {
 	return security.VerifyImage(ctx, ref)
 }
