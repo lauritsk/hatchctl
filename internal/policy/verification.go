@@ -1,4 +1,4 @@
-package runtime
+package policy
 
 import (
 	"bufio"
@@ -6,22 +6,22 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 	"sync"
 
 	ui "github.com/lauritsk/hatchctl/internal/display"
 	"github.com/lauritsk/hatchctl/internal/security"
+	"golang.org/x/term"
 )
 
-type imageVerificationPolicy struct {
+type ImageVerificationPolicy struct {
 	strict bool
-	prompt verificationPrompter
+	prompt VerificationPrompter
 	mu     sync.Mutex
 	trust  map[string]struct{}
 }
 
-type verificationPrompter func(string) (bool, bool, error)
+type VerificationPrompter func(string) (bool, bool, error)
 
 type verificationDecision int
 
@@ -30,21 +30,33 @@ const (
 	verificationDecisionRequireTrust
 )
 
-func newImageVerificationPolicy(stdin io.Reader, stderr io.Writer) *imageVerificationPolicy {
-	return &imageVerificationPolicy{
+func NewImageVerificationPolicy(stdin io.Reader, stderr io.Writer) *ImageVerificationPolicy {
+	return &ImageVerificationPolicy{
 		strict: envTruthy(security.CosignStrictEnvVar),
-		prompt: newVerificationPrompter(stdin, stderr),
+		prompt: NewVerificationPrompter(stdin, stderr),
 		trust:  map[string]struct{}{},
 	}
 }
 
-func (p *imageVerificationPolicy) cloneWithIO(stdin io.Reader, stderr io.Writer) *imageVerificationPolicy {
-	if p == nil {
-		return newImageVerificationPolicy(stdin, stderr)
+func NewImageVerificationPolicyWithPrompt(strict bool, prompt VerificationPrompter, trustedRefs ...string) *ImageVerificationPolicy {
+	policy := &ImageVerificationPolicy{
+		strict: strict,
+		prompt: prompt,
+		trust:  map[string]struct{}{},
 	}
-	clone := &imageVerificationPolicy{
+	for _, ref := range trustedRefs {
+		policy.trust[ref] = struct{}{}
+	}
+	return policy
+}
+
+func (p *ImageVerificationPolicy) CloneWithIO(stdin io.Reader, stderr io.Writer) *ImageVerificationPolicy {
+	if p == nil {
+		return NewImageVerificationPolicy(stdin, stderr)
+	}
+	clone := &ImageVerificationPolicy{
 		strict: p.strict,
-		prompt: newVerificationPrompter(stdin, stderr),
+		prompt: NewVerificationPrompter(stdin, stderr),
 		trust:  map[string]struct{}{},
 	}
 	p.mu.Lock()
@@ -55,15 +67,15 @@ func (p *imageVerificationPolicy) cloneWithIO(stdin io.Reader, stderr io.Writer)
 	return clone
 }
 
-func (p *imageVerificationPolicy) Check(ctx context.Context, ref string) security.VerificationResult {
+func (p *ImageVerificationPolicy) Check(ctx context.Context, ref string) security.VerificationResult {
 	return security.VerifyImage(ctx, ref)
 }
 
-func (p *imageVerificationPolicy) ApplyImage(result security.VerificationResult, events ui.Sink) error {
+func (p *ImageVerificationPolicy) ApplyImage(result security.VerificationResult, events ui.Sink) error {
 	return p.apply(result, events, verificationDecisionWarn)
 }
 
-func (p *imageVerificationPolicy) ApplyFeature(source string, result security.VerificationResult, allowUnverified bool, events ui.Sink) error {
+func (p *ImageVerificationPolicy) ApplyFeature(source string, result security.VerificationResult, allowUnverified bool, events ui.Sink) error {
 	if allowUnverified {
 		return nil
 	}
@@ -73,14 +85,21 @@ func (p *imageVerificationPolicy) ApplyFeature(source string, result security.Ve
 	return nil
 }
 
-func (p *imageVerificationPolicy) apply(result security.VerificationResult, events ui.Sink, decision verificationDecision) error {
+func (p *ImageVerificationPolicy) Approved(ref string) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	_, ok := p.trust[ref]
+	return ok
+}
+
+func (p *ImageVerificationPolicy) apply(result security.VerificationResult, events ui.Sink, decision verificationDecision) error {
 	if result.Verified || result.Reason == "" {
 		return nil
 	}
 	if p.strict {
 		return errors.New(result.Error())
 	}
-	if p.approved(result.Ref) {
+	if p.Approved(result.Ref) {
 		return nil
 	}
 	approved, prompted, err := p.promptTrust(result, decision)
@@ -103,14 +122,7 @@ func (p *imageVerificationPolicy) apply(result security.VerificationResult, even
 	return nil
 }
 
-func (p *imageVerificationPolicy) approved(ref string) bool {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	_, ok := p.trust[ref]
-	return ok
-}
-
-func (p *imageVerificationPolicy) rememberApproval(ref string) {
+func (p *ImageVerificationPolicy) rememberApproval(ref string) {
 	if ref == "" {
 		return
 	}
@@ -119,7 +131,7 @@ func (p *imageVerificationPolicy) rememberApproval(ref string) {
 	p.trust[ref] = struct{}{}
 }
 
-func (p *imageVerificationPolicy) promptTrust(result security.VerificationResult, decision verificationDecision) (bool, bool, error) {
+func (p *ImageVerificationPolicy) promptTrust(result security.VerificationResult, decision verificationDecision) (bool, bool, error) {
 	if p.prompt == nil {
 		return false, false, nil
 	}
@@ -133,7 +145,7 @@ func (p *imageVerificationPolicy) promptTrust(result security.VerificationResult
 	return p.prompt(message)
 }
 
-func newVerificationPrompter(stdin io.Reader, stderr io.Writer) verificationPrompter {
+func NewVerificationPrompter(stdin io.Reader, stderr io.Writer) VerificationPrompter {
 	if !isTerminalStream(stdin) || !isTerminalStream(stderr) {
 		return nil
 	}
@@ -146,7 +158,7 @@ func newVerificationPrompter(stdin io.Reader, stderr io.Writer) verificationProm
 		if err != nil && !errors.Is(err, io.EOF) {
 			return false, true, err
 		}
-		switch strings.ToLower(strings.TrimSpace(line)) {
+		switch lowerTrim(line) {
 		case "y", "yes":
 			return true, true, nil
 		default:
@@ -155,15 +167,25 @@ func newVerificationPrompter(stdin io.Reader, stderr io.Writer) verificationProm
 	}
 }
 
-func envTruthy(name string) bool {
-	return envTruthyValue(os.Getenv(name))
-}
-
-func envTruthyValue(value string) bool {
-	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "1", "true", "yes", "on":
-		return true
-	default:
+func isTerminalStream(stream any) bool {
+	type fdStream interface{ Fd() uintptr }
+	value, ok := stream.(fdStream)
+	if !ok {
 		return false
 	}
+	return isTerminal(int(value.Fd()))
+}
+
+var isTerminal = term.IsTerminal
+
+func SetIsTerminalForTest(check func(int) bool) func() {
+	previous := isTerminal
+	isTerminal = check
+	return func() {
+		isTerminal = previous
+	}
+}
+
+func lowerTrim(value string) string {
+	return strings.ToLower(strings.TrimSpace(value))
 }

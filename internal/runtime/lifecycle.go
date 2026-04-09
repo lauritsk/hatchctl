@@ -2,12 +2,12 @@ package runtime
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	ui "github.com/lauritsk/hatchctl/internal/display"
+	"github.com/lauritsk/hatchctl/internal/policy"
 )
 
 type commandIO struct {
@@ -15,8 +15,6 @@ type commandIO struct {
 	Stdout io.Writer
 	Stderr io.Writer
 }
-
-var errHostLifecycleNotAllowed = errors.New("host lifecycle commands require explicit trust")
 
 func runHostLifecycle(ctx context.Context, cwd string, command devcontainer.LifecycleCommand, streams commandIO, backend runtimeBackend) error {
 	if command.Empty() {
@@ -89,7 +87,7 @@ func (r *Runner) runLifecyclePhase(ctx context.Context, resolved devcontainer.Re
 }
 
 func (r *Runner) runCreateLifecycle(ctx context.Context, resolved devcontainer.ResolvedConfig, containerID string, state devcontainer.State, dotfiles DotfilesOptions, runDotfiles bool, allowHostLifecycle bool, events ui.Sink) error {
-	if err := ensureHostLifecycleAllowed(resolved.Config.InitializeCommand, allowHostLifecycle); err != nil {
+	if err := policy.EnsureHostLifecycleAllowed(resolved.Config.InitializeCommand, allowHostLifecycle); err != nil {
 		return err
 	}
 	if err := runHostLifecycle(ctx, resolved.WorkspaceFolder, resolved.Config.InitializeCommand, r.progressCommandIO(events, phaseLifecycle, lifecycleProgressLabel("initializeCommand"), r.commandIO()), r.backend); err != nil {
@@ -118,13 +116,6 @@ func (r *Runner) runStartLifecycle(ctx context.Context, resolved devcontainer.Re
 
 func (r *Runner) runAttachLifecycle(ctx context.Context, resolved devcontainer.ResolvedConfig, containerID string, events ui.Sink) error {
 	return r.runContainerLifecycleList(ctx, containerID, resolved, resolved.Merged.PostAttachCommands, events, lifecycleProgressLabel("postAttachCommand"))
-}
-
-func ensureHostLifecycleAllowed(command devcontainer.LifecycleCommand, allow bool) error {
-	if command.Empty() || allow {
-		return nil
-	}
-	return fmt.Errorf("%w; rerun with --allow-host-lifecycle or set HATCHCTL_ALLOW_HOST_LIFECYCLE=1", errHostLifecycleNotAllowed)
 }
 
 func (r *Runner) runContainerLifecycleList(ctx context.Context, containerID string, resolved devcontainer.ResolvedConfig, commands []devcontainer.LifecycleCommand, events ui.Sink, label string) error {

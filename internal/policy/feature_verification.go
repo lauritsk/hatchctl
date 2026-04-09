@@ -1,4 +1,4 @@
-package runtime
+package policy
 
 import (
 	"strings"
@@ -6,11 +6,11 @@ import (
 	"github.com/lauritsk/hatchctl/internal/security"
 )
 
-func allowInsecureFeatureVerification() bool {
+func AllowInsecureFeatureVerification() bool {
 	return envTruthy(security.AllowInsecureFeaturesEnvVar)
 }
 
-func isLoopbackOCIReference(ref string) bool {
+func IsLoopbackOCIReference(ref string) bool {
 	ref = strings.TrimSpace(ref)
 	if ref == "" {
 		return false

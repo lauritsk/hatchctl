@@ -13,11 +13,10 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
+	appcore "github.com/lauritsk/hatchctl/internal/app"
 	"github.com/lauritsk/hatchctl/internal/bridge"
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	ui "github.com/lauritsk/hatchctl/internal/display"
-	"github.com/lauritsk/hatchctl/internal/docker"
-	"github.com/lauritsk/hatchctl/internal/runtime"
 	"github.com/lauritsk/hatchctl/internal/version"
 )
 
@@ -25,25 +24,15 @@ type App struct {
 	out io.Writer
 	err io.Writer
 
-	runner runner
-}
-
-type runner interface {
-	Up(context.Context, runtime.UpOptions) (runtime.UpResult, error)
-	Build(context.Context, runtime.BuildOptions) (runtime.BuildResult, error)
-	Exec(context.Context, runtime.ExecOptions) (int, error)
-	ReadConfig(context.Context, runtime.ReadConfigOptions) (runtime.ReadConfigResult, error)
-	RunLifecycle(context.Context, runtime.RunLifecycleOptions) (runtime.RunLifecycleResult, error)
-	BridgeDoctor(context.Context, runtime.BridgeDoctorOptions) (bridge.Report, error)
+	service *appcore.Service
 }
 
 func New(out io.Writer, err io.Writer) *App {
-	engine := docker.NewClient("docker")
-	return NewWithRunner(out, err, runtime.NewRunner(engine))
+	return &App{out: out, err: err, service: appcore.NewDefault()}
 }
 
-func NewWithRunner(out io.Writer, err io.Writer, runner runner) *App {
-	return &App{out: out, err: err, runner: runner}
+func NewWithRunner(out io.Writer, err io.Writer, runner appcore.Runtime) *App {
+	return &App{out: out, err: err, service: appcore.NewWithoutMutationLock(runner)}
 }
 
 func (a *App) Run(ctx context.Context, args []string) error {
@@ -105,10 +94,10 @@ func (a *App) newUpCommand(global *globalOptions) *cobra.Command {
 	var recreate bool
 	var bridgeEnabled bool
 	var sshAgent bool
-	trustWorkspace := envTruthy(runtime.TrustWorkspaceEnvVar)
-	allowHostLifecycle := envTruthy("HATCHCTL_ALLOW_HOST_LIFECYCLE")
+	trustWorkspace := appcore.EnvTruthy(appcore.TrustWorkspaceEnvVar)
+	allowHostLifecycle := appcore.EnvTruthy(appcore.AllowHostLifecycleEnvVar)
 	var jsonOut bool
-	dotfiles := defaultDotfilesOptions()
+	dotfiles := appcore.DefaultDotfilesOptions()
 	cmd := &cobra.Command{
 		Use:   "up",
 		Short: "Create or reuse a devcontainer for this workspace",
@@ -128,32 +117,20 @@ func (a *App) newUpCommand(global *globalOptions) *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			renderer := a.newRenderer(jsonOut)
 			defer renderer.Close()
-			defaults, err := a.resolveCommandDefaults(cmd, workspace, configPath, featureTimeout, lockfilePolicy, &bridgeEnabled, &trustWorkspace, &sshAgent, dotfiles)
+			defaults, err := appcore.ResolveDefaults(resolveDefaultsRequest(cmd, workspace, configPath, featureTimeout, lockfilePolicy, &bridgeEnabled, &trustWorkspace, &sshAgent, dotfiles))
 			if err != nil {
 				return err
 			}
-			policy, err := parseLockfilePolicy(defaults.LockfilePolicy)
-			if err != nil {
-				return err
-			}
-			result, err := a.runner.Up(cmd.Context(), runtime.UpOptions{
-				Workspace:          defaults.Workspace,
-				ConfigPath:         defaults.ConfigPath,
-				StateDir:           defaults.StateDir,
-				CacheDir:           defaults.CacheDir,
-				FeatureTimeout:     defaults.FeatureTimeout,
-				LockfilePolicy:     policy,
-				Dotfiles:           defaults.Dotfiles.runtime(),
+			result, err := a.service.Up(cmd.Context(), appcore.UpRequest{
+				Defaults:           defaults,
 				AllowHostLifecycle: allowHostLifecycle,
-				TrustWorkspace:     defaults.TrustWorkspace,
-				SSHAgent:           defaults.SSHAgent,
 				Recreate:           recreate,
-				BridgeEnabled:      defaults.BridgeEnabled,
-				Verbose:            global.Verbose || global.Debug,
-				Debug:              global.Debug,
-				Events:             renderer.Events(),
-				Stdout:             renderer.Stdout(),
-				Stderr:             renderer.Stderr(),
+				Global:             appcore.GlobalOptions{Verbose: global.Verbose, Debug: global.Debug},
+				IO: appcore.CommandIO{
+					Events: renderer.Events(),
+					Stdout: renderer.Stdout(),
+					Stderr: renderer.Stderr(),
+				},
 			})
 			if err != nil {
 				return err
@@ -165,12 +142,12 @@ func (a *App) newUpCommand(global *globalOptions) *cobra.Command {
 				if err := renderer.PrintSummary("Devcontainer Ready", upResultFields(result)); err != nil {
 					return err
 				}
-				return renderer.PrintCommandList("Next", upSuggestedCommands(defaults.Workspace, defaults.ConfigPath, defaults.FeatureTimeout, policy, defaults.SSHAgent))
+				return renderer.PrintCommandList("Next", upSuggestedCommands(defaults.Workspace, defaults.ConfigPath, defaults.FeatureTimeout, defaults.LockfilePolicy, defaults.SSHAgent))
 			}
 			if err := renderer.PrintKeyValues(upResultFields(result)); err != nil {
 				return err
 			}
-			return renderer.PrintText("\nNext:\n  " + strings.Join(upSuggestedCommands(defaults.Workspace, defaults.ConfigPath, defaults.FeatureTimeout, policy, defaults.SSHAgent), "\n  "))
+			return renderer.PrintText("\nNext:\n  " + strings.Join(upSuggestedCommands(defaults.Workspace, defaults.ConfigPath, defaults.FeatureTimeout, defaults.LockfilePolicy, defaults.SSHAgent), "\n  "))
 		},
 	}
 	addWorkspaceFlags(cmd, &workspace, &configPath)
@@ -190,7 +167,7 @@ func (a *App) newBuildCommand(global *globalOptions) *cobra.Command {
 	var configPath string
 	var lockfilePolicy string
 	var featureTimeout time.Duration
-	trustWorkspace := envTruthy(runtime.TrustWorkspaceEnvVar)
+	trustWorkspace := appcore.EnvTruthy(appcore.TrustWorkspaceEnvVar)
 	var jsonOut bool
 	cmd := &cobra.Command{
 		Use:   "build",
@@ -209,27 +186,18 @@ func (a *App) newBuildCommand(global *globalOptions) *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			renderer := a.newRenderer(jsonOut)
 			defer renderer.Close()
-			defaults, err := a.resolveCommandDefaults(cmd, workspace, configPath, featureTimeout, lockfilePolicy, nil, &trustWorkspace, nil, dotfilesOptions{})
+			defaults, err := appcore.ResolveDefaults(resolveDefaultsRequest(cmd, workspace, configPath, featureTimeout, lockfilePolicy, nil, &trustWorkspace, nil, appcore.DotfilesOptions{}))
 			if err != nil {
 				return err
 			}
-			policy, err := parseLockfilePolicy(defaults.LockfilePolicy)
-			if err != nil {
-				return err
-			}
-			result, err := a.runner.Build(cmd.Context(), runtime.BuildOptions{
-				Workspace:      defaults.Workspace,
-				ConfigPath:     defaults.ConfigPath,
-				StateDir:       defaults.StateDir,
-				CacheDir:       defaults.CacheDir,
-				FeatureTimeout: defaults.FeatureTimeout,
-				LockfilePolicy: policy,
-				TrustWorkspace: defaults.TrustWorkspace,
-				Verbose:        global.Verbose || global.Debug,
-				Debug:          global.Debug,
-				Events:         renderer.Events(),
-				Stdout:         renderer.Stdout(),
-				Stderr:         renderer.Stderr(),
+			result, err := a.service.Build(cmd.Context(), appcore.BuildRequest{
+				Defaults: defaults,
+				Global:   appcore.GlobalOptions{Verbose: global.Verbose, Debug: global.Debug},
+				IO: appcore.CommandIO{
+					Events: renderer.Events(),
+					Stdout: renderer.Stdout(),
+					Stderr: renderer.Stderr(),
+				},
 			})
 			if err != nil {
 				return err
@@ -287,11 +255,7 @@ func (a *App) newExecCommand(global *globalOptions) *cobra.Command {
 			}
 			renderer := a.newRenderer(jsonOut)
 			defer renderer.Close()
-			defaults, err := a.resolveCommandDefaults(cmd, workspace, configPath, featureTimeout, lockfilePolicy, nil, nil, &sshAgent, dotfilesOptions{})
-			if err != nil {
-				return err
-			}
-			policy, err := parseLockfilePolicy(defaults.LockfilePolicy)
+			defaults, err := appcore.ResolveDefaults(resolveDefaultsRequest(cmd, workspace, configPath, featureTimeout, lockfilePolicy, nil, nil, &sshAgent, appcore.DotfilesOptions{}))
 			if err != nil {
 				return err
 			}
@@ -304,22 +268,17 @@ func (a *App) newExecCommand(global *globalOptions) *cobra.Command {
 			} else if shouldUseRawExecStreams(os.Stdin, os.Stdout) {
 				stdout, stderr = execWriters(renderer, true)
 			}
-			code, err := a.runner.Exec(cmd.Context(), runtime.ExecOptions{
-				Workspace:      defaults.Workspace,
-				ConfigPath:     defaults.ConfigPath,
-				StateDir:       defaults.StateDir,
-				CacheDir:       defaults.CacheDir,
-				FeatureTimeout: defaults.FeatureTimeout,
-				LockfilePolicy: policy,
-				SSHAgent:       defaults.SSHAgent,
-				Verbose:        global.Verbose || global.Debug,
-				Debug:          global.Debug,
-				Events:         renderer.Events(),
-				Args:           args,
-				RemoteEnv:      multiValueMap(remoteEnv),
-				Stdin:          os.Stdin,
-				Stdout:         stdout,
-				Stderr:         stderr,
+			code, err := a.service.Exec(cmd.Context(), appcore.ExecRequest{
+				Defaults:  defaults,
+				Args:      args,
+				RemoteEnv: multiValueMap(remoteEnv),
+				Global:    appcore.GlobalOptions{Verbose: global.Verbose, Debug: global.Debug},
+				IO: appcore.CommandIO{
+					Stdin:  os.Stdin,
+					Stdout: stdout,
+					Stderr: stderr,
+					Events: renderer.Events(),
+				},
 			})
 			if err != nil {
 				return err
@@ -335,7 +294,7 @@ func (a *App) newExecCommand(global *globalOptions) *cobra.Command {
 				}
 			}
 			if code != 0 {
-				return runtime.ExitError{Code: code}
+				return appcore.ExitError{Code: code}
 			}
 			return nil
 		},
@@ -373,7 +332,7 @@ func (a *App) newConfigCommand(global *globalOptions) *cobra.Command {
 	var featureTimeout time.Duration
 	var jsonOut bool
 	var sshAgent bool
-	dotfiles := defaultDotfilesOptions()
+	dotfiles := appcore.DefaultDotfilesOptions()
 	cmd := &cobra.Command{
 		Use:   "config",
 		Short: "Show the merged config and detected runtime state",
@@ -390,28 +349,18 @@ func (a *App) newConfigCommand(global *globalOptions) *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			renderer := a.newRenderer(jsonOut)
 			defer renderer.Close()
-			defaults, err := a.resolveCommandDefaults(cmd, workspace, configPath, featureTimeout, lockfilePolicy, nil, nil, &sshAgent, dotfiles)
+			defaults, err := appcore.ResolveDefaults(resolveDefaultsRequest(cmd, workspace, configPath, featureTimeout, lockfilePolicy, nil, nil, &sshAgent, dotfiles))
 			if err != nil {
 				return err
 			}
-			policy, err := parseLockfilePolicy(defaults.LockfilePolicy)
-			if err != nil {
-				return err
-			}
-			result, err := a.runner.ReadConfig(cmd.Context(), runtime.ReadConfigOptions{
-				Workspace:      defaults.Workspace,
-				ConfigPath:     defaults.ConfigPath,
-				StateDir:       defaults.StateDir,
-				CacheDir:       defaults.CacheDir,
-				FeatureTimeout: defaults.FeatureTimeout,
-				LockfilePolicy: policy,
-				SSHAgent:       defaults.SSHAgent,
-				Dotfiles:       defaults.Dotfiles.runtime(),
-				Verbose:        global.Verbose || global.Debug,
-				Debug:          global.Debug,
-				Events:         renderer.Events(),
-				Stdout:         renderer.Stdout(),
-				Stderr:         renderer.Stderr(),
+			result, err := a.service.ReadConfig(cmd.Context(), appcore.ReadConfigRequest{
+				Defaults: defaults,
+				Global:   appcore.GlobalOptions{Verbose: global.Verbose, Debug: global.Debug},
+				IO: appcore.CommandIO{
+					Events: renderer.Events(),
+					Stdout: renderer.Stdout(),
+					Stderr: renderer.Stderr(),
+				},
 			})
 			if err != nil {
 				return err
@@ -439,9 +388,9 @@ func (a *App) newRunCommand(global *globalOptions) *cobra.Command {
 	var lockfilePolicy string
 	var featureTimeout time.Duration
 	var phase string
-	allowHostLifecycle := envTruthy("HATCHCTL_ALLOW_HOST_LIFECYCLE")
+	allowHostLifecycle := appcore.EnvTruthy(appcore.AllowHostLifecycleEnvVar)
 	var jsonOut bool
-	dotfiles := defaultDotfilesOptions()
+	dotfiles := appcore.DefaultDotfilesOptions()
 	cmd := &cobra.Command{
 		Use:     "run",
 		Aliases: []string{"lifecycle"},
@@ -460,29 +409,20 @@ func (a *App) newRunCommand(global *globalOptions) *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			renderer := a.newRenderer(jsonOut)
 			defer renderer.Close()
-			defaults, err := a.resolveCommandDefaults(cmd, workspace, configPath, featureTimeout, lockfilePolicy, nil, nil, nil, dotfiles)
+			defaults, err := appcore.ResolveDefaults(resolveDefaultsRequest(cmd, workspace, configPath, featureTimeout, lockfilePolicy, nil, nil, nil, dotfiles))
 			if err != nil {
 				return err
 			}
-			policy, err := parseLockfilePolicy(defaults.LockfilePolicy)
-			if err != nil {
-				return err
-			}
-			result, err := a.runner.RunLifecycle(cmd.Context(), runtime.RunLifecycleOptions{
-				Workspace:          defaults.Workspace,
-				ConfigPath:         defaults.ConfigPath,
-				StateDir:           defaults.StateDir,
-				CacheDir:           defaults.CacheDir,
-				FeatureTimeout:     defaults.FeatureTimeout,
-				LockfilePolicy:     policy,
-				Dotfiles:           defaults.Dotfiles.runtime(),
+			result, err := a.service.RunLifecycle(cmd.Context(), appcore.RunLifecycleRequest{
+				Defaults:           defaults,
 				AllowHostLifecycle: allowHostLifecycle,
-				Verbose:            global.Verbose || global.Debug,
-				Debug:              global.Debug,
-				Events:             renderer.Events(),
 				Phase:              phase,
-				Stdout:             renderer.Stdout(),
-				Stderr:             renderer.Stderr(),
+				Global:             appcore.GlobalOptions{Verbose: global.Verbose, Debug: global.Debug},
+				IO: appcore.CommandIO{
+					Events: renderer.Events(),
+					Stdout: renderer.Stdout(),
+					Stderr: renderer.Stderr(),
+				},
 			})
 			if err != nil {
 				return err
@@ -565,26 +505,18 @@ func (a *App) newBridgeDoctorCommand(global *globalOptions) *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			renderer := a.newRenderer(jsonOut)
 			defer renderer.Close()
-			defaults, err := a.resolveCommandDefaults(cmd, workspace, configPath, featureTimeout, lockfilePolicy, nil, nil, nil, dotfilesOptions{})
+			defaults, err := appcore.ResolveDefaults(resolveDefaultsRequest(cmd, workspace, configPath, featureTimeout, lockfilePolicy, nil, nil, nil, appcore.DotfilesOptions{}))
 			if err != nil {
 				return err
 			}
-			policy, err := parseLockfilePolicy(defaults.LockfilePolicy)
-			if err != nil {
-				return err
-			}
-			report, err := a.runner.BridgeDoctor(cmd.Context(), runtime.BridgeDoctorOptions{
-				Workspace:      defaults.Workspace,
-				ConfigPath:     defaults.ConfigPath,
-				StateDir:       defaults.StateDir,
-				CacheDir:       defaults.CacheDir,
-				FeatureTimeout: defaults.FeatureTimeout,
-				LockfilePolicy: policy,
-				Verbose:        global.Verbose || global.Debug,
-				Debug:          global.Debug,
-				Events:         renderer.Events(),
-				Stdout:         renderer.Stdout(),
-				Stderr:         renderer.Stderr(),
+			report, err := a.service.BridgeDoctor(cmd.Context(), appcore.BridgeDoctorRequest{
+				Defaults: defaults,
+				Global:   appcore.GlobalOptions{Verbose: global.Verbose, Debug: global.Debug},
+				IO: appcore.CommandIO{
+					Events: renderer.Events(),
+					Stdout: renderer.Stdout(),
+					Stderr: renderer.Stderr(),
+				},
 			})
 			if err != nil {
 				return err
@@ -641,10 +573,6 @@ func (a *App) newRenderer(jsonOut bool) *ui.Renderer {
 	return ui.NewRenderer(a.out, a.err, jsonOut)
 }
 
-func parseLockfilePolicy(value string) (devcontainer.FeatureLockfilePolicy, error) {
-	return devcontainer.ParseFeatureLockfilePolicy(value)
-}
-
 func multiValueMap(values []string) map[string]string {
 	result := make(map[string]string, len(values))
 	for _, item := range values {
@@ -658,7 +586,7 @@ func multiValueMap(values []string) map[string]string {
 	return result
 }
 
-func upResultFields(result runtime.UpResult) []ui.KeyValue {
+func upResultFields(result appcore.UpResult) []ui.KeyValue {
 	fields := []ui.KeyValue{
 		{Key: "Container", Value: result.ContainerID},
 		{Key: "Image", Value: result.Image},
@@ -670,7 +598,7 @@ func upResultFields(result runtime.UpResult) []ui.KeyValue {
 	return fields
 }
 
-func upSuggestedCommands(workspace string, configPath string, featureTimeout time.Duration, policy devcontainer.FeatureLockfilePolicy, sshAgent bool) []string {
+func upSuggestedCommands(workspace string, configPath string, featureTimeout time.Duration, policy string, sshAgent bool) []string {
 	base := []string{"hatchctl", "exec"}
 	if workspace != "" {
 		base = append(base, "--workspace", shellQuote(workspace))
@@ -681,8 +609,8 @@ func upSuggestedCommands(workspace string, configPath string, featureTimeout tim
 	if featureTimeout != 90*time.Second {
 		base = append(base, "--feature-timeout", featureTimeout.String())
 	}
-	if policy != devcontainer.FeatureLockfilePolicyAuto {
-		base = append(base, "--lockfile-policy", string(policy))
+	if policy != "" && policy != string(devcontainer.FeatureLockfilePolicyAuto) {
+		base = append(base, "--lockfile-policy", policy)
 	}
 	if sshAgent {
 		base = append(base, "--ssh")
@@ -699,7 +627,7 @@ func shellQuote(value string) string {
 	return strconv.Quote(value)
 }
 
-func configResultFields(result runtime.ReadConfigResult) []ui.KeyValue {
+func configResultFields(result appcore.ReadConfigResult) []ui.KeyValue {
 	fields := []ui.KeyValue{
 		{Key: "Config file", Value: result.ConfigPath},
 		{Key: "Workspace folder", Value: result.WorkspaceFolder},

@@ -13,6 +13,7 @@ import (
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	ui "github.com/lauritsk/hatchctl/internal/display"
 	"github.com/lauritsk/hatchctl/internal/docker"
+	"github.com/lauritsk/hatchctl/internal/policy"
 	"golang.org/x/term"
 )
 
@@ -23,7 +24,7 @@ type Runner struct {
 	stdout        io.Writer
 	stderr        io.Writer
 	backend       runtimeBackend
-	imageVerifier *imageVerificationPolicy
+	imageVerifier *policy.ImageVerificationPolicy
 	planner       *workspacePlanner
 }
 
@@ -36,7 +37,7 @@ func NewRunnerWithIO(client *docker.Client, stdin io.Reader, stdout io.Writer, s
 		stdin:         stdin,
 		stdout:        stdout,
 		stderr:        stderr,
-		imageVerifier: newImageVerificationPolicy(stdin, stderr),
+		imageVerifier: policy.NewImageVerificationPolicy(stdin, stderr),
 	}
 	runner.backend = newLocalRuntimeBackend(runner, client)
 	runner.planner = newWorkspacePlanner(runner)
@@ -221,7 +222,7 @@ func (r *Runner) verifyImageReference(ctx context.Context, ref string, events ui
 
 func (r *Runner) verifyResolvedFeatures(resolved devcontainer.ResolvedConfig, events ui.Sink) error {
 	for _, feature := range resolved.Features {
-		allowUnverified := feature.SourceKind == "oci" && (allowInsecureFeatureVerification() || isLoopbackOCIReference(feature.Resolved))
+		allowUnverified := feature.SourceKind == "oci" && (policy.AllowInsecureFeatureVerification() || policy.IsLoopbackOCIReference(feature.Resolved))
 		if err := r.imageVerifier.ApplyFeature(feature.Source, feature.Verification, allowUnverified, events); err != nil {
 			return err
 		}
@@ -288,7 +289,7 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 		return UpResult{}, err
 	}
 	resolved := session.Resolved()
-	if err := ensureWorkspaceTrust(resolved, opts.TrustWorkspace); err != nil {
+	if err := policy.EnsureWorkspaceTrust(resolved, opts.TrustWorkspace); err != nil {
 		return UpResult{}, err
 	}
 	if err := ensureDir(resolved.StateDir); err != nil {
@@ -418,7 +419,7 @@ func (r *Runner) Build(ctx context.Context, opts BuildOptions) (BuildResult, err
 		return BuildResult{}, err
 	}
 	resolved := session.Resolved()
-	if err := ensureWorkspaceTrust(resolved, opts.TrustWorkspace); err != nil {
+	if err := policy.EnsureWorkspaceTrust(resolved, opts.TrustWorkspace); err != nil {
 		return BuildResult{}, err
 	}
 	runner.emitPhaseProgress(opts.Events, phaseImage, "Ensuring container image")
@@ -700,7 +701,7 @@ func (r *Runner) withCommandIO(streams commandIO) *Runner {
 	clone.stdin = streams.Stdin
 	clone.stdout = streams.Stdout
 	clone.stderr = streams.Stderr
-	clone.imageVerifier = r.imageVerifier.cloneWithIO(clone.stdin, clone.stderr)
+	clone.imageVerifier = r.imageVerifier.CloneWithIO(clone.stdin, clone.stderr)
 	if backend, ok := r.backend.(*localRuntimeBackend); ok {
 		clone.backend = &localRuntimeBackend{runner: &clone, docker: backend.docker, hostCommand: backend.hostCommand}
 	}

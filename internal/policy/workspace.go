@@ -1,4 +1,4 @@
-package runtime
+package policy
 
 import (
 	"errors"
@@ -11,9 +11,9 @@ import (
 
 const TrustWorkspaceEnvVar = "HATCHCTL_TRUST_WORKSPACE"
 
-var errWorkspaceTrustRequired = errors.New("workspace requires explicit trust for repo-controlled Docker settings")
+var ErrWorkspaceTrustRequired = errors.New("workspace requires explicit trust for repo-controlled Docker settings")
 
-func ensureWorkspaceTrust(resolved devcontainer.ResolvedConfig, trusted bool) error {
+func EnsureWorkspaceTrust(resolved devcontainer.ResolvedConfig, trusted bool) error {
 	if trusted || envTruthy(TrustWorkspaceEnvVar) {
 		return nil
 	}
@@ -21,7 +21,7 @@ func ensureWorkspaceTrust(resolved devcontainer.ResolvedConfig, trusted bool) er
 	if len(issues) == 0 {
 		return nil
 	}
-	return fmt.Errorf("%w\nDetected settings:\n- %s\nReview the workspace config and rerun with --trust-workspace or set %s=1 if you want to allow these settings.", errWorkspaceTrustRequired, strings.Join(issues, "\n- "), TrustWorkspaceEnvVar)
+	return fmt.Errorf("%w\nDetected settings:\n- %s\nReview the workspace config and rerun with --trust-workspace or set %s=1 if you want to allow these settings.", ErrWorkspaceTrustRequired, strings.Join(issues, "\n- "), TrustWorkspaceEnvVar)
 }
 
 func workspaceTrustIssues(resolved devcontainer.ResolvedConfig) []string {

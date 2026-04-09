@@ -7,6 +7,7 @@ import (
 
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	ui "github.com/lauritsk/hatchctl/internal/display"
+	policycore "github.com/lauritsk/hatchctl/internal/policy"
 	"github.com/lauritsk/hatchctl/internal/security"
 )
 
@@ -14,9 +15,9 @@ func TestImageVerificationPolicyApplyWarnsWhenNotStrict(t *testing.T) {
 	t.Parallel()
 
 	sink := &recordedSink{}
-	policy := &imageVerificationPolicy{trust: map[string]struct{}{}}
+	verifier := policycore.NewImageVerificationPolicyWithPrompt(false, nil)
 	result := security.VerificationResult{Ref: "example.com/demo/app:latest", Reason: "no signatures found"}
-	if err := policy.ApplyImage(result, sink); err != nil {
+	if err := verifier.ApplyImage(result, sink); err != nil {
 		t.Fatalf("apply verification policy: %v", err)
 	}
 	if len(sink.events) != 1 || sink.events[0] != (ui.Event{Kind: ui.EventWarning, Message: result.Error()}) {
@@ -27,9 +28,9 @@ func TestImageVerificationPolicyApplyWarnsWhenNotStrict(t *testing.T) {
 func TestImageVerificationPolicyApplyFailsWhenStrict(t *testing.T) {
 	t.Parallel()
 
-	policy := &imageVerificationPolicy{strict: true, trust: map[string]struct{}{}}
+	verifier := policycore.NewImageVerificationPolicyWithPrompt(true, nil)
 	result := security.VerificationResult{Ref: "example.com/demo/app:latest", Reason: "no signatures found"}
-	if err := policy.ApplyImage(result, nil); err == nil || !strings.Contains(err.Error(), "unable to verify example.com/demo/app:latest") {
+	if err := verifier.ApplyImage(result, nil); err == nil || !strings.Contains(err.Error(), "unable to verify example.com/demo/app:latest") {
 		t.Fatalf("unexpected strict verification error %v", err)
 	}
 }
@@ -37,17 +38,14 @@ func TestImageVerificationPolicyApplyFailsWhenStrict(t *testing.T) {
 func TestImageVerificationPolicyApplyImageAllowsPromptedTrust(t *testing.T) {
 	t.Parallel()
 
-	policy := &imageVerificationPolicy{
-		trust: map[string]struct{}{},
-		prompt: func(prompt string) (bool, bool, error) {
-			if !strings.Contains(prompt, "Continue with unsigned image for this run only") {
-				t.Fatalf("unexpected prompt %q", prompt)
-			}
-			return true, true, nil
-		},
-	}
+	verifier := policycore.NewImageVerificationPolicyWithPrompt(false, func(prompt string) (bool, bool, error) {
+		if !strings.Contains(prompt, "Continue with unsigned image for this run only") {
+			t.Fatalf("unexpected prompt %q", prompt)
+		}
+		return true, true, nil
+	})
 	result := security.VerificationResult{Ref: "example.com/demo/app:latest", Reason: "no signatures found"}
-	if err := policy.ApplyImage(result, nil); err != nil {
+	if err := verifier.ApplyImage(result, nil); err != nil {
 		t.Fatalf("apply prompted image verification: %v", err)
 	}
 }
@@ -55,16 +53,17 @@ func TestImageVerificationPolicyApplyImageAllowsPromptedTrust(t *testing.T) {
 func TestImageVerificationPolicyCloneWithIOCopiesTrust(t *testing.T) {
 	t.Parallel()
 
-	policy := &imageVerificationPolicy{strict: true, trust: map[string]struct{}{"example.com/demo/app:latest": {}}}
-	clone := policy.cloneWithIO(nil, nil)
+	verifier := policycore.NewImageVerificationPolicyWithPrompt(true, nil, "example.com/demo/app:latest")
+	clone := verifier.CloneWithIO(nil, nil)
 
-	if clone == policy {
+	if clone == verifier {
 		t.Fatal("expected clone to allocate a new policy")
 	}
-	if !clone.strict {
-		t.Fatal("expected clone to preserve strict mode")
+	result := security.VerificationResult{Ref: "other.example/app:latest", Reason: "no signatures found"}
+	if err := clone.ApplyImage(result, nil); err == nil || !strings.Contains(err.Error(), "unable to verify other.example/app:latest") {
+		t.Fatalf("expected clone to preserve strict mode, got %v", err)
 	}
-	if !clone.approved("example.com/demo/app:latest") {
+	if !clone.Approved("example.com/demo/app:latest") {
 		t.Fatal("expected clone to preserve trusted references")
 	}
 }
@@ -72,18 +71,14 @@ func TestImageVerificationPolicyCloneWithIOCopiesTrust(t *testing.T) {
 func TestRunnerWithCommandIORebindsImageVerifierPrompt(t *testing.T) {
 	t.Parallel()
 
-	previousIsTerminal := isTerminal
-	isTerminal = func(int) bool { return true }
-	defer func() { isTerminal = previousIsTerminal }()
+	restore := policycore.SetIsTerminalForTest(func(int) bool { return true })
+	defer restore()
 
 	var promptErr bytes.Buffer
 	runner := &Runner{
-		imageVerifier: &imageVerificationPolicy{
-			trust: map[string]struct{}{"trusted.example/app:latest": {}},
-			prompt: func(string) (bool, bool, error) {
-				return false, false, nil
-			},
-		},
+		imageVerifier: policycore.NewImageVerificationPolicyWithPrompt(false, func(string) (bool, bool, error) {
+			return false, false, nil
+		}, "trusted.example/app:latest"),
 	}
 
 	clone := runner.withCommandIO(commandIO{Stdin: ttyBuffer{Buffer: bytes.NewBufferString("n\n")}, Stderr: ttyBufferWriter{Buffer: &promptErr}})
@@ -99,7 +94,7 @@ func TestRunnerWithCommandIORebindsImageVerifierPrompt(t *testing.T) {
 	if !strings.Contains(out, "Continue with unsigned image for this run only? [y/N]: ") {
 		t.Fatalf("expected prompt stderr to contain approval prompt, got %q", out)
 	}
-	if !clone.imageVerifier.approved("trusted.example/app:latest") {
+	if !clone.imageVerifier.Approved("trusted.example/app:latest") {
 		t.Fatal("expected cloned verifier to preserve prior approvals")
 	}
 	if clone.imageVerifier == runner.imageVerifier {
@@ -122,17 +117,14 @@ func (ttyBufferWriter) Fd() uintptr { return 2 }
 func TestImageVerificationPolicyApplyFeatureRequiresTrust(t *testing.T) {
 	t.Parallel()
 
-	policy := &imageVerificationPolicy{
-		trust: map[string]struct{}{},
-		prompt: func(prompt string) (bool, bool, error) {
-			if !strings.Contains(prompt, "Trust unsigned feature for this run only") {
-				t.Fatalf("unexpected prompt %q", prompt)
-			}
-			return false, true, nil
-		},
-	}
+	verifier := policycore.NewImageVerificationPolicyWithPrompt(false, func(prompt string) (bool, bool, error) {
+		if !strings.Contains(prompt, "Trust unsigned feature for this run only") {
+			t.Fatalf("unexpected prompt %q", prompt)
+		}
+		return false, true, nil
+	})
 	result := security.VerificationResult{Ref: "ghcr.io/devcontainers/features/go@sha256:abc", Reason: "no signatures found"}
-	if err := policy.ApplyFeature("ghcr.io/devcontainers/features/go:1", result, false, nil); err == nil || !strings.Contains(err.Error(), "user declined") {
+	if err := verifier.ApplyFeature("ghcr.io/devcontainers/features/go:1", result, false, nil); err == nil || !strings.Contains(err.Error(), "user declined") {
 		t.Fatalf("unexpected feature trust error %v", err)
 	}
 }
@@ -140,7 +132,7 @@ func TestImageVerificationPolicyApplyFeatureRequiresTrust(t *testing.T) {
 func TestVerifyResolvedFeaturesAppliesFeatureVerificationPolicy(t *testing.T) {
 	t.Parallel()
 
-	runner := &Runner{imageVerifier: &imageVerificationPolicy{strict: true, trust: map[string]struct{}{}}}
+	runner := &Runner{imageVerifier: policycore.NewImageVerificationPolicyWithPrompt(true, nil)}
 	resolved := devcontainer.ResolvedConfig{Features: []devcontainer.ResolvedFeature{{
 		Source:       "ghcr.io/devcontainers/features/go:1",
 		Verification: security.VerificationResult{Ref: "ghcr.io/devcontainers/features/go@sha256:abc", Reason: "no signatures found"},

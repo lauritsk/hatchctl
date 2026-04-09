@@ -417,6 +417,10 @@ func resolveWorkspace(workspaceArg string) (string, error) {
 	return filepath.Abs(workspaceArg)
 }
 
+func ResolveWorkspacePath(workspaceArg string) (string, error) {
+	return resolveWorkspace(workspaceArg)
+}
+
 func resolveConfigPath(workspace string, configArg string) (string, error) {
 	if configArg != "" {
 		return filepath.Abs(configArg)
@@ -431,6 +435,10 @@ func resolveConfigPath(workspace string, configArg string) (string, error) {
 		}
 	}
 	return "", fmt.Errorf("no devcontainer config found in %s\nLooked for:\n- %s\n- %s\nAdd a devcontainer config in one of those locations or rerun with --config <path>", workspace, paths[0], paths[1])
+}
+
+func ResolveConfigPath(workspace string, configArg string) (string, error) {
+	return resolveConfigPath(workspace, configArg)
 }
 
 func EffectiveDockerfile(config Config) string {

@@ -1,15 +1,12 @@
 package devcontainer
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 
 	"github.com/lauritsk/hatchctl/internal/fileutil"
+	storefs "github.com/lauritsk/hatchctl/internal/store/fs"
 	"github.com/tailscale/hujson"
 )
 
@@ -24,41 +21,18 @@ type State struct {
 	DotfilesTarget  string `json:"dotfilesTarget,omitempty"`
 }
 
-type OutputRoots struct {
-	StateRoot string
-	CacheRoot string
-}
+type OutputRoots = storefs.OutputRoots
 
 func WorkspaceStateDir(workspace string, configPath string) (string, error) {
-	roots, err := DefaultOutputRoots()
-	if err != nil {
-		return "", err
-	}
-	return workspaceScopedDir(roots.StateRoot, workspace, configPath), nil
+	return storefs.WorkspaceStateDir(workspace, configPath)
 }
 
 func WorkspaceCacheDir(workspace string, configPath string) (string, error) {
-	roots, err := DefaultOutputRoots()
-	if err != nil {
-		return "", err
-	}
-	return workspaceScopedDir(roots.CacheRoot, workspace, configPath), nil
+	return storefs.WorkspaceCacheDir(workspace, configPath)
 }
 
 func DefaultOutputRoots() (OutputRoots, error) {
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return OutputRoots{}, err
-	}
-	configDir, err := os.UserConfigDir()
-	if err != nil {
-		return OutputRoots{}, err
-	}
-	cacheDir, err := os.UserCacheDir()
-	if err != nil {
-		return OutputRoots{}, err
-	}
-	return outputRoots(runtime.GOOS, homeDir, configDir, cacheDir, os.Getenv("XDG_STATE_HOME")), nil
+	return storefs.DefaultOutputRoots()
 }
 
 func outputRoots(goos string, homeDir string, configDir string, cacheDir string, xdgStateHome string) OutputRoots {
@@ -76,16 +50,15 @@ func outputRoots(goos string, homeDir string, configDir string, cacheDir string,
 }
 
 func workspaceScopedDir(root string, workspace string, configPath string) string {
-	key := hashKey(workspace + "\n" + configPath)
-	return filepath.Join(root, "workspaces", key)
+	return storefs.WorkspaceScopedDir(root, workspace, configPath)
 }
 
 func ContainerName(workspace string, configPath string) string {
-	return fmt.Sprintf("hatchctl-%s", hashKey(workspace+"\n"+configPath))
+	return storefs.ContainerName(workspace, configPath)
 }
 
 func ImageName(workspace string, configPath string) string {
-	return fmt.Sprintf("hatchctl-%s", hashKey(workspace+"\n"+configPath))
+	return storefs.ImageName(workspace, configPath)
 }
 
 func ReadState(stateDir string) (State, error) {
@@ -118,9 +91,4 @@ func WriteState(stateDir string, state State) error {
 		return err
 	}
 	return fileutil.WriteFile(path, data, 0o600)
-}
-
-func hashKey(input string) string {
-	sum := sha256.Sum256([]byte(input))
-	return hex.EncodeToString(sum[:8])
 }

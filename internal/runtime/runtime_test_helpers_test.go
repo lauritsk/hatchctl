@@ -9,6 +9,7 @@ import (
 
 	ui "github.com/lauritsk/hatchctl/internal/display"
 	"github.com/lauritsk/hatchctl/internal/docker"
+	"github.com/lauritsk/hatchctl/internal/policy"
 )
 
 type recordedSink struct {
@@ -81,7 +82,7 @@ func newTestRunner(t testing.TB, backend runtimeBackend) *Runner {
 		stdout:        io.Discard,
 		stderr:        io.Discard,
 		backend:       backend,
-		imageVerifier: newImageVerificationPolicy(stdin, io.Discard),
+		imageVerifier: policy.NewImageVerificationPolicy(stdin, io.Discard),
 	}
 	runner.planner = newWorkspacePlanner(runner)
 	return runner
