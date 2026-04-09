@@ -1,5 +1,5 @@
 [tools]
-"github:lauritsk/hatchctl" = "0.5.0"
+"github:lauritsk/hatchctl" = "0.6.1"
 go = "1.26.2"
 
 [hooks]
