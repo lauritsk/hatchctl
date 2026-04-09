@@ -78,3 +78,12 @@ func TestMergeManagedImageMetadataPreservesBaseImageEntries(t *testing.T) {
 		t.Fatalf("expected base metadata to remain unchanged, got %#v", base[0])
 	}
 }
+
+func TestDockerfileQuotedValueEscapesShellExpansion(t *testing.T) {
+	t.Parallel()
+
+	got := dockerfileQuotedValue(`printf %s "$HOME"`)
+	if got != `"printf %s \"\$HOME\""` {
+		t.Fatalf("unexpected quoted value %q", got)
+	}
+}

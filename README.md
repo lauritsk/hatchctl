@@ -106,7 +106,7 @@ Use `--` with `exec` to separate `hatchctl` flags from the command you want to r
 
 Dotfiles are configured outside `devcontainer.json`, matching how editor tooling treats them. Most users only need `--dotfiles <repo>`. Use `--dotfiles-install-command` or `--dotfiles-target-path` only when the repository needs a custom install step or checkout location. Matching `HATCHCTL_DOTFILES_*` environment variables are also supported.
 
-Use `--ssh` when you want the container to see the host `ssh-agent` socket. This applies a runtime bind mount plus `SSH_AUTH_SOCK` wiring equivalent to adding ssh-agent passthrough in `devcontainer.json`. You can persist that preference in `.hatchctl/config.toml` with `ssh = true`.
+Use `--ssh` when you want the container to see the host `ssh-agent` socket. This applies a runtime bind mount plus `SSH_AUTH_SOCK` wiring equivalent to adding ssh-agent passthrough in `devcontainer.json`. On macOS, hatchctl uses the container runtime's `/run/host-services/ssh-auth.sock` proxy instead of binding the raw launchd socket path. You can persist that preference in `.hatchctl/config.toml` with `ssh = true`.
 
 Remote feature downloads default to a `90s` HTTP timeout. Override that per command with `--feature-timeout`, for example `hatchctl up --feature-timeout 2m`.
 

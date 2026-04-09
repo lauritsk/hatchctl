@@ -5,30 +5,23 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	"github.com/lauritsk/hatchctl/internal/docker"
 )
 
-const sshAgentContainerSocketPath = "/tmp/hatchctl-ssh-agent.sock"
+const (
+	sshAgentContainerSocketPath          = "/tmp/hatchctl-ssh-agent.sock"
+	sshAgentDarwinHostServicesSocketPath = "/run/host-services/ssh-auth.sock"
+)
 
 var errSSHAgentUnavailable = errors.New("ssh-agent passthrough requires SSH_AUTH_SOCK to point to a readable host socket")
 
 func injectSSHAgent(merged devcontainer.MergedConfig) (devcontainer.MergedConfig, error) {
-	hostSocket := os.Getenv("SSH_AUTH_SOCK")
-	if hostSocket == "" {
-		return merged, errSSHAgentUnavailable
-	}
-	resolvedSocket, err := filepath.EvalSymlinks(hostSocket)
-	if err == nil && resolvedSocket != "" {
-		hostSocket = resolvedSocket
-	}
-	info, err := os.Stat(hostSocket)
+	hostSocket, err := sshAgentMountSource(runtime.GOOS, os.Getenv("SSH_AUTH_SOCK"))
 	if err != nil {
-		return merged, fmt.Errorf("%w: %s", errSSHAgentUnavailable, err)
-	}
-	if info.Mode()&os.ModeSocket == 0 {
-		return merged, fmt.Errorf("%w: %q is not a socket", errSSHAgentUnavailable, hostSocket)
+		return merged, err
 	}
 	containerEnv := cloneStringMap(merged.ContainerEnv)
 	remoteEnv := cloneStringMap(merged.RemoteEnv)
@@ -39,6 +32,28 @@ func injectSSHAgent(merged devcontainer.MergedConfig) (devcontainer.MergedConfig
 	merged.RemoteEnv = remoteEnv
 	merged.Mounts = appendMount(merged.Mounts, mount)
 	return merged, nil
+}
+
+func sshAgentMountSource(goos string, hostSocket string) (string, error) {
+	if goos == "darwin" {
+		// Docker Desktop and OrbStack expose the macOS ssh-agent through a VM-side proxy.
+		return sshAgentDarwinHostServicesSocketPath, nil
+	}
+	if hostSocket == "" {
+		return "", errSSHAgentUnavailable
+	}
+	resolvedSocket, err := filepath.EvalSymlinks(hostSocket)
+	if err == nil && resolvedSocket != "" {
+		hostSocket = resolvedSocket
+	}
+	info, err := os.Stat(hostSocket)
+	if err != nil {
+		return "", fmt.Errorf("%w: %s", errSSHAgentUnavailable, err)
+	}
+	if info.Mode()&os.ModeSocket == 0 {
+		return "", fmt.Errorf("%w: %q is not a socket", errSSHAgentUnavailable, hostSocket)
+	}
+	return hostSocket, nil
 }
 
 func ensureContainerHasSSHAgent(inspect *docker.ContainerInspect, target string) error {

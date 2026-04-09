@@ -169,7 +169,7 @@ func shellEnvFile(values map[string]string) string {
 }
 
 func dockerfileQuotedValue(value string) string {
-	replacer := strings.NewReplacer("\\", "\\\\", "\"", "\\\"", "\n", "\\n", "\r", "")
+	replacer := strings.NewReplacer("\\", "\\\\", "\"", "\\\"", "$", "\\$", "\n", "\\n", "\r", "")
 	return "\"" + replacer.Replace(value) + "\""
 }
 

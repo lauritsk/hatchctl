@@ -525,6 +525,109 @@ func TestLifecycleAndExecUseResolvedHomeForImageUser(t *testing.T) {
 	}
 }
 
+func TestUpWithFeaturesPreservesMetadataRemoteUser(t *testing.T) {
+	client := dockerClientForTest(t)
+	ctx := context.Background()
+	workspace := t.TempDir()
+	configDir := filepath.Join(workspace, ".devcontainer")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	baseImage := metadataImageTagForKey(workspaceKey(workspace) + "-feature-user")
+	baseMetadata, err := devcontainer.MetadataLabelValue([]devcontainer.MetadataEntry{{RemoteUser: "app"}})
+	if err != nil {
+		t.Fatalf("marshal image metadata: %v", err)
+	}
+	if err := client.Run(ctx, docker.RunOptions{
+		Args: []string{"build", "-t", baseImage, "--label", devcontainer.ImageMetadataLabel + "=" + baseMetadata, sharedDockerBuildContext(t, "FROM alpine:3.20\nRUN adduser -D -u 1000 app\n")},
+	}); err != nil {
+		t.Fatalf("build base image: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rmi", "-f", baseImage}})
+	})
+
+	writeLocalFeature(t, filepath.Join(configDir, "feature-a"), `{
+		"id": "feature-a"
+	}`, "#!/bin/sh\nset -eu\nmkdir -p /usr/local/share\nprintf 'ok' > /usr/local/share/feature-a\n")
+	if err := os.WriteFile(filepath.Join(configDir, "devcontainer.json"), []byte(`{
+		"image": "`+baseImage+`",
+		"workspaceFolder": "/workspaces/demo",
+		"features": {
+			"./feature-a": true
+		},
+		"postCreateCommand": "printf %s \"$HOME\" > /workspaces/demo/post-create-home"
+	}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	runner := NewRunner(client)
+	upResult, err := runner.Up(ctx, UpOptions{Workspace: workspace, Recreate: true})
+	if err != nil {
+		t.Fatalf("up container: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rm", "-f", upResult.ContainerID}})
+		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rmi", "-f", upResult.Image}})
+	})
+
+	configResult, err := runner.ReadConfig(ctx, ReadConfigOptions{Workspace: workspace})
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	if configResult.RemoteUser != "app" {
+		t.Fatalf("unexpected resolved remote user %q", configResult.RemoteUser)
+	}
+	if configResult.ManagedContainer == nil || configResult.ManagedContainer.RemoteUser != "app" {
+		t.Fatalf("unexpected managed container %#v", configResult.ManagedContainer)
+	}
+
+	data, err := os.ReadFile(filepath.Join(workspace, "post-create-home"))
+	if err != nil {
+		t.Fatalf("read postCreate HOME: %v", err)
+	}
+	if got := strings.TrimSpace(string(data)); got != "/home/app" {
+		t.Fatalf("unexpected postCreate HOME %q", got)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode, err := runner.Exec(ctx, ExecOptions{
+		Workspace: workspace,
+		Args:      []string{"id", "-un"},
+		Stdout:    &stdout,
+		Stderr:    &stderr,
+	})
+	if err != nil {
+		t.Fatalf("exec user check: %v (stderr: %s)", err, stderr.String())
+	}
+	if exitCode != 0 {
+		t.Fatalf("unexpected user exit code %d (stderr: %s)", exitCode, stderr.String())
+	}
+	if got := strings.TrimSpace(stdout.String()); got != "app" {
+		t.Fatalf("unexpected exec user %q", got)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	exitCode, err = runner.Exec(ctx, ExecOptions{
+		Workspace: workspace,
+		Args:      []string{"sh", "-lc", "printf %s \"$HOME\""},
+		Stdout:    &stdout,
+		Stderr:    &stderr,
+	})
+	if err != nil {
+		t.Fatalf("exec HOME check: %v (stderr: %s)", err, stderr.String())
+	}
+	if exitCode != 0 {
+		t.Fatalf("unexpected HOME exit code %d (stderr: %s)", exitCode, stderr.String())
+	}
+	if got := strings.TrimSpace(stdout.String()); got != "/home/app" {
+		t.Fatalf("unexpected exec HOME %q", got)
+	}
+}
+
 func TestExecStreamsStdinWithoutTTYAndReturnsExitCode(t *testing.T) {
 	client := dockerClientForTest(t)
 	ctx := context.Background()

@@ -4,6 +4,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -32,26 +33,24 @@ func TestInjectSSHAgentAddsMountAndEnv(t *testing.T) {
 	if merged.ContainerEnv["SSH_AUTH_SOCK"] != sshAgentContainerSocketPath {
 		t.Fatalf("unexpected container env %#v", merged.ContainerEnv)
 	}
-	resolvedSocketPath, err := filepath.EvalSymlinks(socketPath)
+	wantSource, err := sshAgentMountSource(runtime.GOOS, socketPath)
 	if err != nil {
-		t.Fatalf("resolve socket path: %v", err)
+		t.Fatalf("resolve ssh agent mount source: %v", err)
 	}
-	wantMount := "type=bind,source=" + resolvedSocketPath + ",target=" + sshAgentContainerSocketPath
+	wantMount := "type=bind,source=" + wantSource + ",target=" + sshAgentContainerSocketPath
 	if len(merged.Mounts) != 1 || merged.Mounts[0] != wantMount {
 		t.Fatalf("unexpected mounts %#v", merged.Mounts)
 	}
 }
 
-func TestInjectSSHAgentRejectsMissingSocket(t *testing.T) {
-	t.Setenv("SSH_AUTH_SOCK", filepath.Join(t.TempDir(), "missing.sock"))
-
-	_, err := injectSSHAgent(devcontainer.MergedConfig{})
+func TestSSHAgentMountSourceRejectsMissingSocket(t *testing.T) {
+	_, err := sshAgentMountSource("linux", filepath.Join(t.TempDir(), "missing.sock"))
 	if err == nil || !strings.Contains(err.Error(), "ssh-agent passthrough requires SSH_AUTH_SOCK") {
 		t.Fatalf("expected ssh-agent error, got %v", err)
 	}
 }
 
-func TestInjectSSHAgentResolvesSymlinkedSocketPath(t *testing.T) {
+func TestSSHAgentMountSourceResolvesSymlinkedSocketPath(t *testing.T) {
 	socketDir, err := os.MkdirTemp("/tmp", "hc-ssh-")
 	if err != nil {
 		t.Fatalf("create temp socket dir: %v", err)
@@ -70,19 +69,27 @@ func TestInjectSSHAgentResolvesSymlinkedSocketPath(t *testing.T) {
 	if err := os.Symlink(socketPath, linkPath); err != nil {
 		t.Fatalf("create symlink: %v", err)
 	}
-	t.Setenv("SSH_AUTH_SOCK", linkPath)
 
-	merged, err := injectSSHAgent(devcontainer.MergedConfig{})
-	if err != nil {
-		t.Fatalf("inject ssh agent through symlink: %v", err)
-	}
 	resolvedSocketPath, err := filepath.EvalSymlinks(socketPath)
 	if err != nil {
 		t.Fatalf("resolve socket path: %v", err)
 	}
-	wantMount := "type=bind,source=" + resolvedSocketPath + ",target=" + sshAgentContainerSocketPath
-	if len(merged.Mounts) != 1 || merged.Mounts[0] != wantMount {
-		t.Fatalf("unexpected mounts %#v", merged.Mounts)
+	got, err := sshAgentMountSource("linux", linkPath)
+	if err != nil {
+		t.Fatalf("resolve ssh agent mount source through symlink: %v", err)
+	}
+	if got != resolvedSocketPath {
+		t.Fatalf("unexpected mount source %q want %q", got, resolvedSocketPath)
+	}
+}
+
+func TestSSHAgentMountSourceUsesHostServicesProxyOnDarwin(t *testing.T) {
+	got, err := sshAgentMountSource("darwin", "")
+	if err != nil {
+		t.Fatalf("resolve darwin ssh agent mount source: %v", err)
+	}
+	if got != sshAgentDarwinHostServicesSocketPath {
+		t.Fatalf("unexpected mount source %q", got)
 	}
 }
 
