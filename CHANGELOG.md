@@ -2,6 +2,14 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## [v0.6.3](https://github.com/lauritsk/hatchctl/compare/ad0d9cac12d3ba2e35b99102fc7c638e82bf432b..v0.6.3) - 2026-04-09
+#### Bug Fixes
+- (**runtime**) Preserve macOS SSH forwarding and feature runtime metadata - ([3248e38](https://github.com/lauritsk/hatchctl/commit/3248e38ac9219b0e91cf98f56ac1d50adc03edc4)) - Karl Hans Laurits
+#### Miscellaneous Chores
+- (**mise**) Update hatchctl tool to v0.6.2 - ([ad0d9ca](https://github.com/lauritsk/hatchctl/commit/ad0d9cac12d3ba2e35b99102fc7c638e82bf432b)) - Karl Hans Laurits
+
+- - -
+
 ## [v0.6.2](https://github.com/lauritsk/hatchctl/compare/fcaa81d87c54d69e96664bc873ca1dd1dc27f8c2..v0.6.2) - 2026-04-09
 #### Bug Fixes
 - (**runtime**) Preserve prompt rendering and SSH agent mounts - ([9ab5c9a](https://github.com/lauritsk/hatchctl/commit/9ab5c9a53160b5922ae603e7e9bea8d0b05a8b8f)) - Karl Hans Laurits
