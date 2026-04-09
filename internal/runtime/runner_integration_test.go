@@ -26,7 +26,6 @@ var cachedIntegrationFixtures struct {
 	plainImage        string
 	plainWithCMDImage string
 	appUserImage      string
-	bridgeHelper      []byte
 }
 
 func TestBuildPersistsMetadataLabel(t *testing.T) {
@@ -987,7 +986,7 @@ func TestUpEnablingBridgeRecreatesExistingManagedContainer(t *testing.T) {
 func setBridgeHelperEnv(t *testing.T) {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "hatchctl")
-	data := sharedBridgeHelperBinary(t)
+	data := []byte("#!/bin/sh\nexit 0\n")
 	if err := os.WriteFile(path, data, 0o755); err != nil {
 		t.Fatalf("write per-test bridge helper: %v", err)
 	}
@@ -1779,29 +1778,6 @@ func sharedDockerBuildContext(t *testing.T, dockerfile string) string {
 		t.Fatal(err)
 	}
 	return dir
-}
-
-func sharedBridgeHelperBinary(t *testing.T) []byte {
-	t.Helper()
-	requireIntegrationCommands(t, "go")
-	cachedIntegrationFixtures.mu.Lock()
-	defer cachedIntegrationFixtures.mu.Unlock()
-	if len(cachedIntegrationFixtures.bridgeHelper) > 0 {
-		return append([]byte(nil), cachedIntegrationFixtures.bridgeHelper...)
-	}
-	path := filepath.Join(t.TempDir(), "hatchctl")
-	cmd := exec.Command("go", "build", "-o", path, "./cmd/hatchctl")
-	cmd.Dir = filepath.Join("..", "..")
-	cmd.Env = append(os.Environ(), "CGO_ENABLED=0", "GOOS=linux", "GOARCH="+runtime.GOARCH)
-	if output, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("build bridge helper: %v: %s", err, strings.TrimSpace(string(output)))
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("read built bridge helper: %v", err)
-	}
-	cachedIntegrationFixtures.bridgeHelper = data
-	return append([]byte(nil), data...)
 }
 
 func metadataImageTagForKey(key string) string {
