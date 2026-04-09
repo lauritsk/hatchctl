@@ -118,8 +118,8 @@ func (s *Session) EffectiveRemoteUser(ctx context.Context) (string, error) {
 	return s.executor.effectiveRemoteUser(ctx, s.prepared)
 }
 
-func (s *Session) ManagedContainer() (*ManagedContainer, error) {
-	return s.executor.readManagedContainerState(s.prepared)
+func (s *Session) ManagedContainer(ctx context.Context) (*ManagedContainer, error) {
+	return s.executor.readManagedContainerState(ctx, s.prepared)
 }
 
 func (s *Session) RevalidateReadTarget(ctx context.Context) error {

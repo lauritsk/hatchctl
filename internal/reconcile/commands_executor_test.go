@@ -120,29 +120,50 @@ func TestUpUsesEnrichedResolvedMetadataForDotfilesTargetPath(t *testing.T) {
 	stateDir := t.TempDir()
 	cacheDir := t.TempDir()
 	configDir := t.TempDir()
+	featureDir := t.TempDir()
 	falseValue := false
-	metadataLabel, err := devcontainer.MetadataLabelValue([]devcontainer.MetadataEntry{{RemoteUser: "vscode", UpdateRemoteUserUID: &falseValue}})
+	if err := os.WriteFile(filepath.Join(featureDir, "install.sh"), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatalf("write feature install script: %v", err)
+	}
+	sourceMetadataLabel, err := devcontainer.MetadataLabelValue([]devcontainer.MetadataEntry{{RemoteUser: "vscode", UpdateRemoteUserUID: &falseValue}})
 	if err != nil {
 		t.Fatalf("metadata label: %v", err)
+	}
+	managedMetadataLabel, err := devcontainer.MetadataLabelValue([]devcontainer.MetadataEntry{{ID: "mise"}})
+	if err != nil {
+		t.Fatalf("managed metadata label: %v", err)
 	}
 
 	var execRequests []dockercli.ExecRequest
 	var containerLabels map[string]string
+	imageBuilt := false
 	engine := &fakeExecutorEngine{
 		listContainersFunc: func(context.Context, dockercli.ListContainersRequest) (string, error) {
 			return "", nil
 		},
 		buildImageFunc: func(context.Context, dockercli.BuildImageRequest) error {
+			imageBuilt = true
 			return nil
 		},
 		inspectImageFunc: func(_ context.Context, req dockercli.InspectImageRequest) (docker.ImageInspect, error) {
-			if req.Reference != "hatchctl-demo" {
+			switch req.Reference {
+			case "mcr.microsoft.com/devcontainers/base:ubuntu":
+				return docker.ImageInspect{
+					Architecture: "arm64",
+					Config:       docker.InspectConfig{Labels: map[string]string{devcontainer.ImageMetadataLabel: sourceMetadataLabel}},
+				}, nil
+			case "hatchctl-demo":
+				if !imageBuilt {
+					return docker.ImageInspect{}, &docker.Error{Args: []string{"image", "inspect", req.Reference}, Stderr: "No such image", Err: errors.New("not found")}
+				}
+				return docker.ImageInspect{
+					Architecture: "arm64",
+					Config:       docker.InspectConfig{Labels: map[string]string{devcontainer.ImageMetadataLabel: managedMetadataLabel}},
+				}, nil
+			default:
 				t.Fatalf("unexpected inspect image ref %q", req.Reference)
 			}
-			return docker.ImageInspect{
-				Architecture: "arm64",
-				Config:       docker.InspectConfig{Labels: map[string]string{devcontainer.ImageMetadataLabel: metadataLabel}},
-			}, nil
+			return docker.ImageInspect{}, nil
 		},
 		runDetachedFunc: func(_ context.Context, req dockercli.RunDetachedContainerRequest) (string, error) {
 			containerLabels = req.Labels
@@ -183,16 +204,18 @@ func TestUpUsesEnrichedResolvedMetadataForDotfilesTargetPath(t *testing.T) {
 				ConfigPath:      filepath.Join(configDir, "devcontainer.json"),
 				ConfigDir:       configDir,
 				Config: devcontainer.Config{
+					Image:               "mcr.microsoft.com/devcontainers/base:ubuntu",
 					WorkspaceFolder:     "/workspaces/demo",
 					UpdateRemoteUserUID: &falseValue,
 				},
-				Merged:          devcontainer.MergeMetadata(devcontainer.Config{WorkspaceFolder: "/workspaces/demo", UpdateRemoteUserUID: &falseValue}, nil),
+				Features:        []devcontainer.ResolvedFeature{{Path: featureDir, Metadata: devcontainer.MetadataEntry{ID: "mise"}}},
+				Merged:          devcontainer.MergeMetadata(devcontainer.Config{Image: "mcr.microsoft.com/devcontainers/base:ubuntu", WorkspaceFolder: "/workspaces/demo", UpdateRemoteUserUID: &falseValue}, []devcontainer.MetadataEntry{{ID: "mise"}}),
 				StateDir:        stateDir,
 				CacheDir:        cacheDir,
 				WorkspaceMount:  "type=bind,source=/workspace,target=/workspaces/demo",
 				RemoteWorkspace: "/workspaces/demo",
 				ImageName:       "hatchctl-demo",
-				SourceKind:      "dockerfile",
+				SourceKind:      "image",
 				ContainerName:   "hatchctl-demo-container",
 				Labels: map[string]string{
 					devcontainer.HostFolderLabel: "/workspace",
@@ -228,7 +251,141 @@ func TestUpUsesEnrichedResolvedMetadataForDotfilesTargetPath(t *testing.T) {
 	}
 }
 
-func TestExecUsesManagedContainerMetadataWhenConfiguredImageIsMissing(t *testing.T) {
+func TestUpRecreateReinstallsDotfilesForNewContainer(t *testing.T) {
+	t.Parallel()
+
+	stateDir := t.TempDir()
+	cacheDir := t.TempDir()
+	configDir := t.TempDir()
+	featureDir := t.TempDir()
+	falseValue := false
+	if err := os.WriteFile(filepath.Join(featureDir, "install.sh"), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatalf("write feature install script: %v", err)
+	}
+	if err := devcontainer.WriteState(stateDir, devcontainer.State{
+		ContainerID:    "container-old",
+		ContainerKey:   "old-key",
+		LifecycleReady: true,
+		DotfilesReady:  true,
+		DotfilesRepo:   "https://github.com/example/dotfiles.git",
+		DotfilesTarget: "$HOME/.dotfiles",
+	}); err != nil {
+		t.Fatalf("write prior state: %v", err)
+	}
+	sourceMetadataLabel, err := devcontainer.MetadataLabelValue([]devcontainer.MetadataEntry{{RemoteUser: "vscode", UpdateRemoteUserUID: &falseValue}})
+	if err != nil {
+		t.Fatalf("source metadata label: %v", err)
+	}
+	managedMetadataLabel, err := devcontainer.MetadataLabelValue([]devcontainer.MetadataEntry{{ID: "mise"}})
+	if err != nil {
+		t.Fatalf("managed metadata label: %v", err)
+	}
+
+	var execRequests []dockercli.ExecRequest
+	imageBuilt := false
+	engine := &fakeExecutorEngine{
+		listContainersFunc: func(context.Context, dockercli.ListContainersRequest) (string, error) {
+			return "container-old\n", nil
+		},
+		buildImageFunc: func(context.Context, dockercli.BuildImageRequest) error {
+			imageBuilt = true
+			return nil
+		},
+		inspectImageFunc: func(_ context.Context, req dockercli.InspectImageRequest) (docker.ImageInspect, error) {
+			switch req.Reference {
+			case "mcr.microsoft.com/devcontainers/base:ubuntu":
+				return docker.ImageInspect{Architecture: "arm64", Config: docker.InspectConfig{Labels: map[string]string{devcontainer.ImageMetadataLabel: sourceMetadataLabel}}}, nil
+			case "hatchctl-demo":
+				if !imageBuilt {
+					return docker.ImageInspect{}, &docker.Error{Args: []string{"image", "inspect", req.Reference}, Stderr: "No such image", Err: errors.New("not found")}
+				}
+				return docker.ImageInspect{Architecture: "arm64", Config: docker.InspectConfig{Labels: map[string]string{devcontainer.ImageMetadataLabel: managedMetadataLabel}}}, nil
+			default:
+				t.Fatalf("unexpected inspect image ref %q", req.Reference)
+			}
+			return docker.ImageInspect{}, nil
+		},
+		inspectContainerFunc: func(_ context.Context, req dockercli.InspectContainerRequest) (docker.ContainerInspect, error) {
+			switch req.ContainerID {
+			case "container-old":
+				return docker.ContainerInspect{ID: "container-old", Image: "hatchctl-demo", Config: docker.InspectConfig{User: "root", Labels: map[string]string{ContainerKeyLabel: "old-key", devcontainer.ImageMetadataLabel: managedMetadataLabel}}, State: docker.ContainerState{Status: "running", Running: true}}, nil
+			case "container-new":
+				return docker.ContainerInspect{ID: "container-new", Image: "hatchctl-demo", Config: docker.InspectConfig{User: "root", Labels: map[string]string{devcontainer.ImageMetadataLabel: managedMetadataLabel}}, State: docker.ContainerState{Status: "running", Running: true}}, nil
+			default:
+				t.Fatalf("unexpected inspect container id %q", req.ContainerID)
+			}
+			return docker.ContainerInspect{}, nil
+		},
+		removeContainerFunc: func(_ context.Context, req dockercli.RemoveContainerRequest) error {
+			if req.ContainerID != "container-old" {
+				t.Fatalf("unexpected removed container %q", req.ContainerID)
+			}
+			return nil
+		},
+		runDetachedFunc: func(_ context.Context, req dockercli.RunDetachedContainerRequest) (string, error) {
+			return "container-new", nil
+		},
+		execOutputFunc: func(_ context.Context, req dockercli.ExecRequest) (string, error) {
+			if len(req.Command) != 2 || req.Command[0] != "cat" || req.Command[1] != passwdFilePath {
+				t.Fatalf("unexpected exec output command %#v", req.Command)
+			}
+			return "root:x:0:0:root:/root:/bin/sh\nvscode:x:1000:1000::/home/vscode:/bin/bash\n", nil
+		},
+		execFunc: func(_ context.Context, req dockercli.ExecRequest) error {
+			execRequests = append(execRequests, req)
+			return nil
+		},
+	}
+
+	executor := NewExecutorWithIO(nil, nil, io.Discard, io.Discard)
+	executor.engine = engine
+	executor.planner = &workspaceplan.Resolver{
+		Resolve: func(context.Context, string, string, devcontainer.ResolveOptions) (devcontainer.ResolvedConfig, error) {
+			return devcontainer.ResolvedConfig{
+				WorkspaceFolder: "/workspace",
+				ConfigPath:      filepath.Join(configDir, "devcontainer.json"),
+				ConfigDir:       configDir,
+				Config: devcontainer.Config{
+					Image:               "mcr.microsoft.com/devcontainers/base:ubuntu",
+					WorkspaceFolder:     "/workspaces/demo",
+					UpdateRemoteUserUID: &falseValue,
+				},
+				Features:        []devcontainer.ResolvedFeature{{Path: featureDir, Metadata: devcontainer.MetadataEntry{ID: "mise"}}},
+				Merged:          devcontainer.MergeMetadata(devcontainer.Config{Image: "mcr.microsoft.com/devcontainers/base:ubuntu", WorkspaceFolder: "/workspaces/demo", UpdateRemoteUserUID: &falseValue}, []devcontainer.MetadataEntry{{ID: "mise"}}),
+				StateDir:        stateDir,
+				CacheDir:        cacheDir,
+				WorkspaceMount:  "type=bind,source=/workspace,target=/workspaces/demo",
+				RemoteWorkspace: "/workspaces/demo",
+				ImageName:       "hatchctl-demo",
+				SourceKind:      "image",
+				ContainerName:   "hatchctl-demo-container",
+				Labels: map[string]string{
+					devcontainer.HostFolderLabel: "/workspace",
+					devcontainer.ConfigFileLabel: filepath.Join(configDir, "devcontainer.json"),
+					devcontainer.ManagedByLabel:  devcontainer.ManagedByValue,
+				},
+			}, nil
+		},
+	}
+
+	workspacePlan := workspaceplan.WorkspacePlan{
+		Preferences:  workspaceplan.Preferences{Dotfiles: workspaceplan.DotfilesPreference{Repository: "https://github.com/example/dotfiles.git"}},
+		Capabilities: capability.Set{Dotfiles: capability.Dotfiles{Repository: "https://github.com/example/dotfiles.git"}},
+		Trust:        workspaceplan.TrustPlan{WorkspaceAllowed: true},
+	}
+
+	if _, err := executor.Up(context.Background(), workspacePlan, UpOptions{Recreate: true}); err != nil {
+		t.Fatalf("up recreate: %v", err)
+	}
+	if len(execRequests) != 1 {
+		t.Fatalf("expected dotfiles install for recreated container, got %#v", execRequests)
+	}
+	if execRequests[0].ContainerID != "container-new" || execRequests[0].User != "vscode" {
+		t.Fatalf("unexpected exec request %#v", execRequests[0])
+	}
+}
+
+func TestExecMergesConfiguredImageMetadataWhenContainerLabelIsIncomplete(t *testing.T) {
 	t.Parallel()
 
 	stateDir := t.TempDir()
@@ -237,7 +394,11 @@ func TestExecUsesManagedContainerMetadataWhenConfiguredImageIsMissing(t *testing
 	if err := devcontainer.WriteState(stateDir, devcontainer.State{ContainerID: "container-123"}); err != nil {
 		t.Fatalf("write state: %v", err)
 	}
-	metadataLabel, err := devcontainer.MetadataLabelValue([]devcontainer.MetadataEntry{{RemoteUser: "vscode"}})
+	containerMetadataLabel, err := devcontainer.MetadataLabelValue([]devcontainer.MetadataEntry{{ID: "mise"}})
+	if err != nil {
+		t.Fatalf("container metadata label: %v", err)
+	}
+	sourceMetadataLabel, err := devcontainer.MetadataLabelValue([]devcontainer.MetadataEntry{{RemoteUser: "vscode"}})
 	if err != nil {
 		t.Fatalf("metadata label: %v", err)
 	}
@@ -248,7 +409,7 @@ func TestExecUsesManagedContainerMetadataWhenConfiguredImageIsMissing(t *testing
 		inspectImageFunc: func(_ context.Context, req dockercli.InspectImageRequest) (docker.ImageInspect, error) {
 			inspectImageRefs = append(inspectImageRefs, req.Reference)
 			if req.Reference == "mcr.microsoft.com/devcontainers/base:ubuntu" {
-				return docker.ImageInspect{}, &docker.Error{Args: []string{"image", "inspect", req.Reference}, Stderr: "No such image", Err: os.ErrNotExist}
+				return docker.ImageInspect{Config: docker.InspectConfig{Labels: map[string]string{devcontainer.ImageMetadataLabel: sourceMetadataLabel}}}, nil
 			}
 			return docker.ImageInspect{}, errors.New("unexpected inspect image")
 		},
@@ -260,7 +421,8 @@ func TestExecUsesManagedContainerMetadataWhenConfiguredImageIsMissing(t *testing
 				ID:    "container-123",
 				Image: "managed-image-id",
 				Config: docker.InspectConfig{
-					Labels: map[string]string{devcontainer.ImageMetadataLabel: metadataLabel},
+					User:   "root",
+					Labels: map[string]string{devcontainer.ImageMetadataLabel: containerMetadataLabel},
 				},
 				State: docker.ContainerState{Status: "running", Running: true},
 			}, nil
@@ -319,7 +481,7 @@ func TestExecUsesManagedContainerMetadataWhenConfiguredImageIsMissing(t *testing
 	if execReq.ContainerID != "container-123" || execReq.User != "vscode" {
 		t.Fatalf("unexpected exec request %#v", execReq)
 	}
-	if len(inspectImageRefs) != 0 {
-		t.Fatalf("expected exec to avoid inspecting configured image, got %#v", inspectImageRefs)
+	if len(inspectImageRefs) != 1 || inspectImageRefs[0] != "mcr.microsoft.com/devcontainers/base:ubuntu" {
+		t.Fatalf("expected exec to inspect configured image metadata, got %#v", inspectImageRefs)
 	}
 }

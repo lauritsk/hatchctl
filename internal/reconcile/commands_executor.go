@@ -121,6 +121,8 @@ func (e *Executor) Up(ctx context.Context, workspacePlan workspaceplan.Workspace
 	if err := tracker.Persist(); err != nil {
 		return UpResult{}, err
 	}
+	session.SetState(tracker.State())
+	state = session.State()
 	session.SetContainerID(containerID)
 	inspect, err := executor.engine.InspectContainer(ctx, dockercli.InspectContainerRequest{ContainerID: containerID})
 	if err != nil {
@@ -148,6 +150,8 @@ func (e *Executor) Up(ctx context.Context, workspacePlan workspaceplan.Workspace
 			return UpResult{}, err
 		}
 	}
+	session.SetState(tracker.State())
+	state = session.State()
 	lifecycleKey, err := executor.DesiredLifecycleKey(resolved, containerKey, DotfilesConfig{Repository: dotfiles.Repository, InstallCommand: dotfiles.InstallCommand, TargetPath: dotfiles.TargetPath})
 	if err != nil {
 		return UpResult{}, err
@@ -265,6 +269,10 @@ func (e *Executor) enrichExecResolvedConfig(ctx context.Context, session *Sessio
 			return err
 		}
 		if len(metadata) > 0 {
+			metadata, err = e.mergeSourceImageMetadata(ctx, *resolved, inspect.Image, metadata)
+			if err != nil {
+				return err
+			}
 			resolved.Merged = devcontainer.MergeMetadata(devcontainer.Config{}, metadata)
 			resolved.Merged.Config = resolved.Config
 			return nil
@@ -335,7 +343,7 @@ func (e *Executor) ReadConfig(ctx context.Context, workspacePlan workspaceplan.W
 	if err != nil {
 		return ReadConfigResult{}, err
 	}
-	managedContainer, err := session.ManagedContainer()
+	managedContainer, err := session.ManagedContainer(ctx)
 	if err != nil {
 		return ReadConfigResult{}, err
 	}

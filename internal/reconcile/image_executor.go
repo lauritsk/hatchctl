@@ -128,6 +128,10 @@ func (e *Executor) EnrichMergedConfig(ctx context.Context, resolved *devcontaine
 		return err
 	}
 	if isManagedImage(resolved, image) {
+		metadata, err = e.mergeSourceImageMetadata(ctx, *resolved, image, metadata)
+		if err != nil {
+			return err
+		}
 		resolved.Merged = devcontainer.MergeMetadata(devcontainer.Config{}, metadata)
 		resolved.Merged.Config = resolved.Config
 		return nil
@@ -188,6 +192,20 @@ func (e *Executor) imageMetadata(ctx context.Context, image string) ([]devcontai
 		return nil, err
 	}
 	return devcontainer.MetadataFromLabel(inspect.Config.Labels[devcontainer.ImageMetadataLabel])
+}
+
+func (e *Executor) mergeSourceImageMetadata(ctx context.Context, resolved devcontainer.ResolvedConfig, runtimeImage string, metadata []devcontainer.MetadataEntry) ([]devcontainer.MetadataEntry, error) {
+	if resolved.Config.Image == "" || resolved.Config.Image == runtimeImage {
+		return metadata, nil
+	}
+	sourceMetadata, err := e.imageMetadata(ctx, resolved.Config.Image)
+	if err != nil {
+		if docker.IsNotFound(err) {
+			return metadata, nil
+		}
+		return nil, err
+	}
+	return mergeManagedImageMetadata(sourceMetadata, metadata), nil
 }
 
 func isManagedImage(resolved *devcontainer.ResolvedConfig, image string) bool {

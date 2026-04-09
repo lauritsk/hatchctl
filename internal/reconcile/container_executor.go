@@ -190,7 +190,7 @@ func (e *Executor) effectiveRemoteUser(ctx context.Context, prepared preparedWor
 	return e.InspectImageUser(ctx, prepared.image)
 }
 
-func (e *Executor) readManagedContainerState(prepared preparedWorkspace) (*ManagedContainer, error) {
+func (e *Executor) readManagedContainerState(ctx context.Context, prepared preparedWorkspace) (*ManagedContainer, error) {
 	if prepared.containerID == "" {
 		return nil, nil
 	}
@@ -199,6 +199,10 @@ func (e *Executor) readManagedContainerState(prepared preparedWorkspace) (*Manag
 		return nil, fmt.Errorf("read managed container state for %s: container metadata is unavailable", prepared.containerID)
 	}
 	metadata, err := devcontainer.MetadataFromLabel(inspect.Config.Labels[devcontainer.ImageMetadataLabel])
+	if err != nil {
+		return nil, err
+	}
+	metadata, err = e.mergeSourceImageMetadata(ctx, prepared.resolved, inspect.Image, metadata)
 	if err != nil {
 		return nil, err
 	}
