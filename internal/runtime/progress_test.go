@@ -8,14 +8,6 @@ import (
 	"github.com/lauritsk/hatchctl/internal/docker"
 )
 
-type recordedSink struct {
-	events []ui.Event
-}
-
-func (s *recordedSink) Emit(event ui.Event) {
-	s.events = append(s.events, event)
-}
-
 func TestProgressDockerRunOptionsPrintsHeaderOnceOnFirstOutput(t *testing.T) {
 	t.Parallel()
 

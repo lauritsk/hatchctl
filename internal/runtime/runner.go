@@ -36,7 +36,7 @@ func NewRunnerWithIO(client *docker.Client, stdin io.Reader, stdout io.Writer, s
 		imageVerifier: newImageVerificationPolicy(stdin, stderr),
 	}
 	runner.backend = newLocalRuntimeBackend(runner, client)
-	runner.planner = &workspacePlanner{runner: runner}
+	runner.planner = newWorkspacePlanner(runner)
 	return runner
 }
 
@@ -700,7 +700,7 @@ func (r *Runner) withCommandIO(streams commandIO) *Runner {
 	if backend, ok := r.backend.(*localRuntimeBackend); ok {
 		clone.backend = &localRuntimeBackend{runner: &clone, docker: backend.docker, hostCommand: backend.hostCommand}
 	}
-	clone.planner = &workspacePlanner{runner: &clone}
+	clone.planner = r.planner.cloneForRunner(&clone)
 	return &clone
 }
 

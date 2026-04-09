@@ -8,10 +8,40 @@ import (
 )
 
 type workspacePlanner struct {
-	runner *Runner
+	runner          *Runner
+	resolve         func(context.Context, string, string, devcontainer.ResolveOptions) (devcontainer.ResolvedConfig, error)
+	resolveReadOnly func(context.Context, string, string, devcontainer.ResolveOptions) (devcontainer.ResolvedConfig, error)
+	readState       func(string) (devcontainer.State, error)
+}
+
+func newWorkspacePlanner(runner *Runner) *workspacePlanner {
+	return (&workspacePlanner{runner: runner}).withDefaults()
+}
+
+func (p *workspacePlanner) cloneForRunner(runner *Runner) *workspacePlanner {
+	if p == nil {
+		return newWorkspacePlanner(runner)
+	}
+	clone := *p
+	clone.runner = runner
+	return clone.withDefaults()
+}
+
+func (p *workspacePlanner) withDefaults() *workspacePlanner {
+	if p.resolve == nil {
+		p.resolve = devcontainer.ResolveWithOptions
+	}
+	if p.resolveReadOnly == nil {
+		p.resolveReadOnly = devcontainer.ResolveReadOnlyWithOptions
+	}
+	if p.readState == nil {
+		p.readState = devcontainer.ReadState
+	}
+	return p
 }
 
 func (p *workspacePlanner) prepareResolved(ctx context.Context, opts prepareResolveOptions) (devcontainer.ResolvedConfig, error) {
+	p = p.withDefaults()
 	p.runner.emitPhaseProgress(opts.Events, opts.ProgressPhase, opts.ProgressLabel)
 	resolveOpts := devcontainer.ResolveOptions{LockfilePolicy: opts.LockfilePolicy, FeatureHTTPTimeout: opts.FeatureTimeout, ReadPlanCache: true, StateBaseDir: opts.StateDir, CacheBaseDir: opts.CacheDir}
 	resolveOpts.VerifyImage = p.runner.imageVerifier.Check
@@ -26,9 +56,9 @@ func (p *workspacePlanner) prepareResolved(ctx context.Context, opts prepareReso
 		err      error
 	)
 	if opts.ReadOnly {
-		resolved, err = devcontainer.ResolveReadOnlyWithOptions(ctx, opts.Workspace, opts.ConfigPath, resolveOpts)
+		resolved, err = p.resolveReadOnly(ctx, opts.Workspace, opts.ConfigPath, resolveOpts)
 	} else {
-		resolved, err = devcontainer.ResolveWithOptions(ctx, opts.Workspace, opts.ConfigPath, resolveOpts)
+		resolved, err = p.resolve(ctx, opts.Workspace, opts.ConfigPath, resolveOpts)
 	}
 	if err != nil {
 		return devcontainer.ResolvedConfig{}, err
@@ -43,6 +73,7 @@ func (p *workspacePlanner) prepareResolved(ctx context.Context, opts prepareReso
 }
 
 func (p *workspacePlanner) prepareWorkspace(ctx context.Context, opts prepareWorkspaceOptions) (preparedWorkspace, error) {
+	p = p.withDefaults()
 	resolved, err := p.prepareResolved(ctx, opts.resolve)
 	if err != nil {
 		return preparedWorkspace{}, err
@@ -55,7 +86,7 @@ func (p *workspacePlanner) prepareWorkspace(ctx context.Context, opts prepareWor
 		}
 	}
 	if opts.loadState {
-		state, err := devcontainer.ReadState(prepared.resolved.StateDir)
+		state, err := p.readState(prepared.resolved.StateDir)
 		if err != nil {
 			return preparedWorkspace{}, err
 		}
