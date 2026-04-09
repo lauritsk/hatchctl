@@ -2,6 +2,14 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## [v0.6.6](https://github.com/lauritsk/hatchctl/compare/624e7b9e43fa9eb3429547ae8c0aadea1c08f72f..v0.6.6) - 2026-04-09
+#### Bug Fixes
+- (**runtime**) Restore source-image users and dotfiles on recreate - ([624e7b9](https://github.com/lauritsk/hatchctl/commit/624e7b9e43fa9eb3429547ae8c0aadea1c08f72f)) - Karl Hans Laurits
+#### Miscellaneous Chores
+- (**mise**) Bump hatchctl tool to v0.6.5 - ([930dd2a](https://github.com/lauritsk/hatchctl/commit/930dd2a4258f670459d52c39f8d1e3af758861b0)) - Karl Hans Laurits
+
+- - -
+
 ## [v0.6.5](https://github.com/lauritsk/hatchctl/compare/edbc1b88d66365c2342b2c4048910517390f7335..v0.6.5) - 2026-04-09
 #### Bug Fixes
 - (**runtime**) Use managed runtime metadata for exec and dotfiles - ([2d59e16](https://github.com/lauritsk/hatchctl/commit/2d59e16d6e93f402be6d80bde3f6b369307897b7)) - Karl Hans Laurits
