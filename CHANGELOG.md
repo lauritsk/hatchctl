@@ -2,6 +2,26 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## [v0.6.1](https://github.com/lauritsk/hatchctl/compare/cfa13d8fa5cc2e9d62416908a4a5258e363b1fdb..v0.6.1) - 2026-04-09
+#### Bug Fixes
+- (**runtime**) Avoid closing live descriptors during TTY detection - ([82ec2ae](https://github.com/lauritsk/hatchctl/commit/82ec2ae25c23b03f4e663776154da66b118cb5bb)) - Karl Hans Laurits
+- (**runtime**) Stabilize atomic state writes in CI - ([298f109](https://github.com/lauritsk/hatchctl/commit/298f109ee8ea0bfa3dbe43219b41c55d7405c177)) - Karl Hans Laurits
+- (**runtime**) Unblock integration feature resolution - ([d4d4c97](https://github.com/lauritsk/hatchctl/commit/d4d4c97bc6714437c924d115a8dc9195d11b7eca)) - Karl Hans Laurits
+- (**runtime**) Use a static bridge helper stub in runtime tests - ([6a4c7e8](https://github.com/lauritsk/hatchctl/commit/6a4c7e8bc75adc7be82dafbc8163151539d9c909)) - Karl Hans Laurits
+- (**runtime**) Remove shared bridge helper file cache in tests - ([86b12ab](https://github.com/lauritsk/hatchctl/commit/86b12ab3551bf6a20100b9ace72853f1c0617fe5)) - Karl Hans Laurits
+- (**runtime**) Avoid flaky bridge helper copy in runtime integration tests - ([6e0213a](https://github.com/lauritsk/hatchctl/commit/6e0213aeb332a831d23180fb8d52653a711a45f7)) - Karl Hans Laurits
+#### Tests
+- (**runtime**) Decouple runtime orchestration tests from shell fakes - ([6e61d4a](https://github.com/lauritsk/hatchctl/commit/6e61d4a9a86b9b4d127f32d6cf3939d410710832)) - Karl Hans Laurits
+- Split integration suites and share test harnesses - ([b8d34ba](https://github.com/lauritsk/hatchctl/commit/b8d34ba4b6d98104fc6b0e7f04f7b799cf80ace7)) - Karl Hans Laurits
+- Shorten the default test feedback loop - ([bff220a](https://github.com/lauritsk/hatchctl/commit/bff220a351c28ba375d417755828e755e9e0c406)) - Karl Hans Laurits
+- Reduce brittle Go test coverage - ([cfa13d8](https://github.com/lauritsk/hatchctl/commit/cfa13d8fa5cc2e9d62416908a4a5258e363b1fdb)) - Karl Hans Laurits
+#### Continuous Integration
+- Reuse Go caches across GitHub Actions runs - ([d774c33](https://github.com/lauritsk/hatchctl/commit/d774c33c9893615c3d057ef14f4ab12d8b75a911)) - Karl Hans Laurits
+#### Refactoring
+- Consolidate workspace orchestration and harden feature resolution - ([b563fc2](https://github.com/lauritsk/hatchctl/commit/b563fc2fe8c8043255f6b00e09d9d013d53c6f96)) - Karl Hans Laurits
+
+- - -
+
 ## [v0.6.0](https://github.com/lauritsk/hatchctl/compare/e3f08b32833d8b43f6295e63d37521cd19979f48..v0.6.0) - 2026-04-08
 #### Features
 - (**runtime**) Add ssh-agent passthrough for managed containers - ([e3f08b3](https://github.com/lauritsk/hatchctl/commit/e3f08b32833d8b43f6295e63d37521cd19979f48)) - Karl Hans Laurits
