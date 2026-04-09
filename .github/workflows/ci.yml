@@ -25,6 +25,19 @@ jobs:
         with:
           fetch-depth: 0
       - uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4
+      - id: go-cache
+        run: |
+          echo "version=$(go env GOVERSION)" >> "$GITHUB_OUTPUT"
+          echo "modcache=$(go env GOMODCACHE)" >> "$GITHUB_OUTPUT"
+          echo "buildcache=$(go env GOCACHE)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        with:
+          path: |
+            ${{ steps.go-cache.outputs.modcache }}
+            ${{ steps.go-cache.outputs.buildcache }}
+          key: ${{ runner.os }}-go-${{ steps.go-cache.outputs.version }}-${{ hashFiles('go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-${{ steps.go-cache.outputs.version }}-
       - run: mise run check
 
   runtime-integration:
@@ -36,4 +49,17 @@ jobs:
         with:
           fetch-depth: 0
       - uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4
+      - id: go-cache
+        run: |
+          echo "version=$(go env GOVERSION)" >> "$GITHUB_OUTPUT"
+          echo "modcache=$(go env GOMODCACHE)" >> "$GITHUB_OUTPUT"
+          echo "buildcache=$(go env GOCACHE)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        with:
+          path: |
+            ${{ steps.go-cache.outputs.modcache }}
+            ${{ steps.go-cache.outputs.buildcache }}
+          key: ${{ runner.os }}-go-${{ steps.go-cache.outputs.version }}-${{ hashFiles('go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-${{ steps.go-cache.outputs.version }}-
       - run: mise run test:integration
