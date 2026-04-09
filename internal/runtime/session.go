@@ -2,21 +2,16 @@ package runtime
 
 import (
 	"context"
-	"time"
+	"errors"
 
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	ui "github.com/lauritsk/hatchctl/internal/display"
 	"github.com/lauritsk/hatchctl/internal/docker"
+	workspaceplan "github.com/lauritsk/hatchctl/internal/plan"
 )
 
 type workspaceSessionOptions struct {
-	Workspace             string
-	ConfigPath            string
-	StateDir              string
-	CacheDir              string
-	FeatureTimeout        time.Duration
-	LockfilePolicy        devcontainer.FeatureLockfilePolicy
-	ReadOnly              bool
+	Plan                  workspaceplan.WorkspacePlan
 	ProgressPhase         string
 	ProgressLabel         string
 	Debug                 bool
@@ -39,28 +34,53 @@ type workspaceStateTracker struct {
 }
 
 func (r *Runner) prepareSession(ctx context.Context, opts workspaceSessionOptions) (*workspaceSession, error) {
-	prepared, err := r.planner.prepareWorkspace(ctx, prepareWorkspaceOptions{
-		resolve: prepareResolveOptions{
-			Workspace:      opts.Workspace,
-			ConfigPath:     opts.ConfigPath,
-			StateDir:       opts.StateDir,
-			CacheDir:       opts.CacheDir,
-			FeatureTimeout: opts.FeatureTimeout,
-			LockfilePolicy: opts.LockfilePolicy,
-			ReadOnly:       opts.ReadOnly,
-			ProgressPhase:  opts.ProgressPhase,
-			ProgressLabel:  opts.ProgressLabel,
-			Debug:          opts.Debug,
-			Events:         opts.Events,
-		},
-		enrich:                opts.Enrich,
-		loadState:             opts.LoadState,
-		findContainer:         opts.FindContainer,
-		allowMissingContainer: opts.AllowMissingContainer,
-		inspectContainer:      opts.InspectContainer,
-	})
+	r.emitPhaseProgress(opts.Events, opts.ProgressPhase, opts.ProgressLabel)
+	resolved, err := r.planner.Materialize(ctx, opts.Plan, r.imageVerifier.Check)
 	if err != nil {
 		return nil, err
+	}
+	if err := r.verifyResolvedFeatures(resolved, opts.Events); err != nil {
+		return nil, err
+	}
+	if opts.Debug {
+		r.emitPlan(opts.Events, resolved)
+	}
+	prepared := preparedWorkspace{resolved: resolved, image: preparedImage(resolved)}
+	if opts.Enrich {
+		r.emitPhaseProgress(opts.Events, phaseConfig, "Applying runtime metadata")
+		if err := r.enrichMergedConfig(ctx, &prepared.resolved, prepared.image); err != nil {
+			return nil, err
+		}
+	}
+	if opts.LoadState {
+		state, err := devcontainer.ReadState(prepared.resolved.StateDir)
+		if err != nil {
+			return nil, err
+		}
+		state, err = r.reconcileState(ctx, prepared.resolved, state)
+		if err != nil {
+			return nil, err
+		}
+		prepared.state = state
+		prepared.containerID = state.ContainerID
+	}
+	if opts.FindContainer && prepared.containerID == "" {
+		r.emitPhaseProgress(opts.Events, phaseContainer, "Finding managed container")
+		containerID, err := r.findContainer(ctx, prepared.resolved)
+		if err != nil {
+			if opts.AllowMissingContainer && errors.Is(err, errManagedContainerNotFound) {
+				return &workspaceSession{runner: r, prepared: prepared}, nil
+			}
+			return nil, err
+		}
+		prepared.containerID = containerID
+	}
+	if opts.InspectContainer && prepared.containerID != "" {
+		inspect, err := r.backend.InspectContainer(ctx, prepared.containerID)
+		if err != nil {
+			return nil, err
+		}
+		prepared.containerInspect = &inspect
 	}
 	return &workspaceSession{runner: r, prepared: prepared}, nil
 }

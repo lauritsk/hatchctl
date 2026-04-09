@@ -13,6 +13,7 @@ import (
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	ui "github.com/lauritsk/hatchctl/internal/display"
 	"github.com/lauritsk/hatchctl/internal/docker"
+	workspaceplan "github.com/lauritsk/hatchctl/internal/plan"
 	"github.com/lauritsk/hatchctl/internal/policy"
 	"golang.org/x/term"
 )
@@ -25,7 +26,7 @@ type Runner struct {
 	stderr        io.Writer
 	backend       runtimeBackend
 	imageVerifier *policy.ImageVerificationPolicy
-	planner       *workspacePlanner
+	planner       *workspaceplan.Resolver
 }
 
 func NewRunner(client *docker.Client) *Runner {
@@ -40,11 +41,12 @@ func NewRunnerWithIO(client *docker.Client, stdin io.Reader, stdout io.Writer, s
 		imageVerifier: policy.NewImageVerificationPolicy(stdin, stderr),
 	}
 	runner.backend = newLocalRuntimeBackend(runner, client)
-	runner.planner = newWorkspacePlanner(runner)
+	runner.planner = workspaceplan.NewResolver()
 	return runner
 }
 
 type UpOptions struct {
+	Plan               workspaceplan.WorkspacePlan
 	Workspace          string
 	ConfigPath         string
 	StateDir           string
@@ -73,6 +75,7 @@ type UpResult struct {
 }
 
 type BuildOptions struct {
+	Plan           workspaceplan.WorkspacePlan
 	Workspace      string
 	ConfigPath     string
 	StateDir       string
@@ -92,6 +95,7 @@ type BuildResult struct {
 }
 
 type ExecOptions struct {
+	Plan           workspaceplan.WorkspacePlan
 	Workspace      string
 	ConfigPath     string
 	StateDir       string
@@ -110,6 +114,7 @@ type ExecOptions struct {
 }
 
 type ReadConfigOptions struct {
+	Plan           workspaceplan.WorkspacePlan
 	Workspace      string
 	ConfigPath     string
 	StateDir       string
@@ -159,15 +164,6 @@ type preparedWorkspace struct {
 	containerInspect *docker.ContainerInspect
 }
 
-type prepareWorkspaceOptions struct {
-	resolve               prepareResolveOptions
-	enrich                bool
-	loadState             bool
-	findContainer         bool
-	allowMissingContainer bool
-	inspectContainer      bool
-}
-
 type ManagedContainer struct {
 	ID            string            `json:"id"`
 	Name          string            `json:"name,omitempty"`
@@ -195,6 +191,7 @@ const (
 )
 
 type RunLifecycleOptions struct {
+	Plan               workspaceplan.WorkspacePlan
 	Workspace          string
 	ConfigPath         string
 	StateDir           string
@@ -231,6 +228,7 @@ func (r *Runner) verifyResolvedFeatures(resolved devcontainer.ResolvedConfig, ev
 }
 
 type BridgeDoctorOptions struct {
+	Plan           workspaceplan.WorkspacePlan
 	Workspace      string
 	ConfigPath     string
 	StateDir       string
@@ -248,48 +246,33 @@ type ExitError struct {
 	Code int
 }
 
-type prepareResolveOptions struct {
-	Workspace      string
-	ConfigPath     string
-	StateDir       string
-	CacheDir       string
-	FeatureTimeout time.Duration
-	LockfilePolicy devcontainer.FeatureLockfilePolicy
-	ReadOnly       bool
-	ProgressPhase  string
-	ProgressLabel  string
-	Debug          bool
-	Events         ui.Sink
-}
-
 func (e ExitError) Error() string {
 	return fmt.Sprintf("command exited with status %d", e.Code)
 }
 
 func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 	runner := r.withCommandIO(commandIO{Stdin: r.stdin, Stdout: opts.Stdout, Stderr: opts.Stderr})
-	dotfiles, err := opts.Dotfiles.Normalized()
+	workspacePlan, err := planForUp(opts)
+	if err != nil {
+		return UpResult{}, err
+	}
+	dotfiles, err := dotfilesOptionsFromPlan(workspacePlan).Normalized()
 	if err != nil {
 		return UpResult{}, err
 	}
 	session, err := runner.prepareSession(ctx, workspaceSessionOptions{
-		Workspace:      opts.Workspace,
-		ConfigPath:     opts.ConfigPath,
-		StateDir:       opts.StateDir,
-		CacheDir:       opts.CacheDir,
-		FeatureTimeout: opts.FeatureTimeout,
-		LockfilePolicy: opts.LockfilePolicy,
-		ProgressPhase:  phaseResolve,
-		ProgressLabel:  "Resolving development container",
-		Debug:          opts.Debug,
-		Events:         opts.Events,
-		LoadState:      true,
+		Plan:          workspacePlan,
+		ProgressPhase: phaseResolve,
+		ProgressLabel: "Resolving development container",
+		Debug:         opts.Debug,
+		Events:        opts.Events,
+		LoadState:     true,
 	})
 	if err != nil {
 		return UpResult{}, err
 	}
 	resolved := session.Resolved()
-	if err := policy.EnsureWorkspaceTrust(resolved, opts.TrustWorkspace); err != nil {
+	if err := policy.EnsureWorkspaceTrust(resolved, workspacePlan.Trust.WorkspaceAllowed); err != nil {
 		return UpResult{}, err
 	}
 	if err := ensureDir(resolved.StateDir); err != nil {
@@ -318,7 +301,7 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 	if err := runner.enrichMergedConfig(ctx, &resolved, image); err != nil {
 		return UpResult{}, err
 	}
-	if opts.SSHAgent {
+	if workspacePlan.Preferences.SSHAgent {
 		if resolved.Merged, err = injectSSHAgent(resolved.Merged); err != nil {
 			return UpResult{}, err
 		}
@@ -329,7 +312,7 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 	}
 	var bridgeSession *bridge.Session
 	runner.emitPhaseProgress(opts.Events, phaseBridge, "Configuring bridge support")
-	if opts.BridgeEnabled {
+	if workspacePlan.Preferences.BridgeEnabled {
 		bridgeSession, err = bridge.Prepare(resolved.StateDir, true, helperArch)
 		if err == nil {
 			resolved.Merged = bridge.Inject(bridgeSession, resolved.Merged)
@@ -351,7 +334,7 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 	}
 
 	runner.emitPhaseProgress(opts.Events, phaseContainer, "Ensuring managed container")
-	containerID, created, err := runner.ensureContainer(ctx, resolved, image, opts.BridgeEnabled, opts.SSHAgent, overridePath, opts.Events)
+	containerID, created, err := runner.ensureContainer(ctx, resolved, image, workspacePlan.Preferences.BridgeEnabled, workspacePlan.Preferences.SSHAgent, overridePath, opts.Events)
 	if err != nil {
 		return UpResult{}, err
 	}
@@ -379,7 +362,7 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 	}
 
 	runner.emitPhaseProgress(opts.Events, phaseLifecycle, "Running lifecycle commands")
-	if err := runner.runLifecycleForUp(ctx, resolved, containerID, created, state, dotfiles, opts.AllowHostLifecycle, opts.Events); err != nil {
+	if err := runner.runLifecycleForUp(ctx, resolved, containerID, created, state, dotfiles, workspacePlan.Trust.HostLifecycleAllowed, opts.Events); err != nil {
 		return UpResult{}, err
 	}
 
@@ -403,23 +386,22 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 
 func (r *Runner) Build(ctx context.Context, opts BuildOptions) (BuildResult, error) {
 	runner := r.withCommandIO(commandIO{Stdin: r.stdin, Stdout: opts.Stdout, Stderr: opts.Stderr})
+	workspacePlan, err := planForBuild(opts)
+	if err != nil {
+		return BuildResult{}, err
+	}
 	session, err := runner.prepareSession(ctx, workspaceSessionOptions{
-		Workspace:      opts.Workspace,
-		ConfigPath:     opts.ConfigPath,
-		StateDir:       opts.StateDir,
-		CacheDir:       opts.CacheDir,
-		FeatureTimeout: opts.FeatureTimeout,
-		LockfilePolicy: opts.LockfilePolicy,
-		ProgressPhase:  phaseResolve,
-		ProgressLabel:  "Resolving development container",
-		Debug:          opts.Debug,
-		Events:         opts.Events,
+		Plan:          workspacePlan,
+		ProgressPhase: phaseResolve,
+		ProgressLabel: "Resolving development container",
+		Debug:         opts.Debug,
+		Events:        opts.Events,
 	})
 	if err != nil {
 		return BuildResult{}, err
 	}
 	resolved := session.Resolved()
-	if err := policy.EnsureWorkspaceTrust(resolved, opts.TrustWorkspace); err != nil {
+	if err := policy.EnsureWorkspaceTrust(resolved, workspacePlan.Trust.WorkspaceAllowed); err != nil {
 		return BuildResult{}, err
 	}
 	runner.emitPhaseProgress(opts.Events, phaseImage, "Ensuring container image")
@@ -435,14 +417,12 @@ func (r *Runner) Build(ctx context.Context, opts BuildOptions) (BuildResult, err
 }
 
 func (r *Runner) Exec(ctx context.Context, opts ExecOptions) (int, error) {
+	workspacePlan, err := planForExec(opts)
+	if err != nil {
+		return 0, err
+	}
 	session, err := r.prepareSession(ctx, workspaceSessionOptions{
-		Workspace:        opts.Workspace,
-		ConfigPath:       opts.ConfigPath,
-		StateDir:         opts.StateDir,
-		CacheDir:         opts.CacheDir,
-		FeatureTimeout:   opts.FeatureTimeout,
-		LockfilePolicy:   opts.LockfilePolicy,
-		ReadOnly:         true,
+		Plan:             workspacePlan,
 		ProgressPhase:    phaseResolve,
 		ProgressLabel:    "Resolving development container",
 		Debug:            opts.Debug,
@@ -455,7 +435,7 @@ func (r *Runner) Exec(ctx context.Context, opts ExecOptions) (int, error) {
 		return 0, err
 	}
 	resolved := session.Resolved()
-	if opts.SSHAgent {
+	if workspacePlan.Preferences.SSHAgent {
 		if resolved.Merged, err = injectSSHAgent(resolved.Merged); err != nil {
 			return 0, err
 		}
@@ -489,18 +469,16 @@ func (r *Runner) Exec(ctx context.Context, opts ExecOptions) (int, error) {
 
 func (r *Runner) ReadConfig(ctx context.Context, opts ReadConfigOptions) (ReadConfigResult, error) {
 	runner := r.withCommandIO(commandIO{Stdin: r.stdin, Stdout: opts.Stdout, Stderr: opts.Stderr})
-	dotfiles, err := opts.Dotfiles.Normalized()
+	workspacePlan, err := planForReadConfig(opts)
+	if err != nil {
+		return ReadConfigResult{}, err
+	}
+	dotfiles, err := dotfilesOptionsFromPlan(workspacePlan).Normalized()
 	if err != nil {
 		return ReadConfigResult{}, err
 	}
 	session, err := runner.prepareSession(ctx, workspaceSessionOptions{
-		Workspace:             opts.Workspace,
-		ConfigPath:            opts.ConfigPath,
-		StateDir:              opts.StateDir,
-		CacheDir:              opts.CacheDir,
-		FeatureTimeout:        opts.FeatureTimeout,
-		LockfilePolicy:        opts.LockfilePolicy,
-		ReadOnly:              true,
+		Plan:                  workspacePlan,
 		ProgressPhase:         phaseConfig,
 		ProgressLabel:         "Inspecting resolved configuration",
 		Debug:                 opts.Debug,
@@ -517,7 +495,7 @@ func (r *Runner) ReadConfig(ctx context.Context, opts ReadConfigOptions) (ReadCo
 	resolved := session.Resolved()
 	image := session.Image()
 	state := session.State()
-	if opts.SSHAgent {
+	if workspacePlan.Preferences.SSHAgent {
 		if resolved.Merged, err = injectSSHAgent(resolved.Merged); err != nil {
 			return ReadConfigResult{}, err
 		}
@@ -585,25 +563,23 @@ func (r *Runner) ReadConfig(ctx context.Context, opts ReadConfigOptions) (ReadCo
 
 func (r *Runner) RunLifecycle(ctx context.Context, opts RunLifecycleOptions) (RunLifecycleResult, error) {
 	runner := r.withCommandIO(commandIO{Stdin: r.stdin, Stdout: opts.Stdout, Stderr: opts.Stderr})
-	dotfiles, err := opts.Dotfiles.Normalized()
+	workspacePlan, err := planForLifecycle(opts)
+	if err != nil {
+		return RunLifecycleResult{}, err
+	}
+	dotfiles, err := dotfilesOptionsFromPlan(workspacePlan).Normalized()
 	if err != nil {
 		return RunLifecycleResult{}, err
 	}
 	session, err := runner.prepareSession(ctx, workspaceSessionOptions{
-		Workspace:      opts.Workspace,
-		ConfigPath:     opts.ConfigPath,
-		StateDir:       opts.StateDir,
-		CacheDir:       opts.CacheDir,
-		FeatureTimeout: opts.FeatureTimeout,
-		LockfilePolicy: opts.LockfilePolicy,
-		ReadOnly:       true,
-		ProgressPhase:  phaseResolve,
-		ProgressLabel:  "Resolving development container",
-		Debug:          opts.Debug,
-		Events:         opts.Events,
-		Enrich:         true,
-		FindContainer:  true,
-		LoadState:      true,
+		Plan:          workspacePlan,
+		ProgressPhase: phaseResolve,
+		ProgressLabel: "Resolving development container",
+		Debug:         opts.Debug,
+		Events:        opts.Events,
+		Enrich:        true,
+		FindContainer: true,
+		LoadState:     true,
 	})
 	if err != nil {
 		return RunLifecycleResult{}, err
@@ -616,7 +592,7 @@ func (r *Runner) RunLifecycle(ctx context.Context, opts RunLifecycleOptions) (Ru
 	}
 	runner.emitPhaseProgress(opts.Events, phaseLifecycle, "Running lifecycle commands")
 	runDotfiles := phase == "all" || phase == "create"
-	if err := runner.runLifecyclePhase(ctx, resolved, session.ContainerID(), phase, state, dotfiles, runDotfiles, opts.AllowHostLifecycle, opts.Events); err != nil {
+	if err := runner.runLifecyclePhase(ctx, resolved, session.ContainerID(), phase, state, dotfiles, runDotfiles, workspacePlan.Trust.HostLifecycleAllowed, opts.Events); err != nil {
 		return RunLifecycleResult{}, err
 	}
 	if runDotfiles {
@@ -631,18 +607,16 @@ func (r *Runner) RunLifecycle(ctx context.Context, opts RunLifecycleOptions) (Ru
 
 func (r *Runner) BridgeDoctor(ctx context.Context, opts BridgeDoctorOptions) (bridge.Report, error) {
 	runner := r.withCommandIO(commandIO{Stdin: r.stdin, Stdout: opts.Stdout, Stderr: opts.Stderr})
+	workspacePlan, err := planForBridgeDoctor(opts)
+	if err != nil {
+		return bridge.Report{}, err
+	}
 	session, err := runner.prepareSession(ctx, workspaceSessionOptions{
-		Workspace:      opts.Workspace,
-		ConfigPath:     opts.ConfigPath,
-		StateDir:       opts.StateDir,
-		CacheDir:       opts.CacheDir,
-		FeatureTimeout: opts.FeatureTimeout,
-		LockfilePolicy: opts.LockfilePolicy,
-		ReadOnly:       true,
-		ProgressPhase:  phaseBridge,
-		ProgressLabel:  "Inspecting bridge state",
-		Debug:          opts.Debug,
-		Events:         opts.Events,
+		Plan:          workspacePlan,
+		ProgressPhase: phaseBridge,
+		ProgressLabel: "Inspecting bridge state",
+		Debug:         opts.Debug,
+		Events:        opts.Events,
 	})
 	if err != nil {
 		return bridge.Report{}, err
@@ -705,7 +679,7 @@ func (r *Runner) withCommandIO(streams commandIO) *Runner {
 	if backend, ok := r.backend.(*localRuntimeBackend); ok {
 		clone.backend = &localRuntimeBackend{runner: &clone, docker: backend.docker, hostCommand: backend.hostCommand}
 	}
-	clone.planner = r.planner.cloneForRunner(&clone)
+	clone.planner = r.planner.Clone()
 	return &clone
 }
 

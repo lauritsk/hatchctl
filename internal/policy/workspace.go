@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
+	"github.com/lauritsk/hatchctl/internal/spec"
 )
 
 const TrustWorkspaceEnvVar = "HATCHCTL_TRUST_WORKSPACE"
@@ -17,34 +18,49 @@ func EnsureWorkspaceTrust(resolved devcontainer.ResolvedConfig, trusted bool) er
 	if trusted || envTruthy(TrustWorkspaceEnvVar) {
 		return nil
 	}
-	issues := workspaceTrustIssues(resolved)
+	issues := workspaceTrustIssues(spec.WorkspaceSpec{
+		WorkspaceFolder: resolved.WorkspaceFolder,
+		ConfigPath:      resolved.ConfigPath,
+		ConfigDir:       resolved.ConfigDir,
+		Config:          resolved.Config,
+		Merged:          resolved.Merged,
+		WorkspaceMount:  resolved.WorkspaceMount,
+		RemoteWorkspace: resolved.RemoteWorkspace,
+		SourceKind:      resolved.SourceKind,
+		ComposeFiles:    resolved.ComposeFiles,
+		ComposeService:  resolved.ComposeService,
+	})
 	if len(issues) == 0 {
 		return nil
 	}
 	return fmt.Errorf("%w\nDetected settings:\n- %s\nReview the workspace config and rerun with --trust-workspace or set %s=1 if you want to allow these settings.", ErrWorkspaceTrustRequired, strings.Join(issues, "\n- "), TrustWorkspaceEnvVar)
 }
 
-func workspaceTrustIssues(resolved devcontainer.ResolvedConfig) []string {
+func WorkspaceTrustRequiredForSpec(workspaceSpec spec.WorkspaceSpec) bool {
+	return len(workspaceTrustIssues(workspaceSpec)) > 0
+}
+
+func workspaceTrustIssues(workspaceSpec spec.WorkspaceSpec) []string {
 	issues := make([]string, 0)
-	if resolved.Config.WorkspaceMount != "" {
+	if workspaceSpec.Config.WorkspaceMount != "" {
 		issues = append(issues, "workspaceMount overrides the default workspace bind mount")
 	}
-	if resolved.Merged.Privileged {
+	if workspaceSpec.Merged.Privileged {
 		issues = append(issues, "privileged container mode is enabled")
 	}
-	if len(resolved.Merged.CapAdd) > 0 {
-		issues = append(issues, fmt.Sprintf("additional Linux capabilities requested (%s)", strings.Join(resolved.Merged.CapAdd, ", ")))
+	if len(workspaceSpec.Merged.CapAdd) > 0 {
+		issues = append(issues, fmt.Sprintf("additional Linux capabilities requested (%s)", strings.Join(workspaceSpec.Merged.CapAdd, ", ")))
 	}
-	if len(resolved.Merged.SecurityOpt) > 0 {
-		issues = append(issues, fmt.Sprintf("custom security options requested (%s)", strings.Join(resolved.Merged.SecurityOpt, ", ")))
+	if len(workspaceSpec.Merged.SecurityOpt) > 0 {
+		issues = append(issues, fmt.Sprintf("custom security options requested (%s)", strings.Join(workspaceSpec.Merged.SecurityOpt, ", ")))
 	}
-	if bindMounts := riskyBindMounts(resolved.Merged.Mounts); len(bindMounts) > 0 {
+	if bindMounts := riskyBindMounts(workspaceSpec.Merged.Mounts); len(bindMounts) > 0 {
 		issues = append(issues, fmt.Sprintf("bind mounts requested (%s)", strings.Join(bindMounts, ", ")))
 	}
-	if risky := riskyRunArgs(resolved.Config.RunArgs); len(risky) > 0 {
+	if risky := riskyRunArgs(workspaceSpec.Config.RunArgs); len(risky) > 0 {
 		issues = append(issues, fmt.Sprintf("docker run arguments request host-affecting settings (%s)", strings.Join(risky, ", ")))
 	}
-	if buildIssue := riskyBuildSettings(resolved); buildIssue != "" {
+	if buildIssue := riskyBuildSettings(workspaceSpec); buildIssue != "" {
 		issues = append(issues, buildIssue)
 	}
 	return issues
@@ -90,16 +106,16 @@ func riskyRunArgs(args []string) []string {
 	return result
 }
 
-func riskyBuildSettings(resolved devcontainer.ResolvedConfig) string {
-	if resolved.Config.Build != nil && len(resolved.Config.Build.Options) > 0 {
-		return fmt.Sprintf("docker build options requested (%s)", strings.Join(resolved.Config.Build.Options, ", "))
+func riskyBuildSettings(workspaceSpec spec.WorkspaceSpec) string {
+	if workspaceSpec.Config.Build != nil && len(workspaceSpec.Config.Build.Options) > 0 {
+		return fmt.Sprintf("docker build options requested (%s)", strings.Join(workspaceSpec.Config.Build.Options, ", "))
 	}
-	dockerfilePath := resolveConfigRelativePath(resolved.ConfigDir, devcontainer.EffectiveDockerfile(resolved.Config))
-	if outsideWorkspace(resolved.WorkspaceFolder, dockerfilePath) {
+	dockerfilePath := resolveConfigRelativePath(workspaceSpec.ConfigDir, devcontainer.EffectiveDockerfile(workspaceSpec.Config))
+	if outsideWorkspace(workspaceSpec.WorkspaceFolder, dockerfilePath) {
 		return fmt.Sprintf("dockerfile path resolves outside the workspace (%s)", dockerfilePath)
 	}
-	contextPath := resolveConfigRelativePath(resolved.ConfigDir, devcontainer.EffectiveContext(resolved.Config))
-	if outsideWorkspace(resolved.WorkspaceFolder, contextPath) {
+	contextPath := resolveConfigRelativePath(workspaceSpec.ConfigDir, devcontainer.EffectiveContext(workspaceSpec.Config))
+	if outsideWorkspace(workspaceSpec.WorkspaceFolder, contextPath) {
 		return fmt.Sprintf("build context resolves outside the workspace (%s)", contextPath)
 	}
 	return ""

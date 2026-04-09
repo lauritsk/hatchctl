@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/lauritsk/hatchctl/internal/bridge"
+	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	"github.com/lauritsk/hatchctl/internal/runtime"
 	storefs "github.com/lauritsk/hatchctl/internal/store/fs"
 )
@@ -52,11 +53,11 @@ func TestBuildReturnsBusyWhenWorkspaceLockIsHeld(t *testing.T) {
 	t.Parallel()
 
 	workspace, defaults := testWorkspaceDefaults(t)
-	stateDir, err := mutationStateDir(defaults)
+	workspacePlan, err := buildWorkspacePlan(defaults, devcontainer.FeatureLockfilePolicyAuto, false, false, false, DotfilesOptions{}, false, false)
 	if err != nil {
-		t.Fatalf("compute mutation state dir: %v", err)
+		t.Fatalf("build workspace plan: %v", err)
 	}
-	lock, err := storefs.AcquireWorkspaceLock(context.Background(), stateDir, "up")
+	lock, err := storefs.AcquireWorkspaceLock(context.Background(), workspacePlan.LockProtected.StateDir, "up")
 	if err != nil {
 		t.Fatalf("seed workspace lock: %v", err)
 	}
@@ -87,11 +88,11 @@ func TestExecBypassesWorkspaceMutationLock(t *testing.T) {
 	t.Parallel()
 
 	_, defaults := testWorkspaceDefaults(t)
-	stateDir, err := mutationStateDir(defaults)
+	workspacePlan, err := buildWorkspacePlan(defaults, devcontainer.FeatureLockfilePolicyAuto, false, false, false, DotfilesOptions{}, false, false)
 	if err != nil {
-		t.Fatalf("compute mutation state dir: %v", err)
+		t.Fatalf("build workspace plan: %v", err)
 	}
-	lock, err := storefs.AcquireWorkspaceLock(context.Background(), stateDir, "build")
+	lock, err := storefs.AcquireWorkspaceLock(context.Background(), workspacePlan.LockProtected.StateDir, "build")
 	if err != nil {
 		t.Fatalf("seed workspace lock: %v", err)
 	}

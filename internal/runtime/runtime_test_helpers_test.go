@@ -9,6 +9,7 @@ import (
 
 	ui "github.com/lauritsk/hatchctl/internal/display"
 	"github.com/lauritsk/hatchctl/internal/docker"
+	workspaceplan "github.com/lauritsk/hatchctl/internal/plan"
 	"github.com/lauritsk/hatchctl/internal/policy"
 )
 
@@ -84,7 +85,7 @@ func newTestRunner(t testing.TB, backend runtimeBackend) *Runner {
 		backend:       backend,
 		imageVerifier: policy.NewImageVerificationPolicy(stdin, io.Discard),
 	}
-	runner.planner = newWorkspacePlanner(runner)
+	runner.planner = workspaceplan.NewResolver()
 	return runner
 }
 
