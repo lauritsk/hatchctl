@@ -1,7 +1,10 @@
 package fileutil
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 )
@@ -11,17 +14,12 @@ func ReadFile(path string) ([]byte, error) {
 }
 
 func WriteFile(path string, data []byte, perm os.FileMode) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
-	file, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".tmp-*")
+	file, tmpPath, err := createAtomicTempFile(dir, filepath.Base(path), perm)
 	if err != nil {
-		return err
-	}
-	tmpPath := file.Name()
-	if err := file.Chmod(perm); err != nil {
-		_ = file.Close()
-		_ = os.Remove(tmpPath)
 		return err
 	}
 	if _, err := file.Write(data); err != nil {
@@ -42,7 +40,7 @@ func WriteFile(path string, data []byte, perm os.FileMode) error {
 		_ = os.Remove(tmpPath)
 		return err
 	}
-	return syncDir(filepath.Dir(path))
+	return syncDir(dir)
 }
 
 func RemoveFile(path string) error {
@@ -63,4 +61,31 @@ func syncDir(path string) error {
 		return err
 	}
 	return nil
+}
+
+func createAtomicTempFile(dir string, base string, perm os.FileMode) (*os.File, string, error) {
+	for range 8 {
+		suffix, err := randomSuffix()
+		if err != nil {
+			return nil, "", err
+		}
+		path := filepath.Join(dir, fmt.Sprintf("%s.tmp-%s", base, suffix))
+		file, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, perm)
+		if err == nil {
+			return file, path, nil
+		}
+		if os.IsExist(err) {
+			continue
+		}
+		return nil, "", err
+	}
+	return nil, "", fmt.Errorf("create temp file for %s: too many collisions", base)
+}
+
+func randomSuffix() (string, error) {
+	bytes := make([]byte, 6)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(bytes), nil
 }
