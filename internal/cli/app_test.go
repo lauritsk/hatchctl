@@ -14,7 +14,7 @@ import (
 	"github.com/lauritsk/hatchctl/internal/bridge"
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	ui "github.com/lauritsk/hatchctl/internal/display"
-	"github.com/lauritsk/hatchctl/internal/runtime"
+	"github.com/lauritsk/hatchctl/internal/reconcile"
 )
 
 type stubService struct {
@@ -245,7 +245,7 @@ func TestRunExecJSONRequiresCommand(t *testing.T) {
 
 	var out bytes.Buffer
 	var errOut bytes.Buffer
-	app := NewWithService(&out, &errOut, appcore.NewWithExecutorWithoutMutationLock(&runtime.Runner{}))
+	app := NewWithService(&out, &errOut, appcore.NewWithExecutorWithoutMutationLock(&reconcile.Executor{}))
 
 	err := app.Run(context.Background(), []string{"exec", "--json"})
 	if err == nil || !strings.Contains(err.Error(), "missing command for exec --json") || !strings.Contains(err.Error(), "hatchctl exec --json -- <command>") {
@@ -258,7 +258,7 @@ func TestExecHelpExplainsShellAndSeparator(t *testing.T) {
 
 	var out bytes.Buffer
 	var errOut bytes.Buffer
-	app := NewWithService(&out, &errOut, appcore.NewWithExecutorWithoutMutationLock(&runtime.Runner{}))
+	app := NewWithService(&out, &errOut, appcore.NewWithExecutorWithoutMutationLock(&reconcile.Executor{}))
 
 	if err := app.Run(context.Background(), []string{"exec", "--help"}); err != nil {
 		t.Fatalf("run app: %v", err)
@@ -519,6 +519,19 @@ func TestLifecycleAliasPassesPhase(t *testing.T) {
 	assertContainsAll(t, out.String(), `Lifecycle phase "start" completed`, "container abc123")
 }
 
+func TestRunLifecycleRejectsInvalidPhase(t *testing.T) {
+	isolateConfigHome(t)
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	app := NewWithService(&out, &errOut, appcore.NewWithExecutorWithoutMutationLock(&reconcile.Executor{}))
+
+	err := app.Run(context.Background(), []string{"run", "--phase", "bogus"})
+	if err == nil || !strings.Contains(err.Error(), `invalid lifecycle phase "bogus"`) {
+		t.Fatalf("expected invalid phase error, got %v", err)
+	}
+}
+
 func TestRunBridgeDoctorUsesFrozenLockfilePolicy(t *testing.T) {
 	isolateConfigHome(t)
 
@@ -549,7 +562,7 @@ func TestBridgeHelpHidesInternalServeCommand(t *testing.T) {
 
 	var out bytes.Buffer
 	var errOut bytes.Buffer
-	app := NewWithService(&out, &errOut, appcore.NewWithExecutorWithoutMutationLock(&runtime.Runner{}))
+	app := NewWithService(&out, &errOut, appcore.NewWithExecutorWithoutMutationLock(&reconcile.Executor{}))
 
 	if err := app.Run(context.Background(), []string{"bridge", "--help"}); err != nil {
 		t.Fatalf("run app: %v", err)
@@ -618,7 +631,7 @@ func TestRunRejectsInvalidLockfilePolicy(t *testing.T) {
 
 	var out bytes.Buffer
 	var errOut bytes.Buffer
-	app := NewWithService(&out, &errOut, appcore.NewWithExecutorWithoutMutationLock(&runtime.Runner{}))
+	app := NewWithService(&out, &errOut, appcore.NewWithExecutorWithoutMutationLock(&reconcile.Executor{}))
 
 	err := app.Run(context.Background(), []string{"up", "--lockfile-policy", "bogus"})
 	if err == nil || !strings.Contains(err.Error(), `invalid lockfile policy "bogus"`) || !strings.Contains(err.Error(), "expected auto, frozen, or update") {

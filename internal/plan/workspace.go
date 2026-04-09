@@ -57,9 +57,14 @@ type LockProtectedArtifacts struct {
 	RequiresRevalidation bool
 }
 
+type DesiredState struct {
+	Resolved devcontainer.ResolvedConfig
+}
+
 type WorkspacePlan struct {
 	Immutable              ImmutableInputs
 	LockProtected          LockProtectedArtifacts
+	Desired                DesiredState
 	ReadOnly               bool
 	FeatureMaterialization FeatureMaterializationMode
 	Preferences            Preferences
@@ -136,6 +141,11 @@ func BuildWorkspacePlan(req BuildWorkspacePlanRequest) (WorkspacePlan, error) {
 
 func (p WorkspacePlan) Valid() bool {
 	return p.Immutable.Spec.ConfigPath != ""
+}
+
+func (p WorkspacePlan) WithResolved(resolved devcontainer.ResolvedConfig) WorkspacePlan {
+	p.Desired.Resolved = resolved
+	return p
 }
 
 func (p WorkspacePlan) ResolveOptions(verifyImage func(context.Context, string) security.VerificationResult) devcontainer.ResolveOptions {

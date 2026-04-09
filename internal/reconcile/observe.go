@@ -94,7 +94,7 @@ type backend interface {
 
 type Observer struct {
 	backend          backend
-	readState        func(string) (devcontainer.State, error)
+	readState        func(string) (storefs.WorkspaceState, error)
 	readCoordination func(string) (storefs.CoordinationRecord, error)
 }
 
@@ -185,7 +185,23 @@ func (o *Observer) RevalidateReadToken(ctx context.Context, observed ObservedSta
 	if inspect.ID != token.PrimaryContainer {
 		return fmt.Errorf("%w: target container changed", ErrObservedStateStale)
 	}
+	if !readTokenMatchesInspect(token, inspect) {
+		return fmt.Errorf("%w: target identity changed", ErrObservedStateStale)
+	}
 	return nil
+}
+
+func readTokenMatchesInspect(token ReadToken, inspect docker.ContainerInspect) bool {
+	switch token.TargetKind {
+	case TargetKindComposeService:
+		if token.ComposeProject != "" && inspect.Config.Labels["com.docker.compose.project"] != token.ComposeProject {
+			return false
+		}
+		if token.ComposeService != "" && inspect.Config.Labels["com.docker.compose.service"] != token.ComposeService {
+			return false
+		}
+	}
+	return true
 }
 
 func (o *Observer) observeTarget(ctx context.Context, resolved devcontainer.ResolvedConfig, state devcontainer.State, inspectTarget bool, allowMissing bool) (RuntimeTarget, devcontainer.State, *docker.ContainerInspect, error) {
@@ -374,7 +390,7 @@ func observeCapabilities(container *docker.ContainerInspect, state devcontainer.
 
 func (o *Observer) withDefaults() *Observer {
 	if o.readState == nil {
-		o.readState = devcontainer.ReadState
+		o.readState = storefs.ReadWorkspaceState
 	}
 	if o.readCoordination == nil {
 		o.readCoordination = storefs.ReadCoordination

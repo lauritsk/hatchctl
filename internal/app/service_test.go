@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
-	"github.com/lauritsk/hatchctl/internal/runtime"
+	"github.com/lauritsk/hatchctl/internal/reconcile"
 	storefs "github.com/lauritsk/hatchctl/internal/store/fs"
 )
 
@@ -28,7 +28,7 @@ func TestBuildReturnsBusyWhenWorkspaceLockIsHeld(t *testing.T) {
 		_ = lock.Release()
 	})
 
-	service := New(&runtime.Runner{})
+	service := New(&reconcile.Executor{})
 
 	_, err = service.Build(context.Background(), BuildRequest{Defaults: defaults})
 	var busyErr *storefs.WorkspaceBusyError
@@ -53,7 +53,7 @@ func TestExecReturnsBusyWhenWorkspaceLockIsHeld(t *testing.T) {
 		_ = lock.Release()
 	})
 
-	service := New(&runtime.Runner{})
+	service := New(&reconcile.Executor{})
 
 	_, err = service.Exec(context.Background(), ExecRequest{Defaults: defaults})
 	var busyErr *storefs.WorkspaceBusyError

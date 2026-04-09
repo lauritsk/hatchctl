@@ -1,15 +1,14 @@
 package devcontainer
 
 import (
-	"path/filepath"
-
 	"github.com/lauritsk/hatchctl/internal/spec"
+	storefs "github.com/lauritsk/hatchctl/internal/store/fs"
 )
 
 type MountSpec = spec.MountSpec
 
 func ComposeOverrideFile(stateDir string) string {
-	return filepath.Join(stateDir, "docker-compose.override.yml")
+	return storefs.ComposeOverridePath(stateDir)
 }
 
 func ResolveComposeFiles(configDir string, raw any) ([]string, error) {

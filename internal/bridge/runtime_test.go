@@ -308,9 +308,13 @@ func TestPrepareAndRuntimeFilesUseOwnerOnlyPermissions(t *testing.T) {
 	}
 
 	assertMode(session.StatePath, 0o700)
+	assertMode(filepath.Join(session.StatePath, "bin"), 0o755)
 	assertMode(filepath.Join(session.StatePath, "session.json"), 0o600)
 	assertMode(session.ConfigPath, 0o600)
 	assertMode(session.StatusPath, 0o600)
+	assertMode(session.HelperPath, 0o755)
+	assertMode(filepath.Join(session.StatePath, "bin", "xdg-open"), 0o755)
+	assertMode(filepath.Join(session.StatePath, "bin", "hatchctl"), 0o755)
 
 	if err := os.WriteFile(session.PIDPath, []byte("123"), 0o600); err != nil {
 		t.Fatalf("write pid file: %v", err)

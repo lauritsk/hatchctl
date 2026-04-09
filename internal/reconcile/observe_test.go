@@ -187,3 +187,32 @@ func TestRevalidateReadTokenDetectsCoordinationChanges(t *testing.T) {
 		t.Fatalf("expected stale observed state, got %v", err)
 	}
 }
+
+func TestRevalidateReadTokenDetectsComposeIdentityChanges(t *testing.T) {
+	t.Parallel()
+
+	observer := NewObserver(fakeBackend{
+		inspectCont: func(_ context.Context, containerID string) (docker.ContainerInspect, error) {
+			return docker.ContainerInspect{
+				ID: containerID,
+				Config: docker.InspectConfig{Labels: map[string]string{
+					"com.docker.compose.project": "demo",
+					"com.docker.compose.service": "db",
+				}},
+			}, nil
+		},
+	})
+	observed := ObservedState{
+		Resolved: devcontainer.ResolvedConfig{StateDir: t.TempDir()},
+		ReadTarget: ReadToken{
+			TargetKind:       TargetKindComposeService,
+			ComposeProject:   "demo",
+			ComposeService:   "app",
+			PrimaryContainer: "container-123",
+		},
+	}
+
+	if err := observer.RevalidateReadToken(context.Background(), observed); !errors.Is(err, ErrObservedStateStale) {
+		t.Fatalf("expected stale observed state, got %v", err)
+	}
+}

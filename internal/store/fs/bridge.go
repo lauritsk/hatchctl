@@ -30,6 +30,24 @@ func WorkspaceBridgePaths(stateDir string) BridgePaths {
 	}
 }
 
+func EnsureWorkspaceBridgePaths(stateDir string) (BridgePaths, error) {
+	paths := WorkspaceBridgePaths(stateDir)
+	if err := os.MkdirAll(paths.Dir, 0o700); err != nil {
+		return BridgePaths{}, err
+	}
+	if err := os.MkdirAll(paths.BinDir, 0o755); err != nil {
+		return BridgePaths{}, err
+	}
+	return paths, nil
+}
+
+func WriteBridgeExecutable(path string, data []byte) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	return fileutil.WriteFile(path, data, 0o755)
+}
+
 func ReadBridgeSession[T any](bridgeDir string) (*T, error) {
 	data, err := fileutil.ReadFile(filepath.Join(bridgeDir, "session.json"))
 	if err != nil {

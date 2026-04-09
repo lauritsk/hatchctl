@@ -10,12 +10,12 @@ import (
 	ui "github.com/lauritsk/hatchctl/internal/display"
 	"github.com/lauritsk/hatchctl/internal/docker"
 	workspaceplan "github.com/lauritsk/hatchctl/internal/plan"
-	"github.com/lauritsk/hatchctl/internal/runtime"
+	"github.com/lauritsk/hatchctl/internal/reconcile"
 	storefs "github.com/lauritsk/hatchctl/internal/store/fs"
 )
 
 type Service struct {
-	executor      *runtime.Runner
+	executor      *reconcile.Executor
 	buildPlans    bool
 	lockMutations bool
 }
@@ -75,29 +75,29 @@ type BridgeDoctorRequest struct {
 }
 
 type (
-	UpResult           = runtime.UpResult
-	BuildResult        = runtime.BuildResult
-	ReadConfigResult   = runtime.ReadConfigResult
-	RunLifecycleResult = runtime.RunLifecycleResult
-	DotfilesStatus     = runtime.DotfilesStatus
-	ExitError          = runtime.ExitError
+	UpResult           = reconcile.UpResult
+	BuildResult        = reconcile.BuildResult
+	ReadConfigResult   = reconcile.ReadConfigResult
+	RunLifecycleResult = reconcile.RunLifecycleResult
+	DotfilesStatus     = reconcile.DotfilesStatus
+	ExitError          = reconcile.ExitError
 )
 
-func New(executor *runtime.Runner) *Service {
+func New(executor *reconcile.Executor) *Service {
 	return NewWithExecutor(executor)
 }
 
-func NewWithExecutor(executor *runtime.Runner) *Service {
+func NewWithExecutor(executor *reconcile.Executor) *Service {
 	return &Service{executor: executor, buildPlans: true, lockMutations: true}
 }
 
-func NewWithExecutorWithoutMutationLock(executor *runtime.Runner) *Service {
+func NewWithExecutorWithoutMutationLock(executor *reconcile.Executor) *Service {
 	return &Service{executor: executor}
 }
 
 func NewDefault() *Service {
 	engine := docker.NewClient("docker")
-	return NewWithExecutor(runtime.NewRunner(engine))
+	return NewWithExecutor(reconcile.NewExecutor(engine))
 }
 
 func (s *Service) Up(ctx context.Context, req UpRequest) (UpResult, error) {
@@ -108,7 +108,7 @@ func (s *Service) Up(ctx context.Context, req UpRequest) (UpResult, error) {
 	return withMutationLock(s, ctx, "up", func() (workspaceplan.WorkspacePlan, error) {
 		return s.maybeBuildWorkspacePlan(req.Defaults, policy, false, req.Defaults.BridgeEnabled, req.Defaults.SSHAgent, req.Defaults.Dotfiles, req.Defaults.TrustWorkspace, req.AllowHostLifecycle)
 	}, func(workspacePlan workspaceplan.WorkspacePlan) (UpResult, error) {
-		return s.upWithExecutor(ctx, req, workspacePlan)
+		return s.executor.Up(ctx, workspacePlan, reconcile.UpOptions{Recreate: req.Recreate, Debug: req.Global.Debug, IO: reconcile.CommandStreams{Stdin: req.IO.Stdin, Stdout: req.IO.Stdout, Stderr: req.IO.Stderr, Events: req.IO.Events}})
 	})
 }
 
@@ -120,7 +120,7 @@ func (s *Service) Build(ctx context.Context, req BuildRequest) (BuildResult, err
 	return withMutationLock(s, ctx, "build", func() (workspaceplan.WorkspacePlan, error) {
 		return s.maybeBuildWorkspacePlan(req.Defaults, policy, false, false, false, DotfilesOptions{}, req.Defaults.TrustWorkspace, false)
 	}, func(workspacePlan workspaceplan.WorkspacePlan) (BuildResult, error) {
-		return s.buildWithExecutor(ctx, req, workspacePlan)
+		return s.executor.Build(ctx, workspacePlan, reconcile.BuildOptions{Debug: req.Global.Debug, IO: reconcile.CommandStreams{Stdin: req.IO.Stdin, Stdout: req.IO.Stdout, Stderr: req.IO.Stderr, Events: req.IO.Events}})
 	})
 }
 
@@ -136,7 +136,7 @@ func (s *Service) Exec(ctx context.Context, req ExecRequest) (int, error) {
 	if err := ensureNoActiveMutation(workspacePlan.LockProtected.StateDir); err != nil {
 		return 0, err
 	}
-	return s.execWithExecutor(ctx, req, workspacePlan)
+	return s.executor.Exec(ctx, workspacePlan, reconcile.ExecOptions{Args: req.Args, RemoteEnv: req.RemoteEnv, Debug: req.Global.Debug, IO: reconcile.CommandStreams{Stdin: req.IO.Stdin, Stdout: req.IO.Stdout, Stderr: req.IO.Stderr, Events: req.IO.Events}})
 }
 
 func (s *Service) ReadConfig(ctx context.Context, req ReadConfigRequest) (ReadConfigResult, error) {
@@ -148,7 +148,7 @@ func (s *Service) ReadConfig(ctx context.Context, req ReadConfigRequest) (ReadCo
 	if err != nil {
 		return ReadConfigResult{}, err
 	}
-	return s.readConfigWithExecutor(ctx, req, workspacePlan)
+	return s.executor.ReadConfig(ctx, workspacePlan, reconcile.ReadConfigOptions{Debug: req.Global.Debug, IO: reconcile.CommandStreams{Stdin: req.IO.Stdin, Stdout: req.IO.Stdout, Stderr: req.IO.Stderr, Events: req.IO.Events}})
 }
 
 func (s *Service) RunLifecycle(ctx context.Context, req RunLifecycleRequest) (RunLifecycleResult, error) {
@@ -156,10 +156,15 @@ func (s *Service) RunLifecycle(ctx context.Context, req RunLifecycleRequest) (Ru
 	if err != nil {
 		return RunLifecycleResult{}, err
 	}
+	phase, err := reconcile.NormalizeLifecyclePhase(req.Phase)
+	if err != nil {
+		return RunLifecycleResult{}, err
+	}
+	req.Phase = phase
 	return withMutationLock(s, ctx, "run", func() (workspaceplan.WorkspacePlan, error) {
 		return s.maybeBuildWorkspacePlan(req.Defaults, policy, true, false, false, req.Defaults.Dotfiles, false, req.AllowHostLifecycle)
 	}, func(workspacePlan workspaceplan.WorkspacePlan) (RunLifecycleResult, error) {
-		return s.runLifecycleWithExecutor(ctx, req, workspacePlan)
+		return s.executor.RunLifecycle(ctx, workspacePlan, reconcile.RunLifecycleOptions{Phase: req.Phase, Debug: req.Global.Debug, IO: reconcile.CommandStreams{Stdin: req.IO.Stdin, Stdout: req.IO.Stdout, Stderr: req.IO.Stderr, Events: req.IO.Events}})
 	})
 }
 
@@ -172,11 +177,7 @@ func (s *Service) BridgeDoctor(ctx context.Context, req BridgeDoctorRequest) (br
 	if err != nil {
 		return bridge.Report{}, err
 	}
-	return s.bridgeDoctorWithExecutor(ctx, req, workspacePlan)
-}
-
-func (o DotfilesOptions) runtime() runtime.DotfilesOptions {
-	return runtime.DotfilesOptions{Repository: o.Repository, InstallCommand: o.InstallCommand, TargetPath: o.TargetPath}
+	return s.executor.BridgeDoctor(ctx, workspacePlan, reconcile.BridgeDoctorOptions{Debug: req.Global.Debug, IO: reconcile.CommandStreams{Stdin: req.IO.Stdin, Stdout: req.IO.Stdout, Stderr: req.IO.Stderr, Events: req.IO.Events}})
 }
 
 func buildWorkspacePlan(defaults CommandDefaults, lockfilePolicy devcontainer.FeatureLockfilePolicy, readOnly bool, bridgeEnabled bool, sshAgent bool, dotfiles DotfilesOptions, trustWorkspace bool, allowHostLifecycle bool) (workspaceplan.WorkspacePlan, error) {

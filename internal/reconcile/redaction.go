@@ -1,4 +1,4 @@
-package runtime
+package reconcile
 
 import "strings"
 
@@ -16,7 +16,7 @@ var sensitiveKeyMarkers = []string{
 	"AUTHORIZATION",
 }
 
-func redactSensitiveMap(values map[string]string) map[string]string {
+func RedactSensitiveMap(values map[string]string) map[string]string {
 	if len(values) == 0 {
 		return values
 	}

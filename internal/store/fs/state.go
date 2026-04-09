@@ -33,6 +33,10 @@ type WorkspaceState struct {
 
 const workspaceStateSchemaVersion = 2
 
+func EnsureWorkspaceStateDir(stateDir string) error {
+	return os.MkdirAll(stateDir, 0o700)
+}
+
 func ReadWorkspaceState(stateDir string) (WorkspaceState, error) {
 	path := filepath.Join(stateDir, "state.json")
 	data, err := fileutil.ReadFile(path)
@@ -57,7 +61,7 @@ func ReadWorkspaceState(stateDir string) (WorkspaceState, error) {
 }
 
 func WriteWorkspaceState(stateDir string, state WorkspaceState) error {
-	if err := os.MkdirAll(stateDir, 0o700); err != nil {
+	if err := EnsureWorkspaceStateDir(stateDir); err != nil {
 		return err
 	}
 	path := filepath.Join(stateDir, "state.json")

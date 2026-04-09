@@ -1,6 +1,7 @@
 package reconcile
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
@@ -71,5 +72,14 @@ func TestPlanUpLifecycleUsesPersistedKeyAndTransitionState(t *testing.T) {
 	plan = PlanUpLifecycle(observed, DesiredLifecycle{Key: "lifecycle-key"})
 	if !plan.RunCreate || !plan.NeedsRecovery {
 		t.Fatalf("expected pending lifecycle transition to force recovery, got %#v", plan)
+	}
+}
+
+func TestPlanLifecycleCommandRejectsInvalidPhase(t *testing.T) {
+	t.Parallel()
+
+	_, err := PlanLifecycleCommand(ObservedState{}, DesiredLifecycle{Requested: "bogus"})
+	if !errors.Is(err, ErrInvalidLifecyclePhase) {
+		t.Fatalf("expected invalid lifecycle phase, got %v", err)
 	}
 }

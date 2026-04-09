@@ -2,6 +2,8 @@ package reconcile
 
 import (
 	"errors"
+	"fmt"
+	"strings"
 
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	"github.com/lauritsk/hatchctl/internal/docker"
@@ -99,6 +101,8 @@ type LifecyclePlan struct {
 
 var ErrContainerObservationMissing = errors.New("container observation is required for reconcile")
 
+var ErrInvalidLifecyclePhase = errors.New("invalid lifecycle phase")
+
 func PlanImage(desired DesiredImage, observed *docker.ImageInspect) ImagePlan {
 	plan := ImagePlan{
 		Action:      ImageActionUseTarget,
@@ -171,9 +175,26 @@ func PlanUpLifecycle(observed ObservedState, desired DesiredLifecycle) Lifecycle
 	}
 }
 
-func PlanLifecycleCommand(observed ObservedState, desired DesiredLifecycle) LifecyclePlan {
+func NormalizeLifecyclePhase(requested string) (string, error) {
+	phase := strings.ToLower(strings.TrimSpace(requested))
+	if phase == "" {
+		return "all", nil
+	}
+	switch phase {
+	case "all", "create", "start", "attach":
+		return phase, nil
+	default:
+		return "", fmt.Errorf("%w %q; expected all, create, start, or attach", ErrInvalidLifecyclePhase, requested)
+	}
+}
+
+func PlanLifecycleCommand(observed ObservedState, desired DesiredLifecycle) (LifecyclePlan, error) {
+	phase, err := NormalizeLifecyclePhase(desired.Requested)
+	if err != nil {
+		return LifecyclePlan{}, err
+	}
 	plan := LifecyclePlan{Key: desired.Key}
-	switch desired.Requested {
+	switch phase {
 	case "create":
 		plan.RunCreate = true
 		plan.TransitionKind = LifecyclePhaseCreate
@@ -186,14 +207,9 @@ func PlanLifecycleCommand(observed ObservedState, desired DesiredLifecycle) Life
 		plan.RunStart = true
 		plan.RunAttach = true
 		plan.TransitionKind = LifecyclePhaseAll
-	default:
-		plan.RunCreate = true
-		plan.RunStart = true
-		plan.RunAttach = true
-		plan.TransitionKind = LifecyclePhaseAll
 	}
 	plan.NeedsRecovery = observed.Control.WorkspaceState.LifecycleTransition != nil
-	return plan
+	return plan, nil
 }
 
 func LifecycleStateApplied(state devcontainer.State, desiredKey string) bool {

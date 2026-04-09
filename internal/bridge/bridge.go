@@ -15,7 +15,6 @@ import (
 	"syscall"
 
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
-	"github.com/lauritsk/hatchctl/internal/fileutil"
 	storefs "github.com/lauritsk/hatchctl/internal/store/fs"
 )
 
@@ -80,19 +79,16 @@ const (
 )
 
 func Prepare(stateDir string, enabled bool, helperArch string) (*Session, error) {
-	paths := storefs.WorkspaceBridgePaths(stateDir)
-	bridgeDir := paths.Dir
-	if err := os.MkdirAll(bridgeDir, 0o700); err != nil {
+	paths, err := storefs.EnsureWorkspaceBridgePaths(stateDir)
+	if err != nil {
 		return nil, err
 	}
+	bridgeDir := paths.Dir
 	session, err := loadOrCreateSession(bridgeDir, paths, enabled)
 	if err != nil {
 		return nil, err
 	}
 	binPath := paths.BinDir
-	if err := os.MkdirAll(binPath, 0o755); err != nil {
-		return nil, err
-	}
 	helperPath := filepath.Join(binPath, "devcontainer-open")
 	if session.Host == "" {
 		session.Host = containerBridgeHost
@@ -107,10 +103,10 @@ func Prepare(stateDir string, enabled bool, helperArch string) (*Session, error)
 	if session.Token == "" {
 		session.Token = randomToken(18)
 	}
-	if err := fileutil.WriteFile(helperPath, []byte(openShim(session)), 0o755); err != nil {
+	if err := storefs.WriteBridgeExecutable(helperPath, []byte(openShim(session))); err != nil {
 		return nil, err
 	}
-	if err := fileutil.WriteFile(filepath.Join(binPath, "xdg-open"), []byte(xdgOpenShim()), 0o755); err != nil {
+	if err := storefs.WriteBridgeExecutable(filepath.Join(binPath, "xdg-open"), []byte(xdgOpenShim())); err != nil {
 		return nil, err
 	}
 	resolvedHelperArch := normalizeHelperArch(helperArch)
@@ -240,7 +236,7 @@ func installHelperBinary(binPath string, helperArch string) error {
 	if err != nil {
 		return err
 	}
-	return fileutil.WriteFile(helperPath, data, 0o755)
+	return storefs.WriteBridgeExecutable(helperPath, data)
 }
 
 func helperBinaryData(helperArch string) ([]byte, error) {
