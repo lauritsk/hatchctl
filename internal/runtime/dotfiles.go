@@ -9,6 +9,7 @@ import (
 
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	ui "github.com/lauritsk/hatchctl/internal/display"
+	"github.com/lauritsk/hatchctl/internal/reconcile"
 )
 
 const dotfilesInstallHelper = `set -eu
@@ -182,15 +183,15 @@ func dotfilesStatus(state devcontainer.State, opts DotfilesOptions) *DotfilesSta
 	}
 }
 
-func (r *Runner) installDotfiles(ctx context.Context, containerID string, resolved devcontainer.ResolvedConfig, opts DotfilesOptions, events ui.Sink) error {
+func (r *Runner) installDotfiles(ctx context.Context, observed reconcile.ObservedState, opts DotfilesOptions, events ui.Sink) error {
 	if !opts.Enabled() {
 		return nil
 	}
-	targetPath, err := r.resolveDotfilesTargetPath(ctx, containerID, resolved, opts.TargetPath)
+	targetPath, err := r.resolveDotfilesTargetPath(ctx, observed, opts.TargetPath)
 	if err != nil {
 		return err
 	}
-	args, err := r.dockerExecArgs(ctx, containerID, resolved, true, false, nil, []string{"/bin/sh", "-s", "--", opts.Repository, targetPath, opts.InstallCommand})
+	args, err := r.dockerExecArgs(ctx, observed, true, false, nil, []string{"/bin/sh", "-s", "--", opts.Repository, targetPath, opts.InstallCommand})
 	if err != nil {
 		return err
 	}
@@ -199,15 +200,15 @@ func (r *Runner) installDotfiles(ctx context.Context, containerID string, resolv
 	return r.backend.Run(ctx, runtimeCommand{Kind: runtimeCommandDocker, Phase: phaseDotfiles, Label: label, Args: args, Stdin: strings.NewReader(dotfilesInstallHelper), Stdout: r.stdout, Stderr: r.stderr, Events: events})
 }
 
-func (r *Runner) resolveDotfilesTargetPath(ctx context.Context, containerID string, resolved devcontainer.ResolvedConfig, targetPath string) (string, error) {
+func (r *Runner) resolveDotfilesTargetPath(ctx context.Context, observed reconcile.ObservedState, targetPath string) (string, error) {
 	if !strings.HasPrefix(targetPath, "$HOME") {
 		return targetPath, nil
 	}
-	user, err := r.effectiveExecUser(ctx, containerID, resolved)
+	user, err := r.effectiveExecUser(ctx, observed)
 	if err != nil {
 		return "", err
 	}
-	home, err := r.resolveExecHome(ctx, containerID, user)
+	home, err := r.resolveExecHome(ctx, observed, user)
 	if err != nil {
 		return "", err
 	}

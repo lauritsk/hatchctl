@@ -78,6 +78,7 @@ func (s *workspaceSession) Resolved() devcontainer.ResolvedConfig {
 
 func (s *workspaceSession) SetResolved(resolved devcontainer.ResolvedConfig) {
 	s.prepared.resolved = resolved
+	s.prepared.observed.Resolved = resolved
 }
 
 func (s *workspaceSession) Image() string {
@@ -90,9 +91,12 @@ func (s *workspaceSession) State() devcontainer.State {
 
 func (s *workspaceSession) SetState(state devcontainer.State) {
 	s.prepared.state = state
+	s.prepared.observed.Control.WorkspaceState = state
 	s.prepared.containerID = state.ContainerID
+	s.prepared.observed.Target.PrimaryContainer = state.ContainerID
 	if s.prepared.containerInspect != nil && s.prepared.containerInspect.ID != state.ContainerID {
 		s.prepared.containerInspect = nil
+		s.prepared.observed.Container = nil
 	}
 }
 
@@ -103,8 +107,11 @@ func (s *workspaceSession) ContainerID() string {
 func (s *workspaceSession) SetContainerID(containerID string) {
 	s.prepared.containerID = containerID
 	s.prepared.state.ContainerID = containerID
+	s.prepared.observed.Target.PrimaryContainer = containerID
+	s.prepared.observed.Control.WorkspaceState.ContainerID = containerID
 	if s.prepared.containerInspect != nil && s.prepared.containerInspect.ID != containerID {
 		s.prepared.containerInspect = nil
+		s.prepared.observed.Container = nil
 	}
 }
 
@@ -114,6 +121,11 @@ func (s *workspaceSession) ContainerInspect() *docker.ContainerInspect {
 
 func (s *workspaceSession) SetContainerInspect(inspect *docker.ContainerInspect) {
 	s.prepared.containerInspect = inspect
+	s.prepared.observed.Container = inspect
+}
+
+func (s *workspaceSession) Observed() reconcile.ObservedState {
+	return s.prepared.observed
 }
 
 func (s *workspaceSession) EffectiveRemoteUser(ctx context.Context) (string, error) {

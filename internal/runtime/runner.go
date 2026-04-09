@@ -329,6 +329,11 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 		return UpResult{}, err
 	}
 	session.SetContainerID(containerID)
+	inspect, err := runner.backend.InspectContainer(ctx, containerID)
+	if err != nil {
+		return UpResult{}, err
+	}
+	session.SetContainerInspect(&inspect)
 	runner.emitPhaseProgress(opts.Events, phaseContainer, "Reconciling container user")
 	if err := runner.ensureUpdatedUIDContainer(ctx, resolved, image, containerID, opts.Events); err != nil {
 		return UpResult{}, err
@@ -351,13 +356,14 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 	if err != nil {
 		return UpResult{}, err
 	}
-	lifecyclePlan := reconcile.PlanUpLifecycle(session.prepared.observed, reconcile.DesiredLifecycle{Key: lifecycleKey, Dotfiles: reconcile.DotfilesConfig{Repository: dotfiles.Repository, InstallCommand: dotfiles.InstallCommand, TargetPath: dotfiles.TargetPath}, Created: created})
+	observed := session.Observed()
+	lifecyclePlan := reconcile.PlanUpLifecycle(observed, reconcile.DesiredLifecycle{Key: lifecycleKey, Dotfiles: reconcile.DotfilesConfig{Repository: dotfiles.Repository, InstallCommand: dotfiles.InstallCommand, TargetPath: dotfiles.TargetPath}, Created: created})
 	tracker.BeginLifecycle(string(lifecyclePlan.TransitionKind), lifecycleKey)
 	if err := tracker.Persist(); err != nil {
 		return UpResult{}, err
 	}
 	runner.emitPhaseProgress(opts.Events, phaseLifecycle, "Running lifecycle commands")
-	if err := runner.runLifecyclePlan(ctx, resolved, containerID, state, dotfiles, workspacePlan.Trust.HostLifecycleAllowed, opts.Events, lifecyclePlan); err != nil {
+	if err := runner.runLifecyclePlan(ctx, observed, state, dotfiles, workspacePlan.Trust.HostLifecycleAllowed, opts.Events, lifecyclePlan); err != nil {
 		return UpResult{}, err
 	}
 
@@ -434,6 +440,7 @@ func (r *Runner) Exec(ctx context.Context, opts ExecOptions) (int, error) {
 		if resolved.Merged, err = injectSSHAgent(resolved.Merged); err != nil {
 			return 0, err
 		}
+		session.SetResolved(resolved)
 		if err := ensureContainerHasSSHAgent(session.ContainerInspect(), sshAgentContainerSocketPath); err != nil {
 			return 0, err
 		}
@@ -442,7 +449,7 @@ func (r *Runner) Exec(ctx context.Context, opts ExecOptions) (int, error) {
 		return 0, err
 	}
 	interactive := shouldAllocateTTY(opts.Stdin, opts.Stdout)
-	args, err := r.dockerExecArgs(ctx, session.ContainerID(), resolved, opts.Stdin != nil, interactive, opts.RemoteEnv, opts.Args)
+	args, err := r.dockerExecArgs(ctx, session.Observed(), opts.Stdin != nil, interactive, opts.RemoteEnv, opts.Args)
 	if err != nil {
 		return 0, err
 	}
@@ -584,6 +591,7 @@ func (r *Runner) RunLifecycle(ctx context.Context, opts RunLifecycleOptions) (Ru
 	}
 	resolved := session.Resolved()
 	state := session.State()
+	observed := session.Observed()
 	phase := strings.ToLower(opts.Phase)
 	if phase == "" {
 		phase = "all"
@@ -592,7 +600,7 @@ func (r *Runner) RunLifecycle(ctx context.Context, opts RunLifecycleOptions) (Ru
 	if err != nil {
 		return RunLifecycleResult{}, err
 	}
-	lifecyclePlan := reconcile.PlanLifecycleCommand(session.prepared.observed, reconcile.DesiredLifecycle{Key: lifecycleKey, Requested: phase, Dotfiles: reconcile.DotfilesConfig{Repository: dotfiles.Repository, InstallCommand: dotfiles.InstallCommand, TargetPath: dotfiles.TargetPath}})
+	lifecyclePlan := reconcile.PlanLifecycleCommand(observed, reconcile.DesiredLifecycle{Key: lifecycleKey, Requested: phase, Dotfiles: reconcile.DotfilesConfig{Repository: dotfiles.Repository, InstallCommand: dotfiles.InstallCommand, TargetPath: dotfiles.TargetPath}})
 	tracker := newWorkspaceStateTracker(resolved.StateDir, state)
 	if lifecyclePlan.RunCreate {
 		tracker.BeginLifecycle(string(lifecyclePlan.TransitionKind), lifecyclePlan.Key)
@@ -601,7 +609,7 @@ func (r *Runner) RunLifecycle(ctx context.Context, opts RunLifecycleOptions) (Ru
 		}
 	}
 	runner.emitPhaseProgress(opts.Events, phaseLifecycle, "Running lifecycle commands")
-	if err := runner.runLifecyclePlan(ctx, resolved, session.ContainerID(), state, dotfiles, workspacePlan.Trust.HostLifecycleAllowed, opts.Events, lifecyclePlan); err != nil {
+	if err := runner.runLifecyclePlan(ctx, observed, state, dotfiles, workspacePlan.Trust.HostLifecycleAllowed, opts.Events, lifecyclePlan); err != nil {
 		return RunLifecycleResult{}, err
 	}
 	if lifecyclePlan.RunCreate {

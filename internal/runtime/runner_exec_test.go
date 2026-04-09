@@ -11,6 +11,7 @@ import (
 
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	"github.com/lauritsk/hatchctl/internal/docker"
+	"github.com/lauritsk/hatchctl/internal/reconcile"
 )
 
 const testPasswd = "root:x:0:0:root:/root:/bin/sh\napp:x:1000:1000::/home/app:/bin/sh\n"
@@ -33,7 +34,7 @@ func TestDockerExecArgsFallsBackToContainerUserAndInjectsHome(t *testing.T) {
 	runner := newTestRunner(t, backend)
 	resolved := devcontainer.ResolvedConfig{RemoteWorkspace: "/workspaces/demo", Merged: devcontainer.MergedConfig{RemoteEnv: map[string]string{"A": "1"}}}
 
-	args, err := runner.dockerExecArgs(context.Background(), "container-123", resolved, true, false, map[string]string{"B": "2"}, []string{"id", "-un"})
+	args, err := runner.dockerExecArgs(context.Background(), observedExecTarget("container-123", resolved, &docker.ContainerInspect{ID: "container-123", Config: docker.InspectConfig{User: "app"}}), true, false, map[string]string{"B": "2"}, []string{"id", "-un"})
 	if err != nil {
 		t.Fatalf("build docker exec args: %v", err)
 	}
@@ -43,8 +44,8 @@ func TestDockerExecArgsFallsBackToContainerUserAndInjectsHome(t *testing.T) {
 			t.Fatalf("expected %q in args %q", want, joined)
 		}
 	}
-	if len(backend.inspectContainerID) != 1 || backend.inspectContainerID[0] != "container-123" {
-		t.Fatalf("expected single container inspect, got %#v", backend.inspectContainerID)
+	if len(backend.inspectContainerID) != 0 {
+		t.Fatalf("did not expect extra container inspect, got %#v", backend.inspectContainerID)
 	}
 	if len(backend.outputCommands) != 1 {
 		t.Fatalf("expected one passwd lookup, got %#v", backend.outputCommands)
@@ -64,7 +65,7 @@ func TestDockerExecArgsPreservesExplicitHome(t *testing.T) {
 	runner := newTestRunner(t, backend)
 	resolved := devcontainer.ResolvedConfig{RemoteWorkspace: "/workspaces/demo", Merged: devcontainer.MergedConfig{RemoteUser: "app", RemoteEnv: map[string]string{"HOME": "/custom-home"}}}
 
-	args, err := runner.dockerExecArgs(context.Background(), "container-123", resolved, false, false, nil, []string{"pwd"})
+	args, err := runner.dockerExecArgs(context.Background(), observedExecTarget("container-123", resolved, nil), false, false, nil, []string{"pwd"})
 	if err != nil {
 		t.Fatalf("build docker exec args: %v", err)
 	}
@@ -95,7 +96,7 @@ func TestDockerExecArgsUsesUserShellWhenCommandMissing(t *testing.T) {
 	runner := newTestRunner(t, backend)
 	resolved := devcontainer.ResolvedConfig{RemoteWorkspace: "/workspaces/demo", Merged: devcontainer.MergedConfig{RemoteUser: "app"}}
 
-	args, err := runner.dockerExecArgs(context.Background(), "container-123", resolved, true, true, nil, nil)
+	args, err := runner.dockerExecArgs(context.Background(), observedExecTarget("container-123", resolved, nil), true, true, nil, nil)
 	if err != nil {
 		t.Fatalf("build docker exec args: %v", err)
 	}
@@ -105,6 +106,10 @@ func TestDockerExecArgsUsesUserShellWhenCommandMissing(t *testing.T) {
 			t.Fatalf("expected %q in args %q", want, joined)
 		}
 	}
+}
+
+func observedExecTarget(containerID string, resolved devcontainer.ResolvedConfig, inspect *docker.ContainerInspect) reconcile.ObservedState {
+	return reconcile.ObservedState{Resolved: resolved, Target: reconcile.RuntimeTarget{PrimaryContainer: containerID}, Container: inspect}
 }
 
 func TestInstallDotfilesUsesResolvedHome(t *testing.T) {
@@ -122,7 +127,7 @@ func TestInstallDotfilesUsesResolvedHome(t *testing.T) {
 	runner := newTestRunner(t, backend)
 	resolved := devcontainer.ResolvedConfig{Merged: devcontainer.MergedConfig{RemoteUser: "app"}}
 
-	err := runner.installDotfiles(context.Background(), "container-123", resolved, DotfilesOptions{Repository: "https://github.com/example/dotfiles.git", TargetPath: "$HOME/.dotfiles"}, nil)
+	err := runner.installDotfiles(context.Background(), observedExecTarget("container-123", resolved, nil), DotfilesOptions{Repository: "https://github.com/example/dotfiles.git", TargetPath: "$HOME/.dotfiles"}, nil)
 	if err != nil {
 		t.Fatalf("install dotfiles: %v", err)
 	}
@@ -157,7 +162,7 @@ func TestResolveDotfilesTargetPathLeavesLiteralHomeWhenUnknown(t *testing.T) {
 	runner := newTestRunner(t, backend)
 	resolved := devcontainer.ResolvedConfig{Merged: devcontainer.MergedConfig{RemoteUser: "app"}}
 
-	targetPath, err := runner.resolveDotfilesTargetPath(context.Background(), "container-123", resolved, "$HOME/.dotfiles")
+	targetPath, err := runner.resolveDotfilesTargetPath(context.Background(), observedExecTarget("container-123", resolved, nil), "$HOME/.dotfiles")
 	if err != nil {
 		t.Fatalf("resolve dotfiles target path: %v", err)
 	}
