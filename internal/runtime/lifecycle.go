@@ -7,6 +7,7 @@ import (
 
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	ui "github.com/lauritsk/hatchctl/internal/display"
+	"github.com/lauritsk/hatchctl/internal/engine/dockercli"
 	"github.com/lauritsk/hatchctl/internal/policy"
 	"github.com/lauritsk/hatchctl/internal/reconcile"
 )
@@ -120,10 +121,11 @@ func (r *Runner) runContainerLifecycle(ctx context.Context, observed reconcile.O
 		return nil
 	}
 	return runCommand(ctx, func(ctx context.Context, args []string) error {
-		dockerArgs, err := r.dockerExecArgs(ctx, observed, true, false, nil, args)
+		stdout, stderr := r.progressWriters(events, phaseLifecycle, label, r.stdout, r.stderr)
+		req, err := r.dockerExecRequest(ctx, observed, true, false, nil, args, dockercli.Streams{Stdout: stdout, Stderr: stderr})
 		if err != nil {
 			return err
 		}
-		return r.backend.Run(ctx, runtimeCommand{Kind: runtimeCommandDocker, Phase: phaseLifecycle, Label: label, Args: dockerArgs, Stdout: r.stdout, Stderr: r.stderr, Events: events})
+		return r.backend.Exec(ctx, req)
 	}, command)
 }

@@ -67,6 +67,14 @@ func (b hostOnlyBackend) ComposeUp(context.Context, dockercli.ComposeUpRequest) 
 	panic("unexpected ComposeUp call")
 }
 
+func (b hostOnlyBackend) Exec(context.Context, dockercli.ExecRequest) error {
+	panic("unexpected Exec call")
+}
+
+func (b hostOnlyBackend) ExecOutput(context.Context, dockercli.ExecRequest) (string, error) {
+	panic("unexpected ExecOutput call")
+}
+
 func TestRunHostLifecycleUsesInjectedRunnerAndStreams(t *testing.T) {
 	t.Parallel()
 

@@ -131,6 +131,14 @@ func (b *fakeRuntimeBackend) ComposeUp(ctx context.Context, req dockercli.Compos
 	return b.Run(ctx, runtimeCommand{Kind: runtimeCommandDocker, Args: args, Dir: req.Target.Dir, Stdin: req.Stdin, Stdout: req.Stdout, Stderr: req.Stderr})
 }
 
+func (b *fakeRuntimeBackend) Exec(ctx context.Context, req dockercli.ExecRequest) error {
+	return b.Run(ctx, runtimeCommand{Kind: runtimeCommandDocker, Args: execArgsForTest(req), Stdin: req.Stdin, Stdout: req.Stdout, Stderr: req.Stderr})
+}
+
+func (b *fakeRuntimeBackend) ExecOutput(ctx context.Context, req dockercli.ExecRequest) (string, error) {
+	return b.Output(ctx, runtimeCommand{Kind: runtimeCommandDocker, Args: execArgsForTest(req), Stdin: req.Stdin, Stdout: req.Stdout, Stderr: req.Stderr})
+}
+
 func cloneRuntimeCommand(cmd runtimeCommand) runtimeCommand {
 	clone := cmd
 	clone.Args = append([]string(nil), cmd.Args...)
@@ -232,4 +240,26 @@ func sortedKeysForTest(values map[string]string) []string {
 	}
 	sort.Strings(keys)
 	return keys
+}
+
+func execArgsForTest(req dockercli.ExecRequest) []string {
+	args := []string{"exec"}
+	if req.Interactive {
+		args = append(args, "-i")
+	}
+	if req.TTY {
+		args = append(args, "-t")
+	}
+	if req.User != "" {
+		args = append(args, "-u", req.User)
+	}
+	if req.Workdir != "" {
+		args = append(args, "--workdir", req.Workdir)
+	}
+	for _, key := range sortedKeysForTest(req.Env) {
+		args = append(args, "-e", key+"="+req.Env[key])
+	}
+	args = append(args, req.ContainerID)
+	args = append(args, req.Command...)
+	return args
 }

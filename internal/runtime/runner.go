@@ -14,6 +14,7 @@ import (
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	ui "github.com/lauritsk/hatchctl/internal/display"
 	"github.com/lauritsk/hatchctl/internal/docker"
+	"github.com/lauritsk/hatchctl/internal/engine/dockercli"
 	workspaceplan "github.com/lauritsk/hatchctl/internal/plan"
 	"github.com/lauritsk/hatchctl/internal/policy"
 	"github.com/lauritsk/hatchctl/internal/reconcile"
@@ -450,7 +451,7 @@ func (r *Runner) Exec(ctx context.Context, opts ExecOptions) (int, error) {
 		return 0, err
 	}
 	interactive := shouldAllocateTTY(opts.Stdin, opts.Stdout)
-	args, err := r.dockerExecArgs(ctx, session.Observed(), opts.Stdin != nil, interactive, opts.RemoteEnv, opts.Args)
+	req, err := r.dockerExecRequest(ctx, session.Observed(), opts.Stdin != nil, interactive, opts.RemoteEnv, opts.Args, dockercli.Streams{Stdin: opts.Stdin, Stdout: opts.Stdout, Stderr: opts.Stderr})
 	if err != nil {
 		return 0, err
 	}
@@ -460,7 +461,7 @@ func (r *Runner) Exec(ctx context.Context, opts ExecOptions) (int, error) {
 		r.emitPhaseProgress(opts.Events, phaseExec, fmt.Sprintf("Executing command in %s", session.ContainerID()))
 	}
 
-	err = r.backend.Run(ctx, runtimeCommand{Kind: runtimeCommandDocker, Label: "Executing command", Args: args, Stdin: opts.Stdin, Stdout: opts.Stdout, Stderr: opts.Stderr})
+	err = r.backend.Exec(ctx, req)
 	if err == nil {
 		return 0, nil
 	}

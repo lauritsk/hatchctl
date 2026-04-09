@@ -23,6 +23,8 @@ type runtimeBackend interface {
 	ComposeConfig(context.Context, dockercli.ComposeConfigRequest) (string, error)
 	ComposeBuild(context.Context, dockercli.ComposeBuildRequest) error
 	ComposeUp(context.Context, dockercli.ComposeUpRequest) error
+	Exec(context.Context, dockercli.ExecRequest) error
+	ExecOutput(context.Context, dockercli.ExecRequest) (string, error)
 }
 
 type runtimeCommandKind string
@@ -130,6 +132,14 @@ func (b *localRuntimeBackend) ComposeBuild(ctx context.Context, req dockercli.Co
 
 func (b *localRuntimeBackend) ComposeUp(ctx context.Context, req dockercli.ComposeUpRequest) error {
 	return b.docker.ComposeUp(ctx, req)
+}
+
+func (b *localRuntimeBackend) Exec(ctx context.Context, req dockercli.ExecRequest) error {
+	return b.docker.Exec(ctx, req)
+}
+
+func (b *localRuntimeBackend) ExecOutput(ctx context.Context, req dockercli.ExecRequest) (string, error) {
+	return b.docker.ExecOutput(ctx, req)
 }
 
 var _ runtimeBackend = (*localRuntimeBackend)(nil)

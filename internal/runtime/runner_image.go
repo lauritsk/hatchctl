@@ -352,6 +352,6 @@ func (r *Runner) ensureUpdatedUIDContainer(ctx context.Context, resolved devcont
 	if !ok {
 		return nil
 	}
-	args := capuid.ExecArgs(containerID, remoteUser, uid, gid)
-	return r.backend.Run(ctx, runtimeCommand{Kind: runtimeCommandDocker, Phase: phaseContainer, Label: "Reconciling container user", Args: args, Stdin: strings.NewReader(capuid.UpdateScript), Stdout: r.stdout, Stderr: r.stderr, Events: events})
+	stdout, stderr := r.progressWriters(events, phaseContainer, "Reconciling container user", r.stdout, r.stderr)
+	return r.backend.Exec(ctx, dockercli.ExecRequest{ContainerID: containerID, User: "root", Interactive: true, Command: []string{"sh", "-s", "--", remoteUser, fmt.Sprintf("%d", uid), fmt.Sprintf("%d", gid)}, Streams: dockercli.Streams{Stdin: strings.NewReader(capuid.UpdateScript), Stdout: stdout, Stderr: stderr}})
 }

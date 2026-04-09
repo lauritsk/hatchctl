@@ -242,6 +242,14 @@ func (c *Client) ComposeUp(ctx context.Context, req ComposeUpRequest) error {
 }
 
 func (c *Client) Exec(ctx context.Context, req ExecRequest) error {
+	return c.Run(ctx, CommandRequest{Args: execArgs(req), Streams: req.Streams})
+}
+
+func (c *Client) ExecOutput(ctx context.Context, req ExecRequest) (string, error) {
+	return c.Output(ctx, CommandRequest{Args: execArgs(req), Streams: req.Streams})
+}
+
+func execArgs(req ExecRequest) []string {
 	args := []string{"exec"}
 	if req.Interactive {
 		args = append(args, "-i")
@@ -260,7 +268,7 @@ func (c *Client) Exec(ctx context.Context, req ExecRequest) error {
 	}
 	args = append(args, req.ContainerID)
 	args = append(args, req.Command...)
-	return c.Run(ctx, CommandRequest{Args: args, Streams: req.Streams})
+	return args
 }
 
 func composeBaseArgs(target ComposeTarget) []string {

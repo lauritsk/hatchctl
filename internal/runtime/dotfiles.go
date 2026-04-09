@@ -8,6 +8,7 @@ import (
 	capdot "github.com/lauritsk/hatchctl/internal/capability/dotfiles"
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	ui "github.com/lauritsk/hatchctl/internal/display"
+	"github.com/lauritsk/hatchctl/internal/engine/dockercli"
 	"github.com/lauritsk/hatchctl/internal/reconcile"
 )
 
@@ -77,13 +78,14 @@ func (r *Runner) installDotfiles(ctx context.Context, observed reconcile.Observe
 	if err != nil {
 		return err
 	}
-	args, err := r.dockerExecArgs(ctx, observed, true, false, nil, capdot.InstallArgs(opts.Repository, targetPath, opts.InstallCommand))
+	label := fmt.Sprintf("Installing dotfiles from %s", opts.Repository)
+	stdout, stderr := r.progressWriters(events, phaseDotfiles, label, r.stdout, r.stderr)
+	req, err := r.dockerExecRequest(ctx, observed, true, false, nil, capdot.InstallArgs(opts.Repository, targetPath, opts.InstallCommand), dockercli.Streams{Stdin: strings.NewReader(capdot.InstallScript), Stdout: stdout, Stderr: stderr})
 	if err != nil {
 		return err
 	}
-	label := fmt.Sprintf("Installing dotfiles from %s", opts.Repository)
 	r.emitPhaseProgress(events, phaseDotfiles, label)
-	return r.backend.Run(ctx, runtimeCommand{Kind: runtimeCommandDocker, Phase: phaseDotfiles, Label: label, Args: args, Stdin: strings.NewReader(capdot.InstallScript), Stdout: r.stdout, Stderr: r.stderr, Events: events})
+	return r.backend.Exec(ctx, req)
 }
 
 func (r *Runner) resolveDotfilesTargetPath(ctx context.Context, observed reconcile.ObservedState, targetPath string) (string, error) {
