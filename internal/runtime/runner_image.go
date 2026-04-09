@@ -285,7 +285,7 @@ func (r *Runner) ensureFeaturesImageFromBase(ctx context.Context, resolved devco
 }
 
 func (r *Runner) ensureComposeImage(ctx context.Context, resolved devcontainer.ResolvedConfig, events ui.Sink) (string, error) {
-	config, err := r.readComposeConfig(ctx, resolved)
+	config, err := r.readComposeConfig(ctx, &resolved)
 	if err != nil {
 		return "", err
 	}

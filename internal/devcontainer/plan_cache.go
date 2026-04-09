@@ -37,6 +37,9 @@ func readResolvedPlanCache(cacheDir string, key string) (ResolvedConfig, bool, e
 	if cache.Version != resolvedPlanCacheVersion || cache.Key != key {
 		return ResolvedConfig{}, false, nil
 	}
+	if err := validateResolvedPlanCache(cache.Resolved); err != nil {
+		return ResolvedConfig{}, false, nil
+	}
 	return cache.Resolved, true, nil
 }
 
@@ -144,4 +147,17 @@ func hashFile(h hash.Hash, path string) error {
 func writeHashString(h hash.Hash, value string) {
 	_, _ = io.WriteString(h, value)
 	_, _ = io.WriteString(h, "\n")
+}
+
+func validateResolvedPlanCache(resolved ResolvedConfig) error {
+	for _, feature := range resolved.Features {
+		if feature.Path == "" {
+			return os.ErrNotExist
+		}
+		manifestPath := filepath.Join(feature.Path, "devcontainer-feature.json")
+		if _, err := os.Stat(manifestPath); err != nil {
+			return err
+		}
+	}
+	return nil
 }

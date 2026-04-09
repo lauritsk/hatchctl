@@ -13,7 +13,6 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
-	"github.com/lauritsk/hatchctl/internal/appconfig"
 	"github.com/lauritsk/hatchctl/internal/bridge"
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	ui "github.com/lauritsk/hatchctl/internal/display"
@@ -27,19 +26,6 @@ type App struct {
 	err io.Writer
 
 	runner runner
-}
-
-type commandDefaults struct {
-	Workspace      string
-	ConfigPath     string
-	StateDir       string
-	CacheDir       string
-	FeatureTimeout time.Duration
-	LockfilePolicy string
-	BridgeEnabled  bool
-	TrustWorkspace bool
-	SSHAgent       bool
-	Dotfiles       dotfilesOptions
 }
 
 type runner interface {
@@ -187,16 +173,14 @@ func (a *App) newUpCommand(global *globalOptions) *cobra.Command {
 			return renderer.PrintText("\nNext:\n  " + strings.Join(upSuggestedCommands(defaults.Workspace, defaults.ConfigPath, defaults.FeatureTimeout, policy, defaults.SSHAgent), "\n  "))
 		},
 	}
-	cmd.Flags().StringVar(&workspace, "workspace", "", "workspace folder (defaults to current directory)")
-	cmd.Flags().StringVar(&configPath, "config", "", "path to devcontainer.json")
-	cmd.Flags().DurationVar(&featureTimeout, "feature-timeout", 90*time.Second, "timeout for remote feature HTTP requests")
-	cmd.Flags().StringVar(&lockfilePolicy, "lockfile-policy", "auto", "feature lockfile policy: auto, frozen, or update")
+	addWorkspaceFlags(cmd, &workspace, &configPath)
+	addResolutionFlags(cmd, &featureTimeout, &lockfilePolicy, "auto")
 	cmd.Flags().BoolVar(&recreate, "recreate", false, "remove and recreate an existing managed container")
 	cmd.Flags().BoolVar(&bridgeEnabled, "bridge", false, "enable macOS browser-open and localhost callback forwarding")
 	cmd.Flags().BoolVar(&sshAgent, "ssh", false, "mount the host ssh-agent socket into the container")
 	cmd.Flags().BoolVar(&trustWorkspace, "trust-workspace", trustWorkspace, "trust repo-controlled Docker mounts, privilege, and build settings")
 	cmd.Flags().BoolVar(&allowHostLifecycle, "allow-host-lifecycle", allowHostLifecycle, "trust and run host-side lifecycle commands such as initializeCommand")
-	cmd.Flags().BoolVar(&jsonOut, "json", false, "emit machine-readable JSON")
+	addJSONFlag(cmd, &jsonOut)
 	addDotfilesFlags(cmd, &dotfiles)
 	return cmd
 }
@@ -259,12 +243,10 @@ func (a *App) newBuildCommand(global *globalOptions) *cobra.Command {
 			return renderer.PrintText(fmt.Sprintf("Devcontainer image ready: %s", result.Image))
 		},
 	}
-	cmd.Flags().StringVar(&workspace, "workspace", "", "workspace folder (defaults to current directory)")
-	cmd.Flags().StringVar(&configPath, "config", "", "path to devcontainer.json")
-	cmd.Flags().DurationVar(&featureTimeout, "feature-timeout", 90*time.Second, "timeout for remote feature HTTP requests")
-	cmd.Flags().StringVar(&lockfilePolicy, "lockfile-policy", "auto", "feature lockfile policy: auto, frozen, or update")
+	addWorkspaceFlags(cmd, &workspace, &configPath)
+	addResolutionFlags(cmd, &featureTimeout, &lockfilePolicy, "auto")
 	cmd.Flags().BoolVar(&trustWorkspace, "trust-workspace", trustWorkspace, "trust repo-controlled Docker mounts, privilege, and build settings")
-	cmd.Flags().BoolVar(&jsonOut, "json", false, "emit machine-readable JSON")
+	addJSONFlag(cmd, &jsonOut)
 	return cmd
 }
 
@@ -329,7 +311,7 @@ func (a *App) newExecCommand(global *globalOptions) *cobra.Command {
 				CacheDir:       defaults.CacheDir,
 				FeatureTimeout: defaults.FeatureTimeout,
 				LockfilePolicy: policy,
-				SSHAgent:       sshAgent,
+				SSHAgent:       defaults.SSHAgent,
 				Verbose:        global.Verbose || global.Debug,
 				Debug:          global.Debug,
 				Events:         renderer.Events(),
@@ -358,12 +340,10 @@ func (a *App) newExecCommand(global *globalOptions) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&workspace, "workspace", "", "workspace folder (defaults to current directory)")
-	cmd.Flags().StringVar(&configPath, "config", "", "path to devcontainer.json")
-	cmd.Flags().DurationVar(&featureTimeout, "feature-timeout", 90*time.Second, "timeout for remote feature HTTP requests")
-	cmd.Flags().StringVar(&lockfilePolicy, "lockfile-policy", "auto", "feature lockfile policy: auto, frozen, or update")
+	addWorkspaceFlags(cmd, &workspace, &configPath)
+	addResolutionFlags(cmd, &featureTimeout, &lockfilePolicy, "auto")
 	cmd.Flags().BoolVar(&sshAgent, "ssh", false, "require host ssh-agent passthrough for the managed container")
-	cmd.Flags().BoolVar(&jsonOut, "json", false, "emit machine-readable JSON")
+	addJSONFlag(cmd, &jsonOut)
 	cmd.Flags().StringArrayVar(&remoteEnv, "env", nil, "set container environment variables as KEY=VALUE; repeat as needed")
 	return cmd
 }
@@ -425,7 +405,7 @@ func (a *App) newConfigCommand(global *globalOptions) *cobra.Command {
 				CacheDir:       defaults.CacheDir,
 				FeatureTimeout: defaults.FeatureTimeout,
 				LockfilePolicy: policy,
-				SSHAgent:       sshAgent,
+				SSHAgent:       defaults.SSHAgent,
 				Dotfiles:       defaults.Dotfiles.runtime(),
 				Verbose:        global.Verbose || global.Debug,
 				Debug:          global.Debug,
@@ -445,12 +425,10 @@ func (a *App) newConfigCommand(global *globalOptions) *cobra.Command {
 			return renderer.PrintKeyValues(configResultFields(result))
 		},
 	}
-	cmd.Flags().StringVar(&workspace, "workspace", "", "workspace folder (defaults to current directory)")
-	cmd.Flags().StringVar(&configPath, "config", "", "path to devcontainer.json")
-	cmd.Flags().DurationVar(&featureTimeout, "feature-timeout", 90*time.Second, "timeout for remote feature HTTP requests")
-	cmd.Flags().StringVar(&lockfilePolicy, "lockfile-policy", "frozen", "feature lockfile policy: auto, frozen, or update")
+	addWorkspaceFlags(cmd, &workspace, &configPath)
+	addResolutionFlags(cmd, &featureTimeout, &lockfilePolicy, "frozen")
 	cmd.Flags().BoolVar(&sshAgent, "ssh", false, "show config with host ssh-agent passthrough applied")
-	cmd.Flags().BoolVar(&jsonOut, "json", false, "emit machine-readable JSON")
+	addJSONFlag(cmd, &jsonOut)
 	addDotfilesFlags(cmd, &dotfiles)
 	return cmd
 }
@@ -515,13 +493,11 @@ func (a *App) newRunCommand(global *globalOptions) *cobra.Command {
 			return renderer.PrintText(fmt.Sprintf("Lifecycle phase %q completed for container %s.", result.Phase, result.ContainerID))
 		},
 	}
-	cmd.Flags().StringVar(&workspace, "workspace", "", "workspace folder (defaults to current directory)")
-	cmd.Flags().StringVar(&configPath, "config", "", "path to devcontainer.json")
-	cmd.Flags().DurationVar(&featureTimeout, "feature-timeout", 90*time.Second, "timeout for remote feature HTTP requests")
-	cmd.Flags().StringVar(&lockfilePolicy, "lockfile-policy", "auto", "feature lockfile policy: auto, frozen, or update")
+	addWorkspaceFlags(cmd, &workspace, &configPath)
+	addResolutionFlags(cmd, &featureTimeout, &lockfilePolicy, "auto")
 	cmd.Flags().StringVar(&phase, "phase", "all", "lifecycle phase to run: all, create, start, or attach")
 	cmd.Flags().BoolVar(&allowHostLifecycle, "allow-host-lifecycle", allowHostLifecycle, "trust and run host-side lifecycle commands such as initializeCommand")
-	cmd.Flags().BoolVar(&jsonOut, "json", false, "emit machine-readable JSON")
+	addJSONFlag(cmd, &jsonOut)
 	addDotfilesFlags(cmd, &dotfiles)
 	return cmd
 }
@@ -625,11 +601,9 @@ func (a *App) newBridgeDoctorCommand(global *globalOptions) *cobra.Command {
 			})
 		},
 	}
-	cmd.Flags().StringVar(&workspace, "workspace", "", "workspace folder (defaults to current directory)")
-	cmd.Flags().StringVar(&configPath, "config", "", "path to devcontainer.json")
-	cmd.Flags().DurationVar(&featureTimeout, "feature-timeout", 90*time.Second, "timeout for remote feature HTTP requests")
-	cmd.Flags().StringVar(&lockfilePolicy, "lockfile-policy", "frozen", "feature lockfile policy: auto, frozen, or update")
-	cmd.Flags().BoolVar(&jsonOut, "json", false, "emit machine-readable JSON")
+	addWorkspaceFlags(cmd, &workspace, &configPath)
+	addResolutionFlags(cmd, &featureTimeout, &lockfilePolicy, "frozen")
+	addJSONFlag(cmd, &jsonOut)
 	return cmd
 }
 
@@ -663,113 +637,6 @@ func newVersionCommand(out io.Writer) *cobra.Command {
 	}
 }
 
-type globalOptions struct {
-	Verbose bool
-	Debug   bool
-}
-
-type dotfilesOptions struct {
-	Repository     string
-	InstallCommand string
-	TargetPath     string
-}
-
-func defaultDotfilesOptions() dotfilesOptions {
-	return dotfilesOptions{
-		Repository:     os.Getenv("HATCHCTL_DOTFILES_REPOSITORY"),
-		InstallCommand: os.Getenv("HATCHCTL_DOTFILES_INSTALL_COMMAND"),
-		TargetPath:     os.Getenv("HATCHCTL_DOTFILES_TARGET_PATH"),
-	}
-}
-
-func addDotfilesFlags(cmd *cobra.Command, opts *dotfilesOptions) {
-	cmd.PersistentFlags().StringVar(&opts.Repository, "dotfiles", opts.Repository, "dotfiles repository (user, owner/repo, host/user, host/user/repo, or git URL); env HATCHCTL_DOTFILES_REPOSITORY")
-	cmd.PersistentFlags().StringVar(&opts.Repository, "dotfiles-repository", opts.Repository, "same as --dotfiles")
-	cmd.PersistentFlags().StringVar(&opts.InstallCommand, "dotfiles-install-command", opts.InstallCommand, "dotfiles install script or command; env HATCHCTL_DOTFILES_INSTALL_COMMAND")
-	cmd.PersistentFlags().StringVar(&opts.TargetPath, "dotfiles-target-path", opts.TargetPath, "dotfiles checkout path inside the container; env HATCHCTL_DOTFILES_TARGET_PATH")
-}
-
-func (o dotfilesOptions) runtime() runtime.DotfilesOptions {
-	return runtime.DotfilesOptions{Repository: o.Repository, InstallCommand: o.InstallCommand, TargetPath: o.TargetPath}
-}
-
-func (a *App) resolveCommandDefaults(cmd *cobra.Command, workspace string, configPath string, featureTimeout time.Duration, lockfilePolicy string, bridgeEnabled *bool, trustWorkspace *bool, sshAgent *bool, dotfiles dotfilesOptions) (commandDefaults, error) {
-	workspaceHint := ""
-	if flagChanged(cmd, "workspace") {
-		workspaceHint = workspace
-	}
-	config, err := appconfig.LoadForWorkspace(workspaceHint)
-	if err != nil {
-		return commandDefaults{}, err
-	}
-	resolvedTimeout := featureTimeout
-	if !flagChanged(cmd, "feature-timeout") {
-		if timeout, err := config.FeatureTimeoutDuration(); err != nil {
-			return commandDefaults{}, err
-		} else if timeout > 0 {
-			resolvedTimeout = timeout
-		}
-	}
-	resolved := commandDefaults{
-		Workspace:      firstConfigured(flagChanged(cmd, "workspace"), workspace, config.Workspace),
-		ConfigPath:     firstConfigured(flagChanged(cmd, "config"), configPath, config.ConfigPath),
-		StateDir:       config.StateDir,
-		CacheDir:       config.CacheDir,
-		FeatureTimeout: resolvedTimeout,
-		LockfilePolicy: lockfilePolicy,
-		TrustWorkspace: trustWorkspace != nil && *trustWorkspace,
-		SSHAgent:       sshAgent != nil && *sshAgent,
-		Dotfiles:       dotfiles,
-	}
-	if !flagChanged(cmd, "lockfile-policy") && config.LockfilePolicy != "" {
-		resolved.LockfilePolicy = config.LockfilePolicy
-	}
-	if !dotfilesRepositoryChanged(cmd) && config.Dotfiles.Repository != "" {
-		resolved.Dotfiles.Repository = config.Dotfiles.Repository
-	}
-	if !flagChanged(cmd, "dotfiles-install-command") && config.Dotfiles.InstallCommand != "" {
-		resolved.Dotfiles.InstallCommand = config.Dotfiles.InstallCommand
-	}
-	if !flagChanged(cmd, "dotfiles-target-path") && config.Dotfiles.TargetPath != "" {
-		resolved.Dotfiles.TargetPath = config.Dotfiles.TargetPath
-	}
-	if bridgeEnabled != nil {
-		resolved.BridgeEnabled = *bridgeEnabled
-		if !flagChanged(cmd, "bridge") && config.Bridge != nil {
-			resolved.BridgeEnabled = *config.Bridge
-		}
-	}
-	if sshAgent != nil {
-		resolved.SSHAgent = *sshAgent
-		if !flagChanged(cmd, "ssh") && config.SSHAgent != nil {
-			resolved.SSHAgent = *config.SSHAgent
-		}
-	}
-	if trustWorkspace != nil {
-		resolved.TrustWorkspace = *trustWorkspace
-	}
-	return resolved, nil
-}
-
-func flagChanged(cmd *cobra.Command, name string) bool {
-	flag := cmd.Flags().Lookup(name)
-	return flag != nil && flag.Changed
-}
-
-func dotfilesRepositoryChanged(cmd *cobra.Command) bool {
-	return flagChanged(cmd, "dotfiles") || flagChanged(cmd, "dotfiles-repository")
-}
-
-func firstConfigured(cliSet bool, cliValue string, configValue string) string {
-	if cliSet {
-		return cliValue
-	}
-	if configValue != "" {
-		return configValue
-	}
-	return cliValue
-}
-
 func (a *App) newRenderer(jsonOut bool) *ui.Renderer {
 	return ui.NewRenderer(a.out, a.err, jsonOut)
 }
@@ -789,19 +656,6 @@ func multiValueMap(values []string) map[string]string {
 		result[parts[0]] = parts[1]
 	}
 	return result
-}
-
-func envTruthy(name string) bool {
-	value, ok := os.LookupEnv(name)
-	if !ok {
-		return false
-	}
-	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "1", "true", "yes", "on":
-		return true
-	default:
-		return false
-	}
 }
 
 func upResultFields(result runtime.UpResult) []ui.KeyValue {

@@ -14,26 +14,42 @@ import (
 
 var errManagedContainerNotFound = errors.New("managed container not found")
 
-func (r *Runner) containerBridgeModeMatches(ctx context.Context, containerID string, bridgeEnabled bool) (bool, error) {
-	inspect, err := r.backend.InspectContainer(ctx, containerID)
-	if err != nil {
-		return false, err
-	}
-	return (inspect.Config.Labels[devcontainer.BridgeEnabledLabel] == "true") == bridgeEnabled, nil
+type containerReuseRequirements struct {
+	BridgeEnabled bool
+	SSHAgent      bool
 }
 
-func (r *Runner) containerSSHAgentMatches(ctx context.Context, containerID string, sshAgent bool) (bool, error) {
-	inspect, err := r.backend.InspectContainer(ctx, containerID)
-	if err != nil {
-		return false, err
-	}
+func containerBridgeModeMatches(inspect docker.ContainerInspect, bridgeEnabled bool) bool {
+	return (inspect.Config.Labels[devcontainer.BridgeEnabledLabel] == "true") == bridgeEnabled
+}
+
+func containerSSHAgentMatches(inspect docker.ContainerInspect, sshAgent bool) bool {
 	if inspect.Config.Labels[devcontainer.SSHAgentLabel] == "true" {
-		return sshAgent, nil
+		return sshAgent
 	}
 	if sshAgent {
-		return containerHasMountTarget(inspect, sshAgentContainerSocketPath), nil
+		return containerHasMountTarget(inspect, sshAgentContainerSocketPath)
 	}
-	return !containerHasMountTarget(inspect, sshAgentContainerSocketPath), nil
+	return !containerHasMountTarget(inspect, sshAgentContainerSocketPath)
+}
+
+func (r *Runner) ensureReusableContainer(ctx context.Context, containerID string, requirements containerReuseRequirements, events ui.Sink) (string, bool, error) {
+	inspect, err := r.backend.InspectContainer(ctx, containerID)
+	if err != nil {
+		return "", false, err
+	}
+	if !containerBridgeModeMatches(inspect, requirements.BridgeEnabled) || !containerSSHAgentMatches(inspect, requirements.SSHAgent) {
+		if err := r.removeContainer(ctx, containerID, events); err != nil {
+			return "", false, err
+		}
+		return "", false, nil
+	}
+	if !inspect.State.Running {
+		if err := r.backend.Run(ctx, runtimeCommand{Kind: runtimeCommandDocker, Phase: phaseContainer, Label: fmt.Sprintf("Starting existing container %s", inspect.ID), Args: []string{"start", inspect.ID}, Stdout: r.stdout, Stderr: r.stderr, Events: events}); err != nil {
+			return "", false, err
+		}
+	}
+	return inspect.ID, true, nil
 }
 
 func (r *Runner) findContainer(ctx context.Context, resolved devcontainer.ResolvedConfig) (string, error) {
@@ -203,36 +219,19 @@ func isNumericUser(value string) bool {
 
 func (r *Runner) ensureContainer(ctx context.Context, resolved devcontainer.ResolvedConfig, image string, bridgeEnabled bool, sshAgent bool, overridePath string, events ui.Sink) (string, bool, error) {
 	if resolved.SourceKind == "compose" {
-		return r.ensureComposeContainer(ctx, resolved, overridePath, events)
+		return r.ensureComposeContainer(ctx, resolved, bridgeEnabled, sshAgent, overridePath, events)
 	}
 	containerID, err := r.findContainer(ctx, resolved)
+	if err != nil && !errors.Is(err, errManagedContainerNotFound) {
+		return "", false, err
+	}
 	if err == nil && containerID != "" {
-		matches, matchErr := r.containerBridgeModeMatches(ctx, containerID, bridgeEnabled)
-		if matchErr != nil {
-			return "", false, matchErr
+		reusedID, reused, err := r.ensureReusableContainer(ctx, containerID, containerReuseRequirements{BridgeEnabled: bridgeEnabled, SSHAgent: sshAgent}, events)
+		if err != nil {
+			return "", false, err
 		}
-		if !matches {
-			if err := r.removeContainer(ctx, containerID, events); err != nil {
-				return "", false, err
-			}
-		} else {
-			sshMatches, sshMatchErr := r.containerSSHAgentMatches(ctx, containerID, sshAgent)
-			if sshMatchErr != nil {
-				return "", false, sshMatchErr
-			}
-			if !sshMatches {
-				if err := r.removeContainer(ctx, containerID, events); err != nil {
-					return "", false, err
-				}
-			} else {
-				status, statusErr := r.backend.Output(ctx, runtimeCommand{Kind: runtimeCommandDocker, Args: []string{"inspect", "--format", "{{.State.Status}}", containerID}})
-				if statusErr == nil && status != "running" {
-					if err := r.backend.Run(ctx, runtimeCommand{Kind: runtimeCommandDocker, Phase: phaseContainer, Label: fmt.Sprintf("Starting existing container %s", containerID), Args: []string{"start", containerID}, Stdout: r.stdout, Stderr: r.stderr, Events: events}); err != nil {
-						return "", false, err
-					}
-				}
-				return containerID, false, nil
-			}
+		if reused {
+			return reusedID, false, nil
 		}
 	}
 
@@ -284,23 +283,18 @@ func (r *Runner) ensureContainer(ctx context.Context, resolved devcontainer.Reso
 	return containerID, true, nil
 }
 
-func (r *Runner) ensureComposeContainer(ctx context.Context, resolved devcontainer.ResolvedConfig, overridePath string, events ui.Sink) (string, bool, error) {
+func (r *Runner) ensureComposeContainer(ctx context.Context, resolved devcontainer.ResolvedConfig, bridgeEnabled bool, sshAgent bool, overridePath string, events ui.Sink) (string, bool, error) {
 	containerID, err := r.findComposeContainer(ctx, resolved)
+	if err != nil && !errors.Is(err, errManagedContainerNotFound) {
+		return "", false, err
+	}
 	if err == nil && containerID != "" {
-		matches, matchErr := r.containerBridgeModeMatches(ctx, containerID, resolved.Merged.ContainerEnv["DEVCONTAINER_BRIDGE_ENABLED"] == "true")
-		if matchErr != nil {
-			return "", false, matchErr
+		reusedID, reused, err := r.ensureReusableContainer(ctx, containerID, containerReuseRequirements{BridgeEnabled: bridgeEnabled, SSHAgent: sshAgent}, events)
+		if err != nil {
+			return "", false, err
 		}
-		if !matches {
-			if err := r.removeContainer(ctx, containerID, events); err != nil {
-				return "", false, err
-			}
-			containerID = ""
-		} else {
-			status, statusErr := r.backend.Output(ctx, runtimeCommand{Kind: runtimeCommandDocker, Args: []string{"inspect", "--format", "{{.State.Status}}", containerID}})
-			if statusErr == nil && status == "running" {
-				return containerID, false, nil
-			}
+		if reused {
+			return reusedID, false, nil
 		}
 	}
 	if err := r.backend.Run(ctx, runtimeCommand{Kind: runtimeCommandDocker, Phase: phaseContainer, Label: fmt.Sprintf("Starting compose service %s", resolved.ComposeService), Args: append(composeArgs(resolved, overridePath), "up", "--no-build", "-d", resolved.ComposeService), Dir: resolved.ConfigDir, Stdout: r.stdout, Stderr: r.stderr, Events: events}); err != nil {

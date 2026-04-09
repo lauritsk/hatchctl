@@ -93,8 +93,11 @@ func composeArgs(resolved devcontainer.ResolvedConfig, overridePath string) []st
 	return args
 }
 
-func (r *Runner) readComposeConfig(ctx context.Context, resolved devcontainer.ResolvedConfig) (composeConfig, error) {
-	args := append(composeBaseArgs(resolved), "config", "--format", "json")
+func (r *Runner) readComposeConfig(ctx context.Context, resolved *devcontainer.ResolvedConfig) (composeConfig, error) {
+	if resolved == nil {
+		return composeConfig{}, nil
+	}
+	args := append(composeBaseArgs(*resolved), "config", "--format", "json")
 	output, err := r.backend.Output(ctx, runtimeCommand{Kind: runtimeCommandDocker, Args: args, Dir: resolved.ConfigDir})
 	if err != nil {
 		return composeConfig{}, err
@@ -112,7 +115,7 @@ func (r *Runner) readComposeConfig(ctx context.Context, resolved devcontainer.Re
 func (r *Runner) findComposeContainer(ctx context.Context, resolved devcontainer.ResolvedConfig) (string, error) {
 	project := resolved.ComposeProject
 	if project == "" {
-		config, err := r.readComposeConfig(ctx, resolved)
+		config, err := r.readComposeConfig(ctx, &resolved)
 		if err != nil {
 			return "", err
 		}
@@ -152,6 +155,9 @@ func renderComposeOverride(resolved devcontainer.ResolvedConfig, image string) (
 	}
 	if resolved.Merged.ContainerEnv["DEVCONTAINER_BRIDGE_ENABLED"] == "true" {
 		labels[devcontainer.BridgeEnabledLabel] = "true"
+	}
+	if resolved.Merged.ContainerEnv["SSH_AUTH_SOCK"] == sshAgentContainerSocketPath {
+		labels[devcontainer.SSHAgentLabel] = "true"
 	}
 	if metadataLabel, err := devcontainer.MetadataLabelValue(resolved.Merged.Metadata); err == nil && metadataLabel != "" {
 		labels[devcontainer.ImageMetadataLabel] = metadataLabel

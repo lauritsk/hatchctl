@@ -179,7 +179,7 @@ func Doctor(stateDir string) (Report, error) {
 		status = session.Status
 	}
 	if session != nil && session.StatusPath != "" {
-		if data, err := fileStore.ReadStatus(session.StatusPath); err == nil {
+		if data, err := bridgeStore().ReadStatus(session.StatusPath); err == nil {
 			var bridgeStatus struct {
 				PID       int    `json:"pid"`
 				LastEvent string `json:"lastEvent"`
@@ -301,11 +301,11 @@ func loadOrCreateSession(bridgeDir string, enabled bool) (*Session, error) {
 }
 
 func readSession(bridgeDir string) (*Session, error) {
-	return fileStore.ReadSession(bridgeDir)
+	return bridgeStore().ReadSession(bridgeDir)
 }
 
 func saveSession(bridgeDir string, session *Session) error {
-	return fileStore.SaveSession(bridgeDir, session)
+	return bridgeStore().SaveSession(bridgeDir, session)
 }
 
 func randomToken(bytesLen int) string {

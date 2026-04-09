@@ -99,7 +99,7 @@ func ComposeProjectName(workspace string, configPath string) string {
 
 func ParseMountSpec(raw string) (MountSpec, bool) {
 	parts := map[string]string{}
-	for _, segment := range strings.Split(raw, ",") {
+	for _, segment := range splitMountSegments(raw) {
 		segment = strings.TrimSpace(segment)
 		if segment == "" {
 			continue
@@ -109,7 +109,7 @@ func ParseMountSpec(raw string) (MountSpec, bool) {
 			parts[segment] = "true"
 			continue
 		}
-		parts[strings.TrimSpace(key)] = strings.TrimSpace(value)
+		parts[strings.TrimSpace(key)] = normalizeMountValue(value)
 	}
 	target := firstNonEmptyString(parts["target"], parts["dst"])
 	if target == "" {
@@ -153,4 +153,45 @@ func firstNonEmptyString(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func splitMountSegments(raw string) []string {
+	segments := make([]string, 0, strings.Count(raw, ",")+1)
+	var current strings.Builder
+	quote := rune(0)
+	escaped := false
+	for _, r := range raw {
+		switch {
+		case escaped:
+			current.WriteRune(r)
+			escaped = false
+		case r == '\\':
+			escaped = true
+		case quote != 0:
+			current.WriteRune(r)
+			if r == quote {
+				quote = 0
+			}
+		case r == '\'' || r == '"':
+			quote = r
+			current.WriteRune(r)
+		case r == ',':
+			segments = append(segments, current.String())
+			current.Reset()
+		default:
+			current.WriteRune(r)
+		}
+	}
+	segments = append(segments, current.String())
+	return segments
+}
+
+func normalizeMountValue(value string) string {
+	value = strings.TrimSpace(value)
+	if len(value) >= 2 {
+		if (value[0] == '\'' && value[len(value)-1] == '\'') || (value[0] == '"' && value[len(value)-1] == '"') {
+			value = value[1 : len(value)-1]
+		}
+	}
+	return value
 }

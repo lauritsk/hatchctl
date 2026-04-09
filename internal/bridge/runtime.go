@@ -28,13 +28,6 @@ const bridgeStartupTimeout = 5 * time.Second
 
 type containerConnectRunner func(string, int, io.Reader, io.Writer) error
 
-var runContainerConnect containerConnectRunner = defaultContainerConnectRunner
-
-var (
-	hostCommandRunner command.Runner = command.Local{}
-	dockerCLI                        = docker.NewClient("docker")
-)
-
 type statusFile struct {
 	SessionID   string          `json:"sessionId"`
 	ContainerID string          `json:"containerId"`
@@ -110,7 +103,7 @@ func Start(session *Session, containerID string) (*Session, error) {
 		}
 		return session, nil
 	}
-	proc, err := hostCommandRunner.Start(command.StartOptions{
+	proc, err := defaultBridgeRuntimeDeps.hostCommand.Start(command.StartOptions{
 		Command: command.Command{
 			Binary: exe,
 			Args:   []string{"bridge", "serve", "--state-dir", stateDir, "--container-id", containerID},
@@ -141,7 +134,7 @@ func Serve(ctx context.Context, stateDir string, containerID string) error {
 	defer func() {
 		_ = tcpListener.Close()
 	}()
-	if err := fileStore.WritePID(session.PIDPath, os.Getpid()); err != nil {
+	if err := bridgeStore().WritePID(session.PIDPath, os.Getpid()); err != nil {
 		return err
 	}
 	if err := writeStatus(session, containerID, "running", "", nil, 0, false); err != nil {
@@ -151,7 +144,7 @@ func Serve(ctx context.Context, stateDir string, containerID string) error {
 		<-ctx.Done()
 		_ = tcpListener.Close()
 	}()
-	service := newBridgeHostService(session, containerID, defaultOpen)
+	service := newBridgeHostServiceWithConnector(session, containerID, defaultOpen, defaultBridgeRuntimeDeps.containerConnect)
 	return service.serveListener(ctx, tcpListener)
 }
 
@@ -170,11 +163,15 @@ func (s *bridgeHostService) serveListener(ctx context.Context, listener net.List
 }
 
 func newBridgeHostService(session *Session, containerID string, opener func(string) error) *bridgeHostService {
+	return newBridgeHostServiceWithConnector(session, containerID, opener, defaultBridgeRuntimeDeps.containerConnect)
+}
+
+func newBridgeHostServiceWithConnector(session *Session, containerID string, opener func(string) error, connector containerConnectRunner) *bridgeHostService {
 	service := &bridgeHostService{
 		session:     session,
 		containerID: containerID,
 		openURL:     opener,
-		connectPort: runContainerConnect,
+		connectPort: connector,
 		forwarded:   map[int]forwardedPort{},
 	}
 	service.forwardURL = service.ensureForward
@@ -377,13 +374,13 @@ func forwardEvent(containerPort int, hostPort int) string {
 
 func defaultOpen(target string) error {
 	if openCommand := os.Getenv("HATCHCTL_BRIDGE_OPEN_COMMAND"); openCommand != "" {
-		return hostCommandRunner.Run(context.Background(), command.Command{Binary: "/bin/sh", Args: []string{"-lc", openCommand}, Env: command.AppendEnv(os.Environ(), "HATCHCTL_BRIDGE_URL="+target)})
+		return defaultBridgeRuntimeDeps.hostCommand.Run(context.Background(), command.Command{Binary: "/bin/sh", Args: []string{"-lc", openCommand}, Env: command.AppendEnv(os.Environ(), "HATCHCTL_BRIDGE_URL="+target)})
 	}
-	return hostCommandRunner.Run(context.Background(), command.Command{Binary: "open", Args: []string{target}})
+	return defaultBridgeRuntimeDeps.hostCommand.Run(context.Background(), command.Command{Binary: "open", Args: []string{target}})
 }
 
 func stopExisting(session *Session) error {
-	pid, err := fileStore.ReadPID(session.PIDPath)
+	pid, err := bridgeStore().ReadPID(session.PIDPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil
@@ -446,17 +443,19 @@ func waitForBridgeTCP(port int, timeout time.Duration) error {
 	return fmt.Errorf("timed out waiting for bridge tcp listener on port %d", port)
 }
 
-func defaultContainerConnectRunner(containerID string, port int, stdin io.Reader, stdout io.Writer) error {
-	var stderr strings.Builder
-	err := dockerCLI.Run(context.Background(), docker.RunOptions{Args: []string{"exec", "-i", containerID, containerHelperBin, "bridge", "helper", "connect", "--port", strconv.Itoa(port)}, Stdin: stdin, Stdout: stdout, Stderr: &stderr})
-	if err != nil {
-		message := strings.TrimSpace(stderr.String())
-		if message == "" {
-			message = err.Error()
+func containerConnectWithDocker(client *docker.Client) containerConnectRunner {
+	return func(containerID string, port int, stdin io.Reader, stdout io.Writer) error {
+		var stderr strings.Builder
+		err := client.Run(context.Background(), docker.RunOptions{Args: []string{"exec", "-i", containerID, containerHelperBin, "bridge", "helper", "connect", "--port", strconv.Itoa(port)}, Stdin: stdin, Stdout: stdout, Stderr: &stderr})
+		if err != nil {
+			message := strings.TrimSpace(stderr.String())
+			if message == "" {
+				message = err.Error()
+			}
+			return fmt.Errorf("docker exec bridge helper connect: %s", message)
 		}
-		return fmt.Errorf("docker exec bridge helper connect: %s", message)
+		return nil
 	}
-	return nil
 }
 
 func listenBridgeTCP(port int) (net.Listener, error) {
@@ -464,7 +463,7 @@ func listenBridgeTCP(port int) (net.Listener, error) {
 }
 
 func writeBridgeConfig(session *Session, containerID string) error {
-	return fileStore.WriteConfig(session, containerID)
+	return bridgeStore().WriteConfig(session, containerID)
 }
 
 func writeStatus(session *Session, containerID string, event string, lastError string, forwarded []forwardStatus, lastPort int, lastExact bool) error {
@@ -479,7 +478,7 @@ func writeStatus(session *Session, containerID string, event string, lastError s
 		LastError:   lastError,
 		UpdatedAt:   time.Now().UTC().Format(time.RFC3339),
 	}
-	return fileStore.WriteStatus(session, status)
+	return bridgeStore().WriteStatus(session, status)
 }
 
 func writeBridgeRequest(w io.Writer, request bridgeRequest) error {

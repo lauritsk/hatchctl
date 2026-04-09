@@ -21,8 +21,6 @@ type bridgeFileStore interface {
 
 type filesystemBridgeStore struct{}
 
-var fileStore bridgeFileStore = filesystemBridgeStore{}
-
 func (filesystemBridgeStore) ReadSession(bridgeDir string) (*Session, error) {
 	data, err := fileutil.ReadFile(filepath.Join(bridgeDir, "session.json"))
 	if err != nil {
