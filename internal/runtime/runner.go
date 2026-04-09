@@ -13,6 +13,7 @@ import (
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	ui "github.com/lauritsk/hatchctl/internal/display"
 	"github.com/lauritsk/hatchctl/internal/docker"
+	"golang.org/x/term"
 )
 
 type Runner struct {
@@ -771,7 +772,7 @@ func isTerminalStream(stream any) bool {
 	if !ok {
 		return false
 	}
-	return isCharacterDevice(fd)
+	return term.IsTerminal(int(fd))
 }
 
 func streamFileDescriptor(stream any) (uintptr, bool) {
@@ -783,16 +784,4 @@ func streamFileDescriptor(stream any) (uintptr, bool) {
 		return 0, false
 	}
 	return f.Fd(), true
-}
-
-func isCharacterDevice(fd uintptr) bool {
-	file := os.NewFile(fd, "")
-	if file == nil {
-		return false
-	}
-	info, err := file.Stat()
-	if err != nil {
-		return false
-	}
-	return info.Mode()&os.ModeCharDevice != 0
 }

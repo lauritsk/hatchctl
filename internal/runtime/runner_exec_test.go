@@ -264,3 +264,19 @@ func TestExecDoesNotWritePlanCacheArtifacts(t *testing.T) {
 		t.Fatalf("unexpected exec command %q", got)
 	}
 }
+
+func TestShouldAllocateTTYRejectsNonTerminalCharacterDevices(t *testing.T) {
+	t.Parallel()
+
+	devNull, err := os.OpenFile(os.DevNull, os.O_RDWR, 0)
+	if err != nil {
+		t.Fatalf("open %s: %v", os.DevNull, err)
+	}
+	t.Cleanup(func() {
+		_ = devNull.Close()
+	})
+
+	if shouldAllocateTTY(devNull, devNull) {
+		t.Fatalf("expected %s to be treated as a non-terminal stream", os.DevNull)
+	}
+}
