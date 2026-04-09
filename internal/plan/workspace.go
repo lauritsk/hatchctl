@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/lauritsk/hatchctl/internal/capability"
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	"github.com/lauritsk/hatchctl/internal/policy"
 	"github.com/lauritsk/hatchctl/internal/security"
@@ -62,6 +63,7 @@ type WorkspacePlan struct {
 	ReadOnly               bool
 	FeatureMaterialization FeatureMaterializationMode
 	Preferences            Preferences
+	Capabilities           capability.Set
 	Trust                  TrustPlan
 }
 
@@ -116,6 +118,12 @@ func BuildWorkspacePlan(req BuildWorkspacePlanRequest) (WorkspacePlan, error) {
 			BridgeEnabled: req.BridgeEnabled,
 			SSHAgent:      req.SSHAgent,
 			Dotfiles:      req.Dotfiles,
+		},
+		Capabilities: capability.Set{
+			SSHAgent: capability.SSHAgent{Enabled: req.SSHAgent},
+			UIDRemap: capability.UIDRemap{Enabled: workspaceSpec.Merged.UpdateRemoteUserUID == nil || *workspaceSpec.Merged.UpdateRemoteUserUID},
+			Dotfiles: capability.Dotfiles{Repository: req.Dotfiles.Repository, InstallCommand: req.Dotfiles.InstallCommand, TargetPath: req.Dotfiles.TargetPath},
+			Bridge:   capability.Bridge{Enabled: req.BridgeEnabled},
 		},
 		Trust: TrustPlan{
 			WorkspaceAllowed:      req.TrustWorkspace,

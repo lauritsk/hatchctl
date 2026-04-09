@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"strings"
 
+	capuid "github.com/lauritsk/hatchctl/internal/capability/uidremap"
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	ui "github.com/lauritsk/hatchctl/internal/display"
 	"github.com/lauritsk/hatchctl/internal/docker"
@@ -347,14 +348,10 @@ func (r *Runner) ensureUpdatedUIDContainer(ctx context.Context, resolved devcont
 	if err != nil {
 		return err
 	}
-	imageUser := inspect.Config.User
-	if imageUser == "" {
-		imageUser = "root"
-	}
-	remoteUser := firstNonEmpty(resolved.Merged.RemoteUser, resolved.Merged.ContainerUser, imageUser)
-	if remoteUser == "" || remoteUser == "root" || isNumericUser(remoteUser) {
+	remoteUser, ok := capuid.Eligible(resolved, inspect)
+	if !ok {
 		return nil
 	}
-	args := []string{"exec", "-i", "-u", "root", containerID, "sh", "-s", "--", remoteUser, fmt.Sprintf("%d", uid), fmt.Sprintf("%d", gid)}
-	return r.backend.Run(ctx, runtimeCommand{Kind: runtimeCommandDocker, Phase: phaseContainer, Label: "Reconciling container user", Args: args, Stdin: strings.NewReader(updateUIDScript), Stdout: r.stdout, Stderr: r.stderr, Events: events})
+	args := capuid.ExecArgs(containerID, remoteUser, uid, gid)
+	return r.backend.Run(ctx, runtimeCommand{Kind: runtimeCommandDocker, Phase: phaseContainer, Label: "Reconciling container user", Args: args, Stdin: strings.NewReader(capuid.UpdateScript), Stdout: r.stdout, Stderr: r.stderr, Events: events})
 }

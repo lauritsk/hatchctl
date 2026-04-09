@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strings"
 
+	bridgecap "github.com/lauritsk/hatchctl/internal/capability/bridge"
+	capssh "github.com/lauritsk/hatchctl/internal/capability/sshagent"
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	"github.com/lauritsk/hatchctl/internal/docker"
 	"github.com/lauritsk/hatchctl/internal/engine/dockercli"
@@ -59,10 +61,18 @@ type ObservedState struct {
 	Resolved   devcontainer.ResolvedConfig
 	Target     RuntimeTarget
 	Control    ControlState
+	Capability CapabilityState
 	Container  *docker.ContainerInspect
 	Image      *docker.ImageInspect
 	ImageRef   string
 	ReadTarget ReadToken
+}
+
+type CapabilityState struct {
+	SSHAgentAttached bool
+	BridgeEnabled    bool
+	DotfilesApplied  bool
+	UIDRemapDesired  bool
 }
 
 type ObserveRequest struct {
@@ -134,6 +144,7 @@ func (o *Observer) Observe(ctx context.Context, req ObserveRequest) (ObservedSta
 		observed.Target = target
 		observed.Control.WorkspaceState = state
 		observed.Container = container
+		observed.Capability = observeCapabilities(container, state, req.Resolved)
 	}
 	if req.ObserveImage && req.ImageRef != "" {
 		inspect, err := o.backend.InspectImage(ctx, req.ImageRef)
@@ -344,6 +355,18 @@ func (o ObservedState) readToken() ReadToken {
 		PrimaryContainer:       o.Target.PrimaryContainer,
 		CoordinationGeneration: o.Control.Coordination.Generation,
 	}
+}
+
+func observeCapabilities(container *docker.ContainerInspect, state devcontainer.State, resolved devcontainer.ResolvedConfig) CapabilityState {
+	capabilityState := CapabilityState{
+		BridgeEnabled:   bridgecap.EnabledFromInspect(container, state),
+		DotfilesApplied: state.DotfilesReady,
+		UIDRemapDesired: resolved.Merged.UpdateRemoteUserUID == nil || *resolved.Merged.UpdateRemoteUserUID,
+	}
+	if container != nil {
+		capabilityState.SSHAgentAttached = capssh.HasTargetMount(*container, capssh.ContainerSocketPath) || container.Config.Labels[devcontainer.SSHAgentLabel] == "true"
+	}
+	return capabilityState
 }
 
 func (o *Observer) withDefaults() *Observer {

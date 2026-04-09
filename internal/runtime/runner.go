@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/lauritsk/hatchctl/internal/bridge"
+	bridgecap "github.com/lauritsk/hatchctl/internal/capability/bridge"
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	ui "github.com/lauritsk/hatchctl/internal/display"
 	"github.com/lauritsk/hatchctl/internal/docker"
@@ -293,7 +294,7 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 	if err := runner.enrichMergedConfig(ctx, &resolved, image); err != nil {
 		return UpResult{}, err
 	}
-	if workspacePlan.Preferences.SSHAgent {
+	if workspacePlan.Capabilities.SSHAgent.Enabled {
 		if resolved.Merged, err = injectSSHAgent(resolved.Merged); err != nil {
 			return UpResult{}, err
 		}
@@ -304,10 +305,10 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 	}
 	var bridgeSession *bridge.Session
 	runner.emitPhaseProgress(opts.Events, phaseBridge, "Configuring bridge support")
-	if workspacePlan.Preferences.BridgeEnabled {
-		bridgeSession, err = bridge.Prepare(resolved.StateDir, true, helperArch)
+	if workspacePlan.Capabilities.Bridge.Enabled {
+		bridgeSession, err = bridgecap.Prepare(resolved.StateDir, helperArch)
 		if err == nil {
-			resolved.Merged = bridge.Inject(bridgeSession, resolved.Merged)
+			resolved.Merged = bridgecap.Inject(bridgeSession, resolved.Merged)
 		}
 	} else {
 		bridgeSession = nil
@@ -316,7 +317,7 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 		return UpResult{}, err
 	}
 	runner.emitPhaseProgress(opts.Events, phaseContainer, "Reconciling managed container")
-	containerID, containerKey, created, err := runner.reconcileContainer(ctx, session.prepared.observed, resolved, image, imagePlan, workspacePlan.Preferences.BridgeEnabled, workspacePlan.Preferences.SSHAgent, opts.Recreate, opts.Events)
+	containerID, containerKey, created, err := runner.reconcileContainer(ctx, session.prepared.observed, resolved, image, imagePlan, workspacePlan.Capabilities.Bridge.Enabled, workspacePlan.Capabilities.SSHAgent.Enabled, opts.Recreate, opts.Events)
 	if err != nil {
 		return UpResult{}, err
 	}
@@ -341,7 +342,7 @@ func (r *Runner) Up(ctx context.Context, opts UpOptions) (UpResult, error) {
 	var bridgeReport *bridge.Report
 	if bridgeSession != nil {
 		runner.emitPhaseProgress(opts.Events, phaseBridge, "Starting bridge session")
-		startedBridge, err := bridge.Start(bridgeSession, containerID)
+		startedBridge, err := bridgecap.Start(bridgeSession, containerID)
 		if err != nil {
 			return UpResult{}, err
 		}
@@ -436,7 +437,7 @@ func (r *Runner) Exec(ctx context.Context, opts ExecOptions) (int, error) {
 		return 0, err
 	}
 	resolved := session.Resolved()
-	if workspacePlan.Preferences.SSHAgent {
+	if workspacePlan.Capabilities.SSHAgent.Enabled {
 		if resolved.Merged, err = injectSSHAgent(resolved.Merged); err != nil {
 			return 0, err
 		}
@@ -500,16 +501,16 @@ func (r *Runner) ReadConfig(ctx context.Context, opts ReadConfigOptions) (ReadCo
 	resolved := session.Resolved()
 	image := session.Image()
 	state := session.State()
-	if workspacePlan.Preferences.SSHAgent {
+	if workspacePlan.Capabilities.SSHAgent.Enabled {
 		if resolved.Merged, err = injectSSHAgent(resolved.Merged); err != nil {
 			return ReadConfigResult{}, err
 		}
 	}
 	var bridgeSession *bridge.Session
 	if state.BridgeEnabled {
-		bridgeSession, err = bridge.Preview(resolved.StateDir, true)
+		bridgeSession, err = bridgecap.Preview(resolved.StateDir, true)
 		if err == nil {
-			resolved.Merged = bridge.Inject(bridgeSession, resolved.Merged)
+			resolved.Merged = bridgecap.Inject(bridgeSession, resolved.Merged)
 		}
 	}
 	if err != nil {
@@ -520,7 +521,7 @@ func (r *Runner) ReadConfig(ctx context.Context, opts ReadConfigOptions) (ReadCo
 		bridgeReport = bridge.ReportFromSession(bridgeSession)
 	}
 	if state.BridgeEnabled {
-		report, err := bridge.Doctor(resolved.StateDir)
+		report, err := bridgecap.Doctor(resolved.StateDir)
 		if err != nil {
 			return ReadConfigResult{}, err
 		}
@@ -637,7 +638,7 @@ func (r *Runner) BridgeDoctor(ctx context.Context, opts BridgeDoctorOptions) (br
 	if err != nil {
 		return bridge.Report{}, err
 	}
-	return bridge.Doctor(session.Resolved().StateDir)
+	return bridgecap.Doctor(session.Resolved().StateDir)
 }
 
 func preparedImage(resolved devcontainer.ResolvedConfig) string {
