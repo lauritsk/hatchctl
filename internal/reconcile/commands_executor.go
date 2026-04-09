@@ -111,6 +111,7 @@ func (e *Executor) Up(ctx context.Context, workspacePlan workspaceplan.Workspace
 	if err != nil {
 		return UpResult{}, err
 	}
+	session.SetResolved(resolved)
 	executor.emitPhaseProgress(opts.IO.Events, phaseContainer, "Reconciling managed container")
 	containerID, containerKey, created, err := executor.ReconcileContainer(ctx, session.Observed(), resolved, image, imagePlan, workspacePlan.Capabilities.Bridge.Enabled, workspacePlan.Capabilities.SSHAgent.Enabled, opts.Recreate, opts.IO.Events)
 	if err != nil {
@@ -207,11 +208,15 @@ func (e *Executor) Exec(ctx context.Context, workspacePlan workspaceplan.Workspa
 		return 0, err
 	}
 	workspacePlan = workspacePlan.WithResolved(resolved)
-	session, err := executor.PrepareObservedSession(ctx, ObservedSessionOptions{Plan: workspacePlan, Resolved: resolved, Debug: opts.Debug, Events: opts.IO.Events, Enrich: true, FindContainer: true, InspectContainer: true})
+	session, err := executor.PrepareObservedSession(ctx, ObservedSessionOptions{Plan: workspacePlan, Resolved: resolved, Debug: opts.Debug, Events: opts.IO.Events, FindContainer: true, InspectContainer: true})
 	if err != nil {
 		return 0, err
 	}
 	resolved = session.Resolved()
+	if err := executor.enrichExecResolvedConfig(ctx, session, &resolved); err != nil {
+		return 0, err
+	}
+	session.SetResolved(resolved)
 	if owner := session.Observed().Control.Coordination.ActiveOwner; owner != nil {
 		return 0, &storefs.WorkspaceBusyError{StateDir: resolved.StateDir, Owner: owner}
 	}
@@ -248,6 +253,27 @@ func (e *Executor) Exec(ctx context.Context, workspacePlan workspaceplan.Workspa
 		}
 	}
 	return 0, err
+}
+
+func (e *Executor) enrichExecResolvedConfig(ctx context.Context, session *Session, resolved *devcontainer.ResolvedConfig) error {
+	if session == nil || resolved == nil {
+		return nil
+	}
+	if inspect := session.ContainerInspect(); inspect != nil {
+		metadata, err := devcontainer.MetadataFromLabel(inspect.Config.Labels[devcontainer.ImageMetadataLabel])
+		if err != nil {
+			return err
+		}
+		if len(metadata) > 0 {
+			resolved.Merged = devcontainer.MergeMetadata(devcontainer.Config{}, metadata)
+			resolved.Merged.Config = resolved.Config
+			return nil
+		}
+		if inspect.Image != "" {
+			return e.EnrichMergedConfig(ctx, resolved, inspect.Image)
+		}
+	}
+	return e.EnrichMergedConfig(ctx, resolved, session.Image())
 }
 
 func (e *Executor) ReadConfig(ctx context.Context, workspacePlan workspaceplan.WorkspacePlan, opts ReadConfigOptions) (ReadConfigResult, error) {
