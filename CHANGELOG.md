@@ -2,6 +2,17 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## [v0.6.10](https://github.com/lauritsk/hatchctl/compare/eb79d3ec038a933b03a1baa4a28ad06af19d2249..v0.6.10) - 2026-04-10
+#### Bug Fixes
+- (**security**) Reduce implicit workspace and bridge trust - ([b5c9943](https://github.com/lauritsk/hatchctl/commit/b5c9943ab43b4fb334262ec4f27ef733fe6a55bc)) - Karl Hans Laurits
+#### Miscellaneous Chores
+- (**mise**) Configure Syft for release publishing - ([cb43fc3](https://github.com/lauritsk/hatchctl/commit/cb43fc39338249ce633aef06badd09543875b67d)) - Karl Hans Laurits
+- (**release**) Avoid lexicographic tag ordering issues - ([41236c5](https://github.com/lauritsk/hatchctl/commit/41236c59aa36c7435cfa061dab2a75ea08289662)) - Karl Hans Laurits
+- (**release**) Report release artifact sizes - ([03a4f3e](https://github.com/lauritsk/hatchctl/commit/03a4f3e3b84a177a1ba3607003d20da9fb55eaf2)) - Karl Hans Laurits
+- Enable Renovate platform automerge - ([eb79d3e](https://github.com/lauritsk/hatchctl/commit/eb79d3ec038a933b03a1baa4a28ad06af19d2249)) - Karl Hans Laurits
+
+- - -
+
 ## [v0.6.9](https://github.com/lauritsk/hatchctl/compare/5d3165b1ff67b353a93b1a49a43d61dc17495e95..v0.6.9) - 2026-04-10
 #### Bug Fixes
 - (**deps**) Keep dependency upgrades mergeable with Charm v2 imports and refreshed Alpine fixtures - ([d55f97a](https://github.com/lauritsk/hatchctl/commit/d55f97acfc504278122d6588fce8518c1b687660)) - Karl Hans Laurits
