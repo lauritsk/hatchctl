@@ -83,54 +83,55 @@ func ResolveSource(ctx context.Context, configDir string, cacheDir string, sourc
 	if err != nil {
 		return ResolvedSource{}, err
 	}
-	if parsed.Kind == "file-path" {
+	switch parsed.Kind {
+	case "file-path":
 		return ResolvedSource{Path: parsed.LocalPath, Kind: "file-path", Resolved: source}, nil
-	}
-	if parsed.Kind == "direct-tarball" {
-		if lockfilePolicy == "update" {
-			if !opts.AllowNetwork {
-				return ResolvedSource{}, fmt.Errorf("feature %q requires network access in update lockfile mode", source)
-			}
-			resolved, integrity, err := fetchTarballFeature(ctx, cacheDir, parsed.Source, lock, httpTimeout)
-			return ResolvedSource{Path: resolved, Kind: "direct-tarball", Resolved: parsed.Source, Integrity: integrity, Version: parsed.Source}, err
-		}
-		if !opts.AllowNetwork {
-			resolved, integrity, err := cachedTarballFeature(cacheDir, parsed.Source, lock)
-			return ResolvedSource{Path: resolved, Kind: "direct-tarball", Resolved: parsed.Source, Integrity: integrity, Version: parsed.Source}, err
-		}
-		resolved, integrity, err := fetchTarballFeature(ctx, cacheDir, parsed.Source, lock, httpTimeout)
-		return ResolvedSource{Path: resolved, Kind: "direct-tarball", Resolved: parsed.Source, Integrity: integrity, Version: parsed.Source}, err
-	}
-	if parsed.Kind == "github-release" {
+	case "direct-tarball":
+		return resolveTarballSource(ctx, cacheDir, source, parsed.Source, "direct-tarball", parsed.Source, lock, lockfilePolicy, opts, httpTimeout)
+	case "github-release":
 		resolvedSource := parsed.GitHubRef.tarballURL()
-		if lockfilePolicy == "update" {
-			if !opts.AllowNetwork {
-				return ResolvedSource{}, fmt.Errorf("feature %q requires network access in update lockfile mode", source)
-			}
-			resolved, integrity, err := fetchTarballFeature(ctx, cacheDir, resolvedSource, lock, httpTimeout)
-			return ResolvedSource{Path: resolved, Kind: "github-release", Resolved: resolvedSource, Integrity: integrity, Version: parsed.GitHubRef.version()}, err
-		}
-		if !opts.AllowNetwork {
-			resolved, integrity, err := cachedTarballFeature(cacheDir, resolvedSource, lock)
-			return ResolvedSource{Path: resolved, Kind: "github-release", Resolved: resolvedSource, Integrity: integrity, Version: parsed.GitHubRef.version()}, err
-		}
-		resolved, integrity, err := fetchTarballFeature(ctx, cacheDir, resolvedSource, lock, httpTimeout)
-		return ResolvedSource{Path: resolved, Kind: "github-release", Resolved: resolvedSource, Integrity: integrity, Version: parsed.GitHubRef.version()}, err
+		return resolveTarballSource(ctx, cacheDir, source, resolvedSource, "github-release", parsed.GitHubRef.version(), lock, lockfilePolicy, opts, httpTimeout)
+	case "oci":
+		return resolveOCISource(ctx, cacheDir, source, parsed.OCIRef, lock, lockfilePolicy, opts, httpTimeout)
+	default:
+		return ResolvedSource{}, fmt.Errorf("unsupported feature source kind %q", parsed.Kind)
 	}
-	ref := parsed.OCIRef
-	if lockfilePolicy == "update" {
-		if !opts.AllowNetwork {
-			return ResolvedSource{}, fmt.Errorf("feature %q requires network access in update lockfile mode", source)
-		}
+}
+
+func resolveTarballSource(ctx context.Context, cacheDir string, source string, resolvedSource string, kind string, version string, lock storefs.FeatureLockEntry, lockfilePolicy string, opts ResolveOptions, httpTimeout time.Duration) (ResolvedSource, error) {
+	fetchRemote, err := shouldFetchRemoteSource(source, lockfilePolicy, opts.AllowNetwork)
+	if err != nil {
+		return ResolvedSource{}, err
+	}
+	if fetchRemote {
+		resolvedPath, integrity, err := fetchTarballFeature(ctx, cacheDir, resolvedSource, lock, httpTimeout)
+		return ResolvedSource{Path: resolvedPath, Kind: kind, Resolved: resolvedSource, Integrity: integrity, Version: version}, err
+	}
+	resolvedPath, integrity, err := cachedTarballFeature(cacheDir, resolvedSource, lock)
+	return ResolvedSource{Path: resolvedPath, Kind: kind, Resolved: resolvedSource, Integrity: integrity, Version: version}, err
+}
+
+func resolveOCISource(ctx context.Context, cacheDir string, source string, ref ociReference, lock storefs.FeatureLockEntry, lockfilePolicy string, opts ResolveOptions, httpTimeout time.Duration) (ResolvedSource, error) {
+	fetchRemote, err := shouldFetchRemoteSource(source, lockfilePolicy, opts.AllowNetwork)
+	if err != nil {
+		return ResolvedSource{}, err
+	}
+	if fetchRemote {
 		resolvedPath, resolvedRef, integrity, version, verification, err := fetchOCIFeature(ctx, cacheDir, source, ref, lock, httpTimeout, opts.VerifyImage)
 		return ResolvedSource{Path: resolvedPath, Kind: "oci", Resolved: resolvedRef, Integrity: integrity, Version: version, Verification: verification}, err
 	}
-	if !opts.AllowNetwork {
-		resolvedPath, resolvedRef, integrity, version, err := cachedOCIFeature(cacheDir, source, ref, lock)
-		return ResolvedSource{Path: resolvedPath, Kind: "oci", Resolved: resolvedRef, Integrity: integrity, Version: version}, err
+	resolvedPath, resolvedRef, integrity, version, err := cachedOCIFeature(cacheDir, source, ref, lock)
+	return ResolvedSource{Path: resolvedPath, Kind: "oci", Resolved: resolvedRef, Integrity: integrity, Version: version}, err
+}
+
+func shouldFetchRemoteSource(source string, lockfilePolicy string, allowNetwork bool) (bool, error) {
+	if lockfilePolicy == "update" {
+		if !allowNetwork {
+			return false, fmt.Errorf("feature %q requires network access in update lockfile mode", source)
+		}
+		return true, nil
 	}
-	resolvedPath, resolvedRef, integrity, version, verification, err := fetchOCIFeature(ctx, cacheDir, source, ref, lock, httpTimeout, opts.VerifyImage)
-	return ResolvedSource{Path: resolvedPath, Kind: "oci", Resolved: resolvedRef, Integrity: integrity, Version: version, Verification: verification}, err
+	return allowNetwork, nil
 }
 
 type gitHubFeatureReference struct {

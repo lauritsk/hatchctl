@@ -5,6 +5,8 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -14,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lauritsk/hatchctl/internal/security"
 	storefs "github.com/lauritsk/hatchctl/internal/store/fs"
 )
 
@@ -226,6 +229,143 @@ func TestResolveSourceRejectsOversizedTarballs(t *testing.T) {
 	}
 }
 
+func TestResolveSourceRejectsUpdateModeWithoutNetwork(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name   string
+		source string
+	}{
+		{name: "tarball", source: "https://example.com/feature.tgz"},
+		{name: "github", source: "owner/repo/feature@v1.2.3"},
+		{name: "oci", source: "ghcr.io/devcontainers/features/go:1"},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := ResolveSource(context.Background(), t.TempDir(), t.TempDir(), tc.source, storefs.FeatureLockEntry{}, "update", ResolveOptions{AllowNetwork: false})
+			if err == nil || !strings.Contains(err.Error(), "requires network access in update lockfile mode") {
+				t.Fatalf("expected update-mode network error, got %v", err)
+			}
+		})
+	}
+}
+
+func TestResolveSourceUsesCachedTarballWhenNetworkDisabled(t *testing.T) {
+	t.Parallel()
+
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests++
+		_, _ = w.Write([]byte("unexpected request"))
+	}))
+	defer server.Close()
+
+	cacheDir := t.TempDir()
+	source := server.URL + "/feature.tgz"
+	integrity := "sha256:cached-tarball"
+	cacheFeatureManifest(t, cacheDir, source, integrity, `{"id":"cached-tarball"}`)
+
+	resolved, err := ResolveSource(context.Background(), t.TempDir(), cacheDir, source, storefs.FeatureLockEntry{Integrity: integrity}, "auto", ResolveOptions{AllowNetwork: false})
+	if err != nil {
+		t.Fatalf("resolve cached tarball: %v", err)
+	}
+	if resolved.Kind != "direct-tarball" || resolved.Integrity != integrity || resolved.Resolved != source || resolved.Version != source {
+		t.Fatalf("unexpected cached tarball resolution %#v", resolved)
+	}
+	if requests != 0 {
+		t.Fatalf("expected cached tarball resolution without network, got %d requests", requests)
+	}
+}
+
+func TestResolveSourceUsesCachedGitHubReleaseWhenNetworkDisabled(t *testing.T) {
+	t.Parallel()
+
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests++
+		_, _ = w.Write([]byte("unexpected request"))
+	}))
+	defer server.Close()
+
+	previousBaseURL := githubReleaseBaseURL
+	githubReleaseBaseURL = server.URL
+	t.Cleanup(func() {
+		githubReleaseBaseURL = previousBaseURL
+	})
+
+	source := "owner/repo/feature@v1.2.3"
+	resolvedSource := server.URL + "/owner/repo/releases/download/v1.2.3/feature.tgz"
+	integrity := "sha256:cached-github"
+	cacheDir := t.TempDir()
+	cacheFeatureManifest(t, cacheDir, resolvedSource, integrity, `{"id":"cached-github"}`)
+
+	resolved, err := ResolveSource(context.Background(), t.TempDir(), cacheDir, source, storefs.FeatureLockEntry{Integrity: integrity}, "auto", ResolveOptions{AllowNetwork: false})
+	if err != nil {
+		t.Fatalf("resolve cached github release: %v", err)
+	}
+	if resolved.Kind != "github-release" || resolved.Resolved != resolvedSource || resolved.Integrity != integrity || resolved.Version != "v1.2.3" {
+		t.Fatalf("unexpected cached github resolution %#v", resolved)
+	}
+	if requests != 0 {
+		t.Fatalf("expected cached github resolution without network, got %d requests", requests)
+	}
+}
+
+func TestResolveSourceUsesCachedOCIWhenNetworkDisabled(t *testing.T) {
+	t.Parallel()
+
+	cacheDir := t.TempDir()
+	source := "ghcr.io/devcontainers/features/go:1"
+	integrity := "sha256:test-manifest"
+	cacheFeatureManifest(t, cacheDir, source, integrity, `{"id":"cached-oci"}`)
+
+	resolved, err := ResolveSource(context.Background(), t.TempDir(), cacheDir, source, storefs.FeatureLockEntry{Integrity: integrity}, "auto", ResolveOptions{AllowNetwork: false})
+	if err != nil {
+		t.Fatalf("resolve cached oci: %v", err)
+	}
+	if resolved.Kind != "oci" || resolved.Resolved != "ghcr.io/devcontainers/features/go@sha256:test-manifest" || resolved.Integrity != integrity || resolved.Version != "1" {
+		t.Fatalf("unexpected cached oci resolution %#v", resolved)
+	}
+}
+
+func TestResolveSourceFetchesOCIAndPreservesVerification(t *testing.T) {
+	t.Parallel()
+
+	layer := buildFeatureLayer(t, map[string]string{
+		"devcontainer-feature.json": `{"id":"oci-tool"}`,
+		"install.sh":                "#!/bin/sh\nexit 0\n",
+	})
+	server, requests := newFeatureRegistryServer(t, layer)
+	defer server.Close()
+
+	source := strings.TrimPrefix(server.URL, "http://") + "/features/remote-tool:1"
+	verifyCalls := 0
+	resolved, err := ResolveSource(context.Background(), t.TempDir(), t.TempDir(), source, storefs.FeatureLockEntry{}, "auto", ResolveOptions{
+		AllowNetwork: true,
+		VerifyImage: func(_ context.Context, ref string) security.VerificationResult {
+			verifyCalls++
+			return security.VerificationResult{Ref: ref, Verified: true}
+		},
+	})
+	if err != nil {
+		t.Fatalf("resolve fetched oci: %v", err)
+	}
+	if resolved.Kind != "oci" || resolved.Resolved != strings.TrimPrefix(server.URL, "http://")+"/features/remote-tool@sha256:test-manifest" || resolved.Integrity != "sha256:test-manifest" || resolved.Version != "1" {
+		t.Fatalf("unexpected fetched oci resolution %#v", resolved)
+	}
+	if !resolved.Verification.Verified || resolved.Verification.Ref != strings.TrimPrefix(server.URL, "http://")+"/features/remote-tool@sha256:test-manifest" {
+		t.Fatalf("unexpected verification result %#v", resolved.Verification)
+	}
+	if verifyCalls != 1 {
+		t.Fatalf("expected one verification call, got %d", verifyCalls)
+	}
+	if (*requests)["/v2/features/remote-tool/manifests/1"] == 0 || (*requests)["/v2/features/remote-tool/blobs/sha256:test-layer"] == 0 {
+		t.Fatalf("expected manifest and blob requests, got %#v", *requests)
+	}
+}
+
 func buildFeatureLayer(t *testing.T, files map[string]string) []byte {
 	t.Helper()
 	entries := make([]featureLayerEntry, 0, len(files))
@@ -260,6 +400,20 @@ func buildFeatureLayerEntries(t *testing.T, entries []featureLayerEntry) []byte 
 		t.Fatal(err)
 	}
 	return buffer.Bytes()
+}
+
+func cacheFeatureManifest(t *testing.T, cacheDir string, source string, integrity string, manifest string) string {
+	t.Helper()
+
+	key := sha256.Sum256([]byte(source))
+	featureDir := filepath.Join(cacheDir, hex.EncodeToString(key[:]), SanitizeCacheRef(integrity))
+	if err := os.MkdirAll(featureDir, 0o755); err != nil {
+		t.Fatalf("mkdir cached feature dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(featureDir, "devcontainer-feature.json"), []byte(manifest), 0o644); err != nil {
+		t.Fatalf("write cached feature manifest: %v", err)
+	}
+	return featureDir
 }
 
 func newFeatureRegistryServer(t *testing.T, layer []byte) (*httptest.Server, *map[string]int) {
