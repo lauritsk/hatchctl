@@ -251,47 +251,11 @@ func firstNonEmpty(values ...string) string {
 }
 
 func (e *Executor) selectBestContainerID(ctx context.Context, output string) (string, error) {
-	ids := make([]string, 0)
-	seen := map[string]struct{}{}
-	for _, line := range strings.Split(output, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		if _, ok := seen[line]; ok {
-			continue
-		}
-		seen[line] = struct{}{}
-		ids = append(ids, line)
+	best, err := selectBestContainer(ctx, output, inspectContainerWithEngine(e.engine))
+	if err != nil {
+		return "", err
 	}
-	if len(ids) == 0 {
-		return "", errManagedContainerNotFound
-	}
-	type candidate struct {
-		id      string
-		running bool
-	}
-	candidates := make([]candidate, 0, len(ids))
-	for _, id := range ids {
-		inspect, err := e.engine.InspectContainer(ctx, dockercli.InspectContainerRequest{ContainerID: id})
-		if err != nil {
-			if docker.IsNotFound(err) {
-				continue
-			}
-			return "", err
-		}
-		candidates = append(candidates, candidate{id: inspect.ID, running: inspect.State.Running})
-	}
-	if len(candidates) == 0 {
-		return "", errManagedContainerNotFound
-	}
-	sort.Slice(candidates, func(i int, j int) bool {
-		if candidates[i].running != candidates[j].running {
-			return candidates[i].running
-		}
-		return candidates[i].id < candidates[j].id
-	})
-	return candidates[0].id, nil
+	return best.ID, nil
 }
 
 func isNumericUser(value string) bool {
