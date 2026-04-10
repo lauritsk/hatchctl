@@ -2,6 +2,19 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## [v0.6.13](https://github.com/lauritsk/hatchctl/compare/9621cb901dec10c92b114a20dd9cac630644d393..v0.6.13) - 2026-04-10
+#### Bug Fixes
+- (**ci**) Batch workflow output writes for shellcheck - ([eb400d6](https://github.com/lauritsk/hatchctl/commit/eb400d6e25a462cb811402287bdaf88d939204bf)) - Karl Hans Laurits
+- (**security**) Verify pinned images with configurable trusted signers - ([14235b0](https://github.com/lauritsk/hatchctl/commit/14235b0090b4423878d20462b92c08a6ce2f06b5)) - Karl Hans Laurits
+#### Miscellaneous Chores
+- (**ci**) Pin workflow runners and container refs - ([06286c0](https://github.com/lauritsk/hatchctl/commit/06286c0095ccf8e3cee4318c7cd7ef2c6a2aee2f)) - Karl Hans Laurits
+- (**mise**) Add shellcheck for workflow linting - ([6984058](https://github.com/lauritsk/hatchctl/commit/6984058753cab0fa51cb230117143e2d00bb13ee)) - Karl Hans Laurits
+- (**mise**) Move task tools into shared declarations - ([aa4aac5](https://github.com/lauritsk/hatchctl/commit/aa4aac563f8f30b2b8dd6c88d684e9d2bea5fee1)) - Karl Hans Laurits
+- (**mise**) Make lint aggregate actionlint checks - ([b4980d4](https://github.com/lauritsk/hatchctl/commit/b4980d4cbc729504f71478fa473efd7cf23aecb1)) - Karl Hans Laurits
+- (**mise**) Update hatchctl tool version - ([9621cb9](https://github.com/lauritsk/hatchctl/commit/9621cb901dec10c92b114a20dd9cac630644d393)) - Karl Hans Laurits
+
+- - -
+
 ## [v0.6.12](https://github.com/lauritsk/hatchctl/compare/87c9d5129661b3b6a94424baef2bfba43a345bd1..v0.6.12) - 2026-04-10
 #### Bug Fixes
 - (**bridge**) Preserve exact localhost callback ports for OAuth flows - ([f5459be](https://github.com/lauritsk/hatchctl/commit/f5459be820dc5cdf36707367915673791feec617)) - Karl Hans Laurits
