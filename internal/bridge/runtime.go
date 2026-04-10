@@ -368,7 +368,11 @@ func (s *bridgeHostService) forwardSnapshotLocked() []forwardStatus {
 }
 
 func listenForwardPort(port int) (net.Listener, bool, error) {
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	listener, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)))
+	if err == nil {
+		return listener, true, nil
+	}
+	listener, err = net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		return nil, false, err
 	}

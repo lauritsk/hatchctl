@@ -178,7 +178,7 @@ func TestBridgeHostServiceReportsForwardError(t *testing.T) {
 	}
 }
 
-func TestBridgeHostServiceForwardsSingleUseRandomPort(t *testing.T) {
+func TestBridgeHostServiceForwardsSingleUseExactPortWhenAvailable(t *testing.T) {
 	t.Parallel()
 
 	session := &Session{ID: "session", StatusPath: filepath.Join(t.TempDir(), "bridge-status.json")}
@@ -199,11 +199,11 @@ func TestBridgeHostServiceForwardsSingleUseRandomPort(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ensure forward: %v", err)
 	}
-	if exact {
-		t.Fatal("expected randomized bridge host port")
+	if !exact {
+		t.Fatal("expected exact bridge host port")
 	}
-	if hostPort == 8080 {
-		t.Fatalf("expected randomized host port, got container port %d", hostPort)
+	if hostPort != 8080 {
+		t.Fatalf("expected exact host port 8080, got %d", hostPort)
 	}
 
 	conn, err := net.Dial("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(hostPort)))

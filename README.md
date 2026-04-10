@@ -124,7 +124,7 @@ Repo-controlled Docker settings that can expand host access are also gated by de
 
 `config` and `bridge doctor` default to `frozen` so inspection commands do not unexpectedly update dependency state.
 
-Use `--bridge` on macOS when the container needs host-side browser open or localhost callback forwarding during auth flows. Forwarded localhost callback ports are randomized and single-use so the bridge does not leave a reusable fixed localhost listener behind.
+Use `--bridge` on macOS when the container needs host-side browser open or localhost callback forwarding during auth flows. Forwarded localhost callback ports stay on the original loopback port when available and fall back to a randomized single-use loopback listener only when needed.
 
 ## Security Defaults
 
@@ -135,7 +135,7 @@ Use `--bridge` on macOS when the container needs host-side browser open or local
 - unsigned images warn by default and prompt on TTY; pressing Enter selects `N`
 - unsigned remote OCI features fail by default in non-interactive runs and prompt on TTY; pressing Enter selects `N`
 - set `HATCHCTL_ALLOW_INSECURE_FEATURES=1` only when you intentionally want to bypass remote OCI feature verification
-- the macOS bridge listener binds to loopback only, and forwarded localhost callback ports use randomized single-use loopback listeners
+- the macOS bridge listener binds to loopback only, and forwarded localhost callback ports stay on the original loopback port when available and otherwise fall back to randomized single-use loopback listeners
 - workspace state and cache files are written with owner-only permissions where possible
 
 These defaults are meant to reduce the risk of opening an untrusted repository or consuming an untrusted remote feature source.

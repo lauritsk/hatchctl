@@ -29,7 +29,7 @@ Current defaults:
 - repo-local `.hatchctl/config.toml` values for `bridge`, `ssh`, and `dotfiles` are ignored unless the user explicitly opts in with `--trust-workspace` or `HATCHCTL_TRUST_WORKSPACE=1`
 - direct tarball features must use `https`, except loopback `http` sources for local development and tests
 - unsigned remote OCI features are rejected by default
-- the macOS bridge listener binds to loopback only, and forwarded localhost callback ports use randomized single-use loopback listeners
+- the macOS bridge listener binds to loopback only, and forwarded localhost callback ports stay on the original loopback port when available and otherwise fall back to randomized single-use loopback listeners
 - workspace state and cache artifacts are written with owner-only permissions where practical
 
 Escape hatches:
