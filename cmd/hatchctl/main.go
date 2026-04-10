@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 
@@ -10,11 +11,16 @@ import (
 )
 
 func main() {
-	app := cli.New(os.Stdout, os.Stderr)
+	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+}
+
+func run(args []string, stdout io.Writer, stderr io.Writer) int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
-	if err := app.Run(ctx, os.Args[1:]); err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		os.Exit(1)
+	app := cli.New(stdout, stderr)
+	if err := app.Run(ctx, args); err != nil {
+		fmt.Fprintf(stderr, "error: %v\n", err)
+		return 1
 	}
+	return 0
 }
