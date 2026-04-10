@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/lauritsk/hatchctl/internal/capability"
@@ -13,6 +14,8 @@ import (
 	"github.com/lauritsk/hatchctl/internal/docker"
 	"github.com/lauritsk/hatchctl/internal/engine/dockercli"
 	workspaceplan "github.com/lauritsk/hatchctl/internal/plan"
+	"github.com/lauritsk/hatchctl/internal/policy"
+	"github.com/lauritsk/hatchctl/internal/security"
 )
 
 type fakeExecutorEngine struct {
@@ -513,5 +516,121 @@ func TestExecMergesConfiguredImageMetadataWhenContainerLabelIsIncomplete(t *test
 	}
 	if len(inspectImageRefs) != 1 || inspectImageRefs[0] != "mcr.microsoft.com/devcontainers/base:ubuntu" {
 		t.Fatalf("expected exec to inspect configured image metadata, got %#v", inspectImageRefs)
+	}
+}
+
+func TestMaterializeReadOnlyRejectsUntrustedFeatureWithoutPrompt(t *testing.T) {
+	t.Parallel()
+
+	stateDir := t.TempDir()
+	ref := "ghcr.io/example/feature@sha256:abc123"
+	prompted := false
+	executor := NewExecutorWithIO(nil, nil, io.Discard, io.Discard)
+	executor.imageVerifier = policy.NewImageVerificationPolicyWithPrompt(false, func(string) (bool, bool, error) {
+		prompted = true
+		return true, true, nil
+	})
+	executor.planner = &workspaceplan.Resolver{
+		ResolveReadOnly: func(context.Context, string, string, devcontainer.ResolveOptions) (devcontainer.ResolvedConfig, error) {
+			return devcontainer.ResolvedConfig{
+				StateDir: stateDir,
+				Features: []devcontainer.ResolvedFeature{{
+					Source:       ref,
+					SourceKind:   "oci",
+					Resolved:     ref,
+					Verification: security.VerificationResult{Ref: ref, Reason: "no signatures found"},
+				}},
+			}, nil
+		},
+	}
+
+	_, err := executor.Materialize(context.Background(), workspaceplan.WorkspacePlan{ReadOnly: true, LockProtected: workspaceplan.LockProtectedArtifacts{StateDir: stateDir}}, false, nil, phaseResolve, "Resolving development container")
+	if err == nil {
+		t.Fatal("expected materialize to reject untrusted feature")
+	}
+	if !strings.Contains(err.Error(), ref) {
+		t.Fatalf("expected error to mention feature ref, got %v", err)
+	}
+	if prompted {
+		t.Fatal("expected read-only materialize to fail without prompting")
+	}
+}
+
+func TestMaterializeReadOnlyUsesPersistedTrustedRefs(t *testing.T) {
+	t.Parallel()
+
+	stateDir := t.TempDir()
+	ref := "ghcr.io/example/feature@sha256:def456"
+	if err := devcontainer.WriteState(stateDir, devcontainer.State{TrustedRefs: []string{ref}}); err != nil {
+		t.Fatalf("write state: %v", err)
+	}
+	prompted := false
+	executor := NewExecutorWithIO(nil, nil, io.Discard, io.Discard)
+	executor.imageVerifier = policy.NewImageVerificationPolicyWithPrompt(false, func(string) (bool, bool, error) {
+		prompted = true
+		return true, true, nil
+	})
+	executor.planner = &workspaceplan.Resolver{
+		ResolveReadOnly: func(context.Context, string, string, devcontainer.ResolveOptions) (devcontainer.ResolvedConfig, error) {
+			return devcontainer.ResolvedConfig{
+				StateDir: stateDir,
+				Features: []devcontainer.ResolvedFeature{{
+					Source:       ref,
+					SourceKind:   "oci",
+					Resolved:     ref,
+					Verification: security.VerificationResult{Ref: ref, Reason: "no signatures found"},
+				}},
+			}, nil
+		},
+	}
+
+	resolved, err := executor.Materialize(context.Background(), workspaceplan.WorkspacePlan{ReadOnly: true, LockProtected: workspaceplan.LockProtectedArtifacts{StateDir: stateDir}}, false, nil, phaseResolve, "Resolving development container")
+	if err != nil {
+		t.Fatalf("materialize: %v", err)
+	}
+	if len(resolved.Features) != 1 || resolved.Features[0].Resolved != ref {
+		t.Fatalf("unexpected resolved features %#v", resolved.Features)
+	}
+	if prompted {
+		t.Fatal("expected persisted trust to avoid prompting")
+	}
+}
+
+func TestBuildPersistsTrustedRefsToWorkspaceState(t *testing.T) {
+	t.Parallel()
+
+	stateDir := t.TempDir()
+	cacheDir := t.TempDir()
+	trustedRef := "ghcr.io/example/feature@sha256:trusted"
+	engine := &fakeExecutorEngine{
+		inspectImageFunc: func(_ context.Context, req dockercli.InspectImageRequest) (docker.ImageInspect, error) {
+			if req.Reference != "mcr.microsoft.com/devcontainers/base:ubuntu" {
+				t.Fatalf("unexpected inspect image ref %q", req.Reference)
+			}
+			return docker.ImageInspect{Config: docker.InspectConfig{}}, nil
+		},
+	}
+	executor := NewExecutorWithIO(nil, nil, io.Discard, io.Discard)
+	executor.engine = engine
+	executor.imageVerifier = policy.NewImageVerificationPolicyWithPrompt(false, nil, trustedRef)
+	executor.planner = &workspaceplan.Resolver{
+		Resolve: func(context.Context, string, string, devcontainer.ResolveOptions) (devcontainer.ResolvedConfig, error) {
+			return devcontainer.ResolvedConfig{
+				Config:   devcontainer.Config{Image: "mcr.microsoft.com/devcontainers/base:ubuntu"},
+				StateDir: stateDir,
+				CacheDir: cacheDir,
+			}, nil
+		},
+	}
+
+	if _, err := executor.Build(context.Background(), workspaceplan.WorkspacePlan{LockProtected: workspaceplan.LockProtectedArtifacts{StateDir: stateDir}}, BuildOptions{}); err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	state, err := devcontainer.ReadState(stateDir)
+	if err != nil {
+		t.Fatalf("read state: %v", err)
+	}
+	if len(state.TrustedRefs) != 1 || state.TrustedRefs[0] != trustedRef {
+		t.Fatalf("expected trusted refs to persist, got %#v", state.TrustedRefs)
 	}
 }

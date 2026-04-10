@@ -1,6 +1,10 @@
 package reconcile
 
-import storefs "github.com/lauritsk/hatchctl/internal/store/fs"
+import (
+	"slices"
+
+	storefs "github.com/lauritsk/hatchctl/internal/store/fs"
+)
 
 type StateTracker struct {
 	stateDir string
@@ -42,6 +46,10 @@ func (t *StateTracker) ApplyContainer(containerID string, containerKey string, c
 func (t *StateTracker) SetContainer(containerID string, containerKey string) {
 	t.state.ContainerID = containerID
 	t.state.ContainerKey = containerKey
+}
+
+func (t *StateTracker) SetTrustedRefs(refs []string) {
+	t.state.TrustedRefs = slices.Clone(refs)
 }
 
 func (t *StateTracker) SetBridge(enabled bool, sessionID string) {

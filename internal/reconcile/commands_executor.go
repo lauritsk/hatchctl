@@ -171,6 +171,7 @@ func (e *Executor) Up(ctx context.Context, workspacePlan workspaceplan.Workspace
 	if bridgeReport == nil {
 		tracker.DisableBridge()
 	}
+	tracker.SetTrustedRefs(executor.imageVerifier.TrustedRefs())
 	executor.emitPhaseProgress(opts.IO.Events, phaseState, "Writing workspace state")
 	if err := tracker.Persist(); err != nil {
 		return UpResult{}, err
@@ -200,6 +201,9 @@ func (e *Executor) Build(ctx context.Context, workspacePlan workspaceplan.Worksp
 	}
 	executor.emitPhaseProgress(opts.IO.Events, phaseImage, "Applying runtime metadata")
 	if err := executor.EnrichMergedConfig(ctx, &resolved, image); err != nil {
+		return BuildResult{}, err
+	}
+	if err := persistTrustedRefs(resolved.StateDir, executor.imageVerifier.TrustedRefs()); err != nil {
 		return BuildResult{}, err
 	}
 	return BuildResult{Image: image}, nil
@@ -348,6 +352,18 @@ func (e *Executor) ReadConfig(ctx context.Context, workspacePlan workspaceplan.W
 		return ReadConfigResult{}, err
 	}
 	return ReadConfigResult{WorkspaceFolder: resolved.WorkspaceFolder, ConfigPath: resolved.ConfigPath, WorkspaceMount: resolved.WorkspaceMount, SourceKind: resolved.SourceKind, HasInitializeCommand: !resolved.Config.InitializeCommand.Empty(), HasCreateCommand: len(resolved.Merged.OnCreateCommands) > 0 || len(resolved.Merged.UpdateContentCommands) > 0 || len(resolved.Merged.PostCreateCommands) > 0, HasStartCommand: len(resolved.Merged.PostStartCommands) > 0, HasAttachCommand: len(resolved.Merged.PostAttachCommands) > 0, Image: image, ImageUser: imageUser, ContainerName: resolved.ContainerName, StateDir: resolved.StateDir, CacheDir: resolved.CacheDir, RemoteUser: resolvedUser, ContainerUser: resolved.Merged.ContainerUser, RemoteEnv: RedactSensitiveMap(resolved.Merged.RemoteEnv), ContainerEnv: RedactSensitiveMap(resolved.Merged.ContainerEnv), Mounts: resolved.Merged.Mounts, ForwardPorts: []string(resolved.Merged.ForwardPorts), Bridge: bridgeReport, Dotfiles: DotfilesStatusFromState(state, dotfiles), MetadataCount: len(resolved.Merged.Metadata), ManagedContainer: managedContainer}, nil
+}
+
+func persistTrustedRefs(stateDir string, refs []string) error {
+	if stateDir == "" {
+		return nil
+	}
+	state, err := storefs.ReadWorkspaceState(stateDir)
+	if err != nil {
+		return err
+	}
+	state.TrustedRefs = refs
+	return storefs.WriteWorkspaceState(stateDir, state)
 }
 
 func (e *Executor) RunLifecycle(ctx context.Context, workspacePlan workspaceplan.WorkspacePlan, opts RunLifecycleOptions) (RunLifecycleResult, error) {

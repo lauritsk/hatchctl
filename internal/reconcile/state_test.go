@@ -18,6 +18,7 @@ func TestStateTrackerPersistsLifecycleBridgeAndDotfilesState(t *testing.T) {
 	tracker.BeginPlannedLifecycle(plan, true)
 	tracker.CompletePlannedLifecycle(plan, dotfiles, true)
 	tracker.SetBridge(true, "bridge-session")
+	tracker.SetTrustedRefs([]string{"ghcr.io/example/feature@sha256:abc"})
 	if err := tracker.Persist(); err != nil {
 		t.Fatalf("persist state: %v", err)
 	}
@@ -37,6 +38,9 @@ func TestStateTrackerPersistsLifecycleBridgeAndDotfilesState(t *testing.T) {
 	}
 	if !state.DotfilesReady || state.DotfilesRepo != "github.com/example/dotfiles" || state.DotfilesInstall != "install.sh" || state.DotfilesTarget != "$HOME/.dotfiles" || state.DotfilesTransition != nil {
 		t.Fatalf("unexpected dotfiles state %#v", state)
+	}
+	if len(state.TrustedRefs) != 1 || state.TrustedRefs[0] != "ghcr.io/example/feature@sha256:abc" {
+		t.Fatalf("unexpected trusted refs %#v", state.TrustedRefs)
 	}
 }
 

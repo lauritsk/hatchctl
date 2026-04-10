@@ -15,6 +15,7 @@ import (
 	workspaceplan "github.com/lauritsk/hatchctl/internal/plan"
 	"github.com/lauritsk/hatchctl/internal/policy"
 	"github.com/lauritsk/hatchctl/internal/security"
+	storefs "github.com/lauritsk/hatchctl/internal/store/fs"
 	"golang.org/x/term"
 )
 
@@ -215,6 +216,9 @@ func (e *Executor) VerifyResolvedFeatures(resolved devcontainer.ResolvedConfig, 
 }
 
 func (e *Executor) Materialize(ctx context.Context, workspacePlan workspaceplan.WorkspacePlan, debug bool, events ui.Sink, phase string, label string) (devcontainer.ResolvedConfig, error) {
+	if err := e.prepareVerificationPolicy(workspacePlan); err != nil {
+		return devcontainer.ResolvedConfig{}, err
+	}
 	e.emitPhaseProgress(events, phase, label)
 	if e.planner != nil {
 		e.planner.Warn = func(message string) {
@@ -232,6 +236,23 @@ func (e *Executor) Materialize(ctx context.Context, workspacePlan workspaceplan.
 		e.emitResolvedPlan(events, resolved)
 	}
 	return resolved, nil
+}
+
+func (e *Executor) prepareVerificationPolicy(workspacePlan workspaceplan.WorkspacePlan) error {
+	if e.imageVerifier == nil {
+		e.imageVerifier = policy.NewImageVerificationPolicy(e.stdin, e.stderr)
+	}
+	if workspacePlan.LockProtected.StateDir != "" {
+		state, err := storefs.ReadWorkspaceState(workspacePlan.LockProtected.StateDir)
+		if err != nil {
+			return err
+		}
+		e.imageVerifier.TrustRefs(state.TrustedRefs...)
+	}
+	if workspacePlan.ReadOnly {
+		e.imageVerifier.DisablePrompt()
+	}
+	return nil
 }
 
 func preparedImage(resolved devcontainer.ResolvedConfig) string {

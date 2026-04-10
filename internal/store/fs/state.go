@@ -18,6 +18,7 @@ type WorkspaceState struct {
 	Version             int              `json:"version,omitempty"`
 	ContainerID         string           `json:"containerId,omitempty"`
 	ContainerKey        string           `json:"containerKey,omitempty"`
+	TrustedRefs         []string         `json:"trustedRefs,omitempty"`
 	LifecycleReady      bool             `json:"lifecycleReady,omitempty"`
 	LifecycleKey        string           `json:"lifecycleKey,omitempty"`
 	LifecycleTransition *StateTransition `json:"lifecycleTransition,omitempty"`

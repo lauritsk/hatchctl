@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 	"sync"
 
@@ -90,6 +91,43 @@ func (p *ImageVerificationPolicy) Approved(ref string) bool {
 	defer p.mu.Unlock()
 	_, ok := p.trust[ref]
 	return ok
+}
+
+func (p *ImageVerificationPolicy) TrustRefs(refs ...string) {
+	if p == nil || len(refs) == 0 {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for _, ref := range refs {
+		if ref == "" {
+			continue
+		}
+		p.trust[ref] = struct{}{}
+	}
+}
+
+func (p *ImageVerificationPolicy) TrustedRefs() []string {
+	if p == nil {
+		return nil
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	refs := make([]string, 0, len(p.trust))
+	for ref := range p.trust {
+		refs = append(refs, ref)
+	}
+	sort.Strings(refs)
+	return refs
+}
+
+func (p *ImageVerificationPolicy) DisablePrompt() {
+	if p == nil {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.prompt = nil
 }
 
 func (p *ImageVerificationPolicy) apply(result security.VerificationResult, events ui.Sink, decision verificationDecision) error {
