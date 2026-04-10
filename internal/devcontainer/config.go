@@ -92,11 +92,7 @@ func ResolveReadOnlyWithOptions(ctx context.Context, workspaceArg string, config
 
 func resolve(ctx context.Context, workspaceArg string, configArg string, opts ResolveOptions) (ResolvedConfig, error) {
 	persistence := resolverPersistence{}
-	workspaceSpec, err := spec.ResolveWorkspaceSpec(workspaceArg, configArg)
-	if err != nil {
-		return ResolvedConfig{}, err
-	}
-	stateDir, cacheDir, err := workspaceOutputDirs(workspaceSpec.WorkspaceFolder, workspaceSpec.ConfigPath, opts)
+	workspaceSpec, stateDir, cacheDir, err := resolveWorkspaceSpecAndDirs(workspaceArg, configArg, opts)
 	if err != nil {
 		return ResolvedConfig{}, err
 	}
@@ -104,23 +100,58 @@ func resolve(ctx context.Context, workspaceArg string, configArg string, opts Re
 	if err != nil {
 		return ResolvedConfig{}, err
 	}
-	if cached, ok, err := persistence.ReadPlanCache(cacheDir, cacheKey, opts); err != nil {
+	if cached, ok, err := loadResolvedPlanCache(persistence, workspaceSpec.ConfigPath, stateDir, cacheDir, cacheKey, opts); err != nil {
 		return ResolvedConfig{}, err
 	} else if ok {
-		if err := persistence.WriteCachedArtifacts(workspaceSpec.ConfigPath, stateDir, cached, opts); err != nil {
-			return ResolvedConfig{}, err
-		}
 		return cached, nil
 	}
 
-	imageName := storefs.ImageName(workspaceSpec.WorkspaceFolder, workspaceSpec.ConfigPath)
-	containerName := storefs.ContainerName(workspaceSpec.WorkspaceFolder, workspaceSpec.ConfigPath)
-	labels := map[string]string{
-		HostFolderLabel: workspaceSpec.WorkspaceFolder,
-		ConfigFileLabel: workspaceSpec.ConfigPath,
-		ManagedByLabel:  ManagedByValue,
+	resolved, err := resolveWorkspaceConfig(ctx, workspaceSpec, stateDir, cacheDir, persistence, opts)
+	if err != nil {
+		return ResolvedConfig{}, err
 	}
+	cacheKey, err = resolvedPlanCacheKey(workspaceSpec.ConfigPath, workspaceSpec.ConfigDir, workspaceSpec.Config, workspaceSpec.ComposeFiles)
+	if err != nil {
+		return ResolvedConfig{}, err
+	}
+	if err := persistence.WritePlanCache(cacheDir, cacheKey, resolved, opts); err != nil {
+		return ResolvedConfig{}, err
+	}
+	return resolved, nil
+}
 
+func resolveWorkspaceSpecAndDirs(workspaceArg string, configArg string, opts ResolveOptions) (WorkspaceSpec, string, string, error) {
+	workspaceSpec, err := spec.ResolveWorkspaceSpec(workspaceArg, configArg)
+	if err != nil {
+		return WorkspaceSpec{}, "", "", err
+	}
+	stateDir, cacheDir, err := workspaceOutputDirs(workspaceSpec.WorkspaceFolder, workspaceSpec.ConfigPath, opts)
+	if err != nil {
+		return WorkspaceSpec{}, "", "", err
+	}
+	return workspaceSpec, stateDir, cacheDir, nil
+}
+
+func loadResolvedPlanCache(persistence resolverPersistence, configPath string, stateDir string, cacheDir string, cacheKey string, opts ResolveOptions) (ResolvedConfig, bool, error) {
+	cached, ok, err := persistence.ReadPlanCache(cacheDir, cacheKey, opts)
+	if err != nil || !ok {
+		return ResolvedConfig{}, ok, err
+	}
+	if err := persistence.WriteCachedArtifacts(configPath, stateDir, cached, opts); err != nil {
+		return ResolvedConfig{}, false, err
+	}
+	return cached, true, nil
+}
+
+func resolveWorkspaceConfig(ctx context.Context, workspaceSpec WorkspaceSpec, stateDir string, cacheDir string, persistence resolverPersistence, opts ResolveOptions) (ResolvedConfig, error) {
+	features, err := resolveFeaturesForWorkspace(ctx, workspaceSpec, stateDir, cacheDir, persistence, opts)
+	if err != nil {
+		return ResolvedConfig{}, err
+	}
+	return buildResolvedConfig(workspaceSpec, stateDir, cacheDir, features), nil
+}
+
+func resolveFeaturesForWorkspace(ctx context.Context, workspaceSpec WorkspaceSpec, stateDir string, cacheDir string, persistence resolverPersistence, opts ResolveOptions) ([]ResolvedFeature, error) {
 	features, err := ResolveFeatures(ctx, workspaceSpec.ConfigPath, workspaceSpec.ConfigDir, storefs.FeatureCacheDir(cacheDir), workspaceSpec.Config.Features, FeatureResolveOptions{
 		AllowNetwork:   opts.AllowNetwork,
 		StateDir:       stateDir,
@@ -129,17 +160,21 @@ func resolve(ctx context.Context, workspaceArg string, configArg string, opts Re
 		VerifyImage:    opts.VerifyImage,
 	})
 	if err != nil {
-		return ResolvedConfig{}, err
+		return nil, err
 	}
 	if err := persistence.WriteResolvedArtifacts(workspaceSpec.ConfigPath, stateDir, features, opts); err != nil {
-		return ResolvedConfig{}, err
+		return nil, err
 	}
+	return features, nil
+}
+
+func buildResolvedConfig(workspaceSpec WorkspaceSpec, stateDir string, cacheDir string, features []ResolvedFeature) ResolvedConfig {
 	metadata := make([]MetadataEntry, 0, len(features))
 	for _, feature := range features {
 		metadata = append(metadata, feature.Metadata)
 	}
 
-	resolved := ResolvedConfig{
+	return ResolvedConfig{
 		WorkspaceFolder: workspaceSpec.WorkspaceFolder,
 		ConfigPath:      workspaceSpec.ConfigPath,
 		ConfigDir:       workspaceSpec.ConfigDir,
@@ -150,22 +185,18 @@ func resolve(ctx context.Context, workspaceArg string, configArg string, opts Re
 		CacheDir:        cacheDir,
 		WorkspaceMount:  workspaceSpec.WorkspaceMount,
 		RemoteWorkspace: workspaceSpec.RemoteWorkspace,
-		ImageName:       imageName,
+		ImageName:       storefs.ImageName(workspaceSpec.WorkspaceFolder, workspaceSpec.ConfigPath),
 		SourceKind:      workspaceSpec.SourceKind,
-		ContainerName:   containerName,
+		ContainerName:   storefs.ContainerName(workspaceSpec.WorkspaceFolder, workspaceSpec.ConfigPath),
 		ComposeFiles:    workspaceSpec.ComposeFiles,
 		ComposeService:  workspaceSpec.ComposeService,
 		ComposeProject:  ComposeProjectName(workspaceSpec.WorkspaceFolder, workspaceSpec.ConfigPath),
-		Labels:          labels,
+		Labels: map[string]string{
+			HostFolderLabel: workspaceSpec.WorkspaceFolder,
+			ConfigFileLabel: workspaceSpec.ConfigPath,
+			ManagedByLabel:  ManagedByValue,
+		},
 	}
-	cacheKey, err = resolvedPlanCacheKey(workspaceSpec.ConfigPath, workspaceSpec.ConfigDir, workspaceSpec.Config, workspaceSpec.ComposeFiles)
-	if err != nil {
-		return ResolvedConfig{}, err
-	}
-	if err := persistence.WritePlanCache(cacheDir, cacheKey, resolved, opts); err != nil {
-		return ResolvedConfig{}, err
-	}
-	return resolved, nil
 }
 
 func workspaceOutputDirs(workspace string, configPath string, opts ResolveOptions) (string, string, error) {
