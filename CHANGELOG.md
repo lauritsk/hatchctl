@@ -2,6 +2,18 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## [v0.6.9](https://github.com/lauritsk/hatchctl/compare/5d3165b1ff67b353a93b1a49a43d61dc17495e95..v0.6.9) - 2026-04-10
+#### Bug Fixes
+- (**deps**) Keep dependency upgrades mergeable with Charm v2 imports and refreshed Alpine fixtures - ([d55f97a](https://github.com/lauritsk/hatchctl/commit/d55f97acfc504278122d6588fce8518c1b687660)) - Karl Hans Laurits
+- (**deps**) update github.com/tailscale/hujson digest to ecc657c (#8) - ([8db7ba2](https://github.com/lauritsk/hatchctl/commit/8db7ba23bae85e640f323eacb535be0379c022dd)) - renovate[bot], renovate[bot]
+#### Miscellaneous Chores
+- (**mise**) Update hatchctl tool version - ([5d3165b](https://github.com/lauritsk/hatchctl/commit/5d3165b1ff67b353a93b1a49a43d61dc17495e95)) - Karl Hans Laurits
+- Let Renovate manage dependency updates - ([d8c6ba5](https://github.com/lauritsk/hatchctl/commit/d8c6ba595b693692a70def512990eee562a5d657)) - Karl Hans Laurits
+- Add Renovate configuration - ([6b407d8](https://github.com/lauritsk/hatchctl/commit/6b407d8d1fee702113992c3c3acd33b4bd94e403)) - Karl Hans Laurits
+- Strengthen runtime guardrails and release verification - ([0b4d34f](https://github.com/lauritsk/hatchctl/commit/0b4d34ff8daea0379c60f597292690046a899dfb)) - Karl Hans Laurits
+
+- - -
+
 ## [v0.6.8](https://github.com/lauritsk/hatchctl/compare/2df92c03eca16d23f588e11f9e7bfdc269527967..v0.6.8) - 2026-04-10
 #### Bug Fixes
 - (**runtime**) Persist workspace trust between up and exec - ([ba0df58](https://github.com/lauritsk/hatchctl/commit/ba0df581d206d7b19657ca8ba2839fb02f8bb247)) - Karl Hans Laurits
