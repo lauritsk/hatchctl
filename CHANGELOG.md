@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## [v0.6.11](https://github.com/lauritsk/hatchctl/compare/948295271fe7457ea24dc71846fb63838463c65a..v0.6.11) - 2026-04-10
+#### Bug Fixes
+- (**release**) Remove git tag section from goreleaser config - ([9482952](https://github.com/lauritsk/hatchctl/commit/948295271fe7457ea24dc71846fb63838463c65a)) - Karl Hans Laurits
+
+- - -
+
 ## [v0.6.10](https://github.com/lauritsk/hatchctl/compare/eb79d3ec038a933b03a1baa4a28ad06af19d2249..v0.6.10) - 2026-04-10
 #### Bug Fixes
 - (**security**) Reduce implicit workspace and bridge trust - ([b5c9943](https://github.com/lauritsk/hatchctl/commit/b5c9943ab43b4fb334262ec4f27ef733fe6a55bc)) - Karl Hans Laurits
