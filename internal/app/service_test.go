@@ -62,6 +62,44 @@ func TestExecReturnsBusyWhenWorkspaceLockIsHeld(t *testing.T) {
 	}
 }
 
+func TestReadConfigRejectsInvalidLockfilePolicy(t *testing.T) {
+	t.Parallel()
+
+	_, defaults := testWorkspaceDefaults(t)
+	defaults.LockfilePolicy = "bogus"
+
+	service := New(&reconcile.Executor{})
+	_, err := service.ReadConfig(context.Background(), ReadConfigRequest{Defaults: defaults})
+	if err == nil {
+		t.Fatal("expected invalid lockfile policy error")
+	}
+}
+
+func TestRunLifecycleRejectsInvalidPhase(t *testing.T) {
+	t.Parallel()
+
+	_, defaults := testWorkspaceDefaults(t)
+
+	service := New(&reconcile.Executor{})
+	_, err := service.RunLifecycle(context.Background(), RunLifecycleRequest{Defaults: defaults, Phase: "bogus"})
+	if !errors.Is(err, reconcile.ErrInvalidLifecyclePhase) {
+		t.Fatalf("expected invalid lifecycle phase error, got %v", err)
+	}
+}
+
+func TestBridgeDoctorRejectsInvalidLockfilePolicy(t *testing.T) {
+	t.Parallel()
+
+	_, defaults := testWorkspaceDefaults(t)
+	defaults.LockfilePolicy = "bogus"
+
+	service := New(&reconcile.Executor{})
+	_, err := service.BridgeDoctor(context.Background(), BridgeDoctorRequest{Defaults: defaults})
+	if err == nil {
+		t.Fatal("expected invalid lockfile policy error")
+	}
+}
+
 func testWorkspaceDefaults(t *testing.T) (string, CommandDefaults) {
 	t.Helper()
 

@@ -2,17 +2,50 @@ package bridge
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/lauritsk/hatchctl/internal/command"
 )
+
+type fakeBridgeRunner struct {
+	runFunc   func(context.Context, command.Command) error
+	startFunc func(command.StartOptions) (*os.Process, error)
+}
+
+func (f fakeBridgeRunner) Run(ctx context.Context, cmd command.Command) error {
+	if f.runFunc != nil {
+		return f.runFunc(ctx, cmd)
+	}
+	return nil
+}
+
+func (f fakeBridgeRunner) Output(context.Context, command.Command) (string, string, error) {
+	return "", "", nil
+}
+
+func (f fakeBridgeRunner) CombinedOutput(context.Context, command.Command) (string, error) {
+	return "", nil
+}
+
+func (f fakeBridgeRunner) Start(opts command.StartOptions) (*os.Process, error) {
+	if f.startFunc != nil {
+		return f.startFunc(opts)
+	}
+	return nil, errors.New("unexpected start")
+}
 
 func TestBridgeHostServiceHandlesOpenRequest(t *testing.T) {
 	t.Parallel()
@@ -43,6 +76,47 @@ func TestBridgeHostServiceHandlesOpenRequest(t *testing.T) {
 	}
 	if opened != "http://localhost:19090/cb" {
 		t.Fatalf("unexpected rewritten url %q", opened)
+	}
+}
+
+func TestDefaultOpenUsesConfiguredCommand(t *testing.T) {
+	original := defaultBridgeRuntimeDeps
+	t.Cleanup(func() { defaultBridgeRuntimeDeps = original })
+	t.Setenv("HATCHCTL_BRIDGE_OPEN_COMMAND", "printf bridge-open")
+
+	var got command.Command
+	defaultBridgeRuntimeDeps = bridgeRuntimeDeps{hostCommand: fakeBridgeRunner{runFunc: func(_ context.Context, cmd command.Command) error {
+		got = cmd
+		return nil
+	}}}
+
+	if err := defaultOpen("https://example.com/callback"); err != nil {
+		t.Fatalf("default open: %v", err)
+	}
+	if got.Binary != "/bin/sh" || len(got.Args) != 2 || got.Args[0] != "-lc" || got.Args[1] != "printf bridge-open" {
+		t.Fatalf("unexpected open command %#v", got)
+	}
+	if !containsString(got.Env, "HATCHCTL_BRIDGE_URL=https://example.com/callback") {
+		t.Fatalf("expected bridge url env, got %#v", got.Env)
+	}
+}
+
+func TestDefaultOpenUsesOpenBinaryByDefault(t *testing.T) {
+	original := defaultBridgeRuntimeDeps
+	t.Cleanup(func() { defaultBridgeRuntimeDeps = original })
+	t.Setenv("HATCHCTL_BRIDGE_OPEN_COMMAND", "")
+
+	var got command.Command
+	defaultBridgeRuntimeDeps = bridgeRuntimeDeps{hostCommand: fakeBridgeRunner{runFunc: func(_ context.Context, cmd command.Command) error {
+		got = cmd
+		return nil
+	}}}
+
+	if err := defaultOpen("https://example.com/default"); err != nil {
+		t.Fatalf("default open: %v", err)
+	}
+	if got.Binary != "open" || len(got.Args) != 1 || got.Args[0] != "https://example.com/default" {
+		t.Fatalf("unexpected open command %#v", got)
 	}
 }
 
@@ -410,6 +484,110 @@ func TestPrepareAndRuntimeFilesUseOwnerOnlyPermissions(t *testing.T) {
 	}
 }
 
+func TestStartUpdatesSessionStatusInTestProcess(t *testing.T) {
+	helperPath := filepath.Join(t.TempDir(), "hatchctl")
+	if err := os.WriteFile(helperPath, []byte("helper"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(helperBinaryEnvVar, helperPath)
+
+	stateDir := t.TempDir()
+	session, err := Prepare(stateDir, true, "amd64")
+	if err != nil {
+		t.Fatalf("prepare bridge session: %v", err)
+	}
+
+	started, err := Start(session, "container-123")
+	if err != nil {
+		t.Fatalf("start bridge session: %v", err)
+	}
+	if started == nil {
+		t.Fatal("expected started session")
+	}
+	if runtime.GOOS != "darwin" {
+		if started.Status != "scaffolded" {
+			t.Fatalf("expected non-darwin start to remain scaffolded, got %#v", started)
+		}
+		return
+	}
+	if started.Status != "running" {
+		t.Fatalf("expected started session to be running, got %#v", started)
+	}
+	data, err := os.ReadFile(started.StatusPath)
+	if err != nil {
+		t.Fatalf("read status file: %v", err)
+	}
+	if !strings.Contains(string(data), `"lastEvent": "running"`) {
+		t.Fatalf("unexpected status file %s", string(data))
+	}
+}
+
+func TestServeRespondsToPingAndStopsOnCancel(t *testing.T) {
+	helperPath := filepath.Join(t.TempDir(), "hatchctl")
+	if err := os.WriteFile(helperPath, []byte("helper"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(helperBinaryEnvVar, helperPath)
+
+	stateDir := t.TempDir()
+	session, err := Prepare(stateDir, true, "amd64")
+	if err != nil {
+		t.Fatalf("prepare bridge session: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- Serve(ctx, stateDir, "container-123")
+	}()
+
+	if err := waitForBridgeTCP(session.Port, 2*time.Second); err != nil {
+		cancel()
+		t.Fatalf("wait for bridge tcp: %v", err)
+	}
+	conn, err := net.Dial("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(session.Port)))
+	if err != nil {
+		cancel()
+		t.Fatalf("dial bridge tcp: %v", err)
+	}
+	if err := writeBridgeRequest(conn, bridgeRequest{Kind: "ping"}); err != nil {
+		_ = conn.Close()
+		cancel()
+		t.Fatalf("write ping request: %v", err)
+	}
+	response, err := readBridgeResponse(conn)
+	_ = conn.Close()
+	if err != nil {
+		cancel()
+		t.Fatalf("read ping response: %v", err)
+	}
+	if !response.OK {
+		cancel()
+		t.Fatalf("unexpected ping response %#v", response)
+	}
+
+	data, err := os.ReadFile(session.StatusPath)
+	if err != nil {
+		cancel()
+		t.Fatalf("read status file: %v", err)
+	}
+	if !strings.Contains(string(data), `"lastEvent": "running"`) {
+		cancel()
+		t.Fatalf("unexpected status file %s", string(data))
+	}
+
+	cancel()
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Fatalf("serve returned error: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("serve did not stop after context cancellation")
+	}
+}
+
 func TestBridgeHostServiceRejectsInvalidRequests(t *testing.T) {
 	t.Parallel()
 
@@ -610,6 +788,95 @@ func TestWaitForBridgeTCPTimesOut(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "timed out waiting for bridge tcp listener") {
 		t.Fatalf("unexpected error %v", err)
 	}
+}
+
+func TestStopExistingTerminatesPIDFromFile(t *testing.T) {
+	t.Parallel()
+
+	cmd := exec.Command("sleep", "10")
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start sleep process: %v", err)
+	}
+	t.Cleanup(func() {
+		if cmd.Process != nil {
+			_ = cmd.Process.Kill()
+			_, _ = cmd.Process.Wait()
+		}
+	})
+
+	pidPath := filepath.Join(t.TempDir(), "bridge.pid")
+	if err := os.WriteFile(pidPath, []byte(strconv.Itoa(cmd.Process.Pid)), 0o600); err != nil {
+		t.Fatalf("write pid file: %v", err)
+	}
+
+	if err := stopExisting(&Session{PIDPath: pidPath}); err != nil {
+		t.Fatalf("stop existing process: %v", err)
+	}
+
+	waitCh := make(chan error, 1)
+	go func() {
+		waitCh <- cmd.Wait()
+	}()
+	select {
+	case err := <-waitCh:
+		if err != nil && !strings.Contains(err.Error(), "terminated") {
+			t.Fatalf("wait for stopped process: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatalf("expected pid %d to stop after SIGTERM", cmd.Process.Pid)
+	}
+	cmd.Process = nil
+}
+
+func TestStopExistingIgnoresCurrentProcessAndMissingPIDFile(t *testing.T) {
+	t.Parallel()
+
+	missing := &Session{PIDPath: filepath.Join(t.TempDir(), "missing.pid")}
+	if err := stopExisting(missing); err != nil {
+		t.Fatalf("stop existing with missing pid file: %v", err)
+	}
+
+	pidPath := filepath.Join(t.TempDir(), "bridge.pid")
+	if err := os.WriteFile(pidPath, []byte(strconv.Itoa(os.Getpid())), 0o600); err != nil {
+		t.Fatalf("write current pid file: %v", err)
+	}
+	if err := stopExisting(&Session{PIDPath: pidPath}); err != nil {
+		t.Fatalf("stop existing current pid: %v", err)
+	}
+}
+
+func TestStopReturnsNilInTestBinary(t *testing.T) {
+	t.Parallel()
+
+	if err := Stop(t.TempDir()); err != nil {
+		t.Fatalf("stop in test process: %v", err)
+	}
+}
+
+func TestIsPIDRunningAndClosedListenerHelpers(t *testing.T) {
+	t.Parallel()
+
+	if !isPIDRunning(os.Getpid()) {
+		t.Fatal("expected current pid to be running")
+	}
+	if isPIDRunning(0) {
+		t.Fatal("expected pid 0 not to be running")
+	}
+	if !isClosedListener(net.ErrClosed) {
+		t.Fatal("expected net.ErrClosed to be recognized")
+	}
+	if !isClosedListener(errors.New("use of closed network connection")) {
+		t.Fatal("expected closed network connection error to be recognized")
+	}
+}
+
+func containsString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }
 
 func readBridgeRequest(r io.Reader, request *bridgeRequest) error {

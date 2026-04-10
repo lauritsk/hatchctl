@@ -8,6 +8,7 @@ Common tasks:
 
 - `mise run format`
 - `mise run check`
+- `mise run test:coverage`
 - `mise run test:race`
 - `mise run release:check`
 - `mise run release:verify`

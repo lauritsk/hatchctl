@@ -114,7 +114,7 @@ Image verification signer trust is configurable in `.hatchctl/config.toml` too. 
 [verification]
 [[verification.trusted_signers]]
 issuer = "https://token.actions.githubusercontent.com"
-subject_regexp = "^https://github.com/lauritsk/devcontainer/.github/workflows/release.yml@refs/tags/.+$"
+subject_regexp = "^https://github.com/lauritsk/hatchctl/.github/workflows/release.yml@refs/tags/.+$"
 ```
 
 Use `--ssh` when you want the container to see the host `ssh-agent` socket. This applies a runtime bind mount plus `SSH_AUTH_SOCK` wiring equivalent to adding ssh-agent passthrough in `devcontainer.json`. On macOS, hatchctl uses the container runtime's `/run/host-services/ssh-auth.sock` proxy instead of binding the raw launchd socket path. You can persist that preference in user config, or in workspace-local `.hatchctl/config.toml` when you also opt in with `--trust-workspace`.
@@ -170,9 +170,14 @@ Common commands:
 
 - `mise run format`
 - `mise run test`
+- `mise run test:coverage`
 - `mise run build`
 - `mise run hatchctl -- help`
 - `mise run hatchctl -- up`
+
+## Troubleshooting
+
+See `docs/troubleshooting.md` for common fixes for workspace lock errors, trust-gated config, bridge issues, unsigned image prompts, and release verification failures.
 
 ## Verifying Releases
 

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/lauritsk/hatchctl/internal/bridge"
 	"github.com/lauritsk/hatchctl/internal/capability"
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	"github.com/lauritsk/hatchctl/internal/docker"
@@ -16,6 +17,7 @@ import (
 	workspaceplan "github.com/lauritsk/hatchctl/internal/plan"
 	"github.com/lauritsk/hatchctl/internal/policy"
 	"github.com/lauritsk/hatchctl/internal/security"
+	storefs "github.com/lauritsk/hatchctl/internal/store/fs"
 )
 
 type fakeExecutorEngine struct {
@@ -669,5 +671,267 @@ func TestBuildPersistsTrustedRefsToWorkspaceState(t *testing.T) {
 	}
 	if len(state.TrustedRefs) != 1 || state.TrustedRefs[0] != trustedRef {
 		t.Fatalf("expected trusted refs to persist, got %#v", state.TrustedRefs)
+	}
+}
+
+func TestReadConfigReportsBridgeAndDotfilesState(t *testing.T) {
+	t.Parallel()
+
+	stateDir := t.TempDir()
+	cacheDir := t.TempDir()
+	configDir := t.TempDir()
+	if err := devcontainer.WriteState(stateDir, devcontainer.State{
+		ContainerID:     "container-123",
+		ContainerKey:    "container-key",
+		BridgeEnabled:   true,
+		BridgeSessionID: "bridge-session",
+		DotfilesReady:   true,
+		DotfilesRepo:    "https://github.com/example/dotfiles.git",
+		DotfilesTarget:  "/home/vscode/.dotfiles",
+	}); err != nil {
+		t.Fatalf("write state: %v", err)
+	}
+	paths, err := storefs.EnsureWorkspaceBridgePaths(stateDir)
+	if err != nil {
+		t.Fatalf("ensure bridge paths: %v", err)
+	}
+	helperPath := filepath.Join(paths.BinDir, "devcontainer-open")
+	if err := storefs.WriteBridgeExecutable(helperPath, []byte("#!/bin/sh\nexit 0\n")); err != nil {
+		t.Fatalf("write bridge helper: %v", err)
+	}
+	session := bridge.Session{
+		ID:         "bridge-session",
+		Enabled:    true,
+		Host:       "host.docker.internal",
+		Port:       41234,
+		StatePath:  paths.Dir,
+		ConfigPath: paths.ConfigPath,
+		PIDPath:    paths.PIDPath,
+		StatusPath: paths.StatusPath,
+		HelperPath: helperPath,
+		MountPath:  "/var/run/hatchctl/bridge",
+		BinPath:    "/var/run/hatchctl/bridge/bin",
+		Status:     "scaffolded",
+	}
+	if err := storefs.WriteBridgeSession(paths.Dir, session); err != nil {
+		t.Fatalf("write bridge session: %v", err)
+	}
+	if err := storefs.WriteBridgeStatus(paths.StatusPath, map[string]any{"lastEvent": "bridge ready"}); err != nil {
+		t.Fatalf("write bridge status: %v", err)
+	}
+
+	executor := NewExecutorWithIO(nil, nil, io.Discard, io.Discard)
+	executor.engine = &fakeExecutorEngine{
+		inspectImageFunc: func(_ context.Context, req dockercli.InspectImageRequest) (docker.ImageInspect, error) {
+			if req.Reference != "mcr.microsoft.com/devcontainers/base:ubuntu" {
+				t.Fatalf("unexpected inspect image ref %q", req.Reference)
+			}
+			return docker.ImageInspect{Config: docker.InspectConfig{User: "vscode"}}, nil
+		},
+		inspectContainerFunc: func(_ context.Context, req dockercli.InspectContainerRequest) (docker.ContainerInspect, error) {
+			if req.ContainerID != "container-123" {
+				t.Fatalf("unexpected inspect container id %q", req.ContainerID)
+			}
+			return docker.ContainerInspect{
+				ID:    "container-123",
+				Image: "mcr.microsoft.com/devcontainers/base:ubuntu",
+				Config: docker.InspectConfig{
+					User:   "vscode",
+					Labels: map[string]string{},
+				},
+				State: docker.ContainerState{Status: "running", Running: true},
+			}, nil
+		},
+		listContainersFunc: func(context.Context, dockercli.ListContainersRequest) (string, error) {
+			return "", nil
+		},
+	}
+	executor.planner = &workspaceplan.Resolver{
+		ResolveReadOnly: func(context.Context, string, string, devcontainer.ResolveOptions) (devcontainer.ResolvedConfig, error) {
+			return devcontainer.ResolvedConfig{
+				WorkspaceFolder: "/workspace",
+				ConfigPath:      filepath.Join(configDir, "devcontainer.json"),
+				ConfigDir:       configDir,
+				Config:          devcontainer.Config{Image: "mcr.microsoft.com/devcontainers/base:ubuntu", WorkspaceFolder: "/workspaces/demo"},
+				Merged:          devcontainer.MergeMetadata(devcontainer.Config{Image: "mcr.microsoft.com/devcontainers/base:ubuntu", WorkspaceFolder: "/workspaces/demo"}, nil),
+				StateDir:        stateDir,
+				CacheDir:        cacheDir,
+				WorkspaceMount:  "type=bind,source=/workspace,target=/workspaces/demo",
+				RemoteWorkspace: "/workspaces/demo",
+				ImageName:       "hatchctl-demo",
+				SourceKind:      "image",
+				ContainerName:   "hatchctl-demo-container",
+				Labels: map[string]string{
+					devcontainer.HostFolderLabel: "/workspace",
+					devcontainer.ConfigFileLabel: filepath.Join(configDir, "devcontainer.json"),
+					devcontainer.ManagedByLabel:  devcontainer.ManagedByValue,
+				},
+			}, nil
+		},
+	}
+
+	result, err := executor.ReadConfig(context.Background(), workspaceplan.WorkspacePlan{
+		ReadOnly: true,
+		Preferences: workspaceplan.Preferences{
+			Dotfiles: workspaceplan.DotfilesPreference{Repository: "https://github.com/example/dotfiles.git", TargetPath: "/home/vscode/.dotfiles"},
+		},
+	}, ReadConfigOptions{})
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	if result.RemoteUser != "vscode" || result.ImageUser != "vscode" {
+		t.Fatalf("expected image-backed users to resolve to vscode, got %#v", result)
+	}
+	if result.Bridge == nil || result.Bridge.Status != "bridge ready" || !result.Bridge.Enabled {
+		t.Fatalf("expected bridge report from persisted session, got %#v", result.Bridge)
+	}
+	if result.Dotfiles == nil || !result.Dotfiles.Configured || !result.Dotfiles.Applied || result.Dotfiles.NeedsInstall {
+		t.Fatalf("unexpected dotfiles status %#v", result.Dotfiles)
+	}
+	if result.ManagedContainer == nil || result.ManagedContainer.ID != "container-123" || !result.ManagedContainer.Running {
+		t.Fatalf("expected managed container details from inspected target, got %#v", result.ManagedContainer)
+	}
+}
+
+func TestRunLifecycleCreatePersistsLifecycleState(t *testing.T) {
+	t.Parallel()
+
+	stateDir := t.TempDir()
+	cacheDir := t.TempDir()
+	configDir := t.TempDir()
+	if err := devcontainer.WriteState(stateDir, devcontainer.State{ContainerID: "container-123", ContainerKey: "container-key"}); err != nil {
+		t.Fatalf("write state: %v", err)
+	}
+
+	executor := NewExecutorWithIO(nil, nil, io.Discard, io.Discard)
+	executor.engine = &fakeExecutorEngine{
+		inspectImageFunc: func(_ context.Context, req dockercli.InspectImageRequest) (docker.ImageInspect, error) {
+			if req.Reference != "mcr.microsoft.com/devcontainers/base:ubuntu" {
+				t.Fatalf("unexpected inspect image ref %q", req.Reference)
+			}
+			return docker.ImageInspect{Config: docker.InspectConfig{User: "vscode"}}, nil
+		},
+		inspectContainerFunc: func(_ context.Context, req dockercli.InspectContainerRequest) (docker.ContainerInspect, error) {
+			if req.ContainerID != "container-123" {
+				t.Fatalf("unexpected inspect container id %q", req.ContainerID)
+			}
+			return docker.ContainerInspect{
+				ID:    "container-123",
+				Image: "mcr.microsoft.com/devcontainers/base:ubuntu",
+				Config: docker.InspectConfig{
+					User:   "vscode",
+					Labels: map[string]string{},
+				},
+				State: docker.ContainerState{Status: "running", Running: true},
+			}, nil
+		},
+	}
+	executor.planner = &workspaceplan.Resolver{
+		Resolve: func(context.Context, string, string, devcontainer.ResolveOptions) (devcontainer.ResolvedConfig, error) {
+			return devcontainer.ResolvedConfig{
+				WorkspaceFolder: "/workspace",
+				ConfigPath:      filepath.Join(configDir, "devcontainer.json"),
+				ConfigDir:       configDir,
+				Config:          devcontainer.Config{Image: "mcr.microsoft.com/devcontainers/base:ubuntu", WorkspaceFolder: "/workspaces/demo"},
+				Merged:          devcontainer.MergeMetadata(devcontainer.Config{Image: "mcr.microsoft.com/devcontainers/base:ubuntu", WorkspaceFolder: "/workspaces/demo"}, nil),
+				StateDir:        stateDir,
+				CacheDir:        cacheDir,
+				RemoteWorkspace: "/workspaces/demo",
+				ImageName:       "hatchctl-demo",
+				SourceKind:      "image",
+				ContainerName:   "hatchctl-demo-container",
+				Labels: map[string]string{
+					devcontainer.HostFolderLabel: "/workspace",
+					devcontainer.ConfigFileLabel: filepath.Join(configDir, "devcontainer.json"),
+					devcontainer.ManagedByLabel:  devcontainer.ManagedByValue,
+				},
+			}, nil
+		},
+	}
+
+	result, err := executor.RunLifecycle(context.Background(), workspaceplan.WorkspacePlan{}, RunLifecycleOptions{Phase: "create"})
+	if err != nil {
+		t.Fatalf("run lifecycle: %v", err)
+	}
+	if result.ContainerID != "container-123" || result.Phase != "create" {
+		t.Fatalf("unexpected lifecycle result %#v", result)
+	}
+
+	state, err := devcontainer.ReadState(stateDir)
+	if err != nil {
+		t.Fatalf("read state: %v", err)
+	}
+	if !state.LifecycleReady || state.LifecycleTransition != nil {
+		t.Fatalf("expected lifecycle state to be complete, got %#v", state)
+	}
+	if state.LifecycleKey == "" {
+		t.Fatalf("expected lifecycle key to persist, got %#v", state)
+	}
+	if state.ContainerID != "container-123" || state.ContainerKey != "container-key" {
+		t.Fatalf("expected container identity to be preserved, got %#v", state)
+	}
+}
+
+func TestBridgeDoctorReportsPersistedBridgeState(t *testing.T) {
+	t.Parallel()
+
+	stateDir := t.TempDir()
+	cacheDir := t.TempDir()
+	configDir := t.TempDir()
+	paths, err := storefs.EnsureWorkspaceBridgePaths(stateDir)
+	if err != nil {
+		t.Fatalf("ensure bridge paths: %v", err)
+	}
+	helperPath := filepath.Join(paths.BinDir, "devcontainer-open")
+	if err := storefs.WriteBridgeExecutable(helperPath, []byte("#!/bin/sh\nexit 0\n")); err != nil {
+		t.Fatalf("write bridge helper: %v", err)
+	}
+	if err := storefs.WriteBridgeSession(paths.Dir, bridge.Session{
+		ID:         "bridge-session",
+		Enabled:    true,
+		Host:       "host.docker.internal",
+		Port:       43123,
+		StatePath:  paths.Dir,
+		ConfigPath: paths.ConfigPath,
+		PIDPath:    paths.PIDPath,
+		StatusPath: paths.StatusPath,
+		HelperPath: helperPath,
+		MountPath:  "/var/run/hatchctl/bridge",
+		BinPath:    "/var/run/hatchctl/bridge/bin",
+		Status:     "scaffolded",
+	}); err != nil {
+		t.Fatalf("write bridge session: %v", err)
+	}
+	if err := storefs.WriteBridgeStatus(paths.StatusPath, map[string]any{"lastEvent": "ready"}); err != nil {
+		t.Fatalf("write bridge status: %v", err)
+	}
+
+	executor := NewExecutorWithIO(nil, nil, io.Discard, io.Discard)
+	executor.planner = &workspaceplan.Resolver{
+		ResolveReadOnly: func(context.Context, string, string, devcontainer.ResolveOptions) (devcontainer.ResolvedConfig, error) {
+			return devcontainer.ResolvedConfig{
+				WorkspaceFolder: "/workspace",
+				ConfigPath:      filepath.Join(configDir, "devcontainer.json"),
+				ConfigDir:       configDir,
+				Config:          devcontainer.Config{Image: "mcr.microsoft.com/devcontainers/base:ubuntu", WorkspaceFolder: "/workspaces/demo"},
+				Merged:          devcontainer.MergeMetadata(devcontainer.Config{Image: "mcr.microsoft.com/devcontainers/base:ubuntu", WorkspaceFolder: "/workspaces/demo"}, nil),
+				StateDir:        stateDir,
+				CacheDir:        cacheDir,
+				RemoteWorkspace: "/workspaces/demo",
+				ImageName:       "hatchctl-demo",
+				SourceKind:      "image",
+			}, nil
+		},
+	}
+
+	report, err := executor.BridgeDoctor(context.Background(), workspaceplan.WorkspacePlan{ReadOnly: true}, BridgeDoctorOptions{})
+	if err != nil {
+		t.Fatalf("bridge doctor: %v", err)
+	}
+	if !report.Enabled || report.Status != "ready" {
+		t.Fatalf("unexpected bridge report %#v", report)
+	}
+	if report.StatePath != paths.Dir || report.HelperPath != helperPath || report.Port != 43123 {
+		t.Fatalf("unexpected bridge report details %#v", report)
 	}
 }
