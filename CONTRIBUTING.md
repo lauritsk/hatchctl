@@ -13,7 +13,7 @@ Common tasks:
 - `mise run release:verify`
 - `mise run hatchctl -- <args>`
 
-Dependabot updates Go modules, GitHub Actions, and devcontainer metadata. Tool versions pinned in `mise.toml` are still a manual maintenance responsibility and should be reviewed when changing CI, release, or security tooling.
+Renovate updates dependencies and GitHub Actions. Regular updates wait at least 7 days before PR creation and then automerge after CI passes. Vulnerability fixes are handled separately by Renovate and are not delayed by the minimum release age. Changes in `mise.toml` should still be reviewed carefully when adjusting CI, release, or security tooling.
 
 ## Commits
 
