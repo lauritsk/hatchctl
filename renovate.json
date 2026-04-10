@@ -5,13 +5,13 @@
   ],
   "automerge": true,
   "automergeType": "pr",
-  "platformAutomerge": false,
+  "platformAutomerge": true,
   "minimumReleaseAge": "7 days",
   "internalChecksFilter": "strict",
   "prCreation": "not-pending",
   "vulnerabilityAlerts": {
     "enabled": true,
     "automerge": true,
-    "platformAutomerge": false
+    "platformAutomerge": true
   }
 }
