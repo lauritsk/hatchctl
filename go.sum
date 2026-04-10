@@ -431,6 +431,8 @@ github.com/syndtr/goleveldb v1.0.1-0.20220721030215-126854af5e6d h1:vfofYNRScrDd
 github.com/syndtr/goleveldb v1.0.1-0.20220721030215-126854af5e6d/go.mod h1:RRCYJbIwD5jmqPI9XoAFR0OcDxqUctll6zUj/+B4S48=
 github.com/tailscale/hujson v0.0.0-20250605163823-992244df8c5a h1:a6TNDN9CgG+cYjaeN8l2mc4kSz2iMiCDQxPEyltUV/I=
 github.com/tailscale/hujson v0.0.0-20250605163823-992244df8c5a/go.mod h1:EbW0wDK/qEUYI0A5bqq0C2kF8JTQwWONmGDBbzsxxHo=
+github.com/tailscale/hujson v0.0.0-20260302212456-ecc657c15afd h1:Rf9uhF1+VJ7ZHqxrG8pJ6YacmHvVCmByDmGbAWCc/gA=
+github.com/tailscale/hujson v0.0.0-20260302212456-ecc657c15afd/go.mod h1:EbW0wDK/qEUYI0A5bqq0C2kF8JTQwWONmGDBbzsxxHo=
 github.com/theupdateframework/go-tuf v0.7.0 h1:CqbQFrWo1ae3/I0UCblSbczevCCbS31Qvs5LdxRWqRI=
 github.com/theupdateframework/go-tuf v0.7.0/go.mod h1:uEB7WSY+7ZIugK6R1hiBMBjQftaFzn7ZCDJcp1tCUug=
 github.com/theupdateframework/go-tuf/v2 v2.4.1 h1:K6ewW064rKZCPkRo1W/CTbTtm/+IB4+coG1iNURAGCw=

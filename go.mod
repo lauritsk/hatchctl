@@ -10,7 +10,7 @@ require (
 	github.com/sigstore/cosign/v3 v3.0.6
 	github.com/sigstore/sigstore-go v1.1.4
 	github.com/spf13/cobra v1.10.2
-	github.com/tailscale/hujson v0.0.0-20250605163823-992244df8c5a
+	github.com/tailscale/hujson v0.0.0-20260302212456-ecc657c15afd
 	go.yaml.in/yaml/v3 v3.0.4
 	golang.org/x/term v0.41.0
 )
