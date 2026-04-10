@@ -80,10 +80,12 @@ func ResolveDefaults(req ResolveDefaultsRequest) (CommandDefaults, error) {
 	if req.Workspace.Changed {
 		workspaceHint = req.Workspace.Value
 	}
-	config, err := appconfig.LoadForWorkspace(workspaceHint)
+	loaded, err := appconfig.LoadForWorkspace(workspaceHint)
 	if err != nil {
 		return CommandDefaults{}, err
 	}
+	config := loaded.Merged
+	trustedWorkspace := req.TrustWorkspace != nil && req.TrustWorkspace.Value
 
 	resolvedTimeout := req.FeatureTimeout.Value
 	if !req.FeatureTimeout.Changed {
@@ -113,25 +115,33 @@ func ResolveDefaults(req ResolveDefaultsRequest) (CommandDefaults, error) {
 	if !req.LockfilePolicy.Changed && config.LockfilePolicy != "" {
 		resolved.LockfilePolicy = config.LockfilePolicy
 	}
-	if !req.Dotfiles.Repository.Changed && config.Dotfiles.Repository != "" {
-		resolved.Dotfiles.Repository = config.Dotfiles.Repository
+	if !req.Dotfiles.Repository.Changed {
+		resolved.Dotfiles.Repository = preferredDotfilesValue(loaded.User.Dotfiles.Repository, loaded.Workspace.Dotfiles.Repository, trustedWorkspace)
 	}
-	if !req.Dotfiles.InstallCommand.Changed && config.Dotfiles.InstallCommand != "" {
-		resolved.Dotfiles.InstallCommand = config.Dotfiles.InstallCommand
+	if !req.Dotfiles.InstallCommand.Changed {
+		resolved.Dotfiles.InstallCommand = preferredDotfilesValue(loaded.User.Dotfiles.InstallCommand, loaded.Workspace.Dotfiles.InstallCommand, trustedWorkspace)
 	}
-	if !req.Dotfiles.TargetPath.Changed && config.Dotfiles.TargetPath != "" {
-		resolved.Dotfiles.TargetPath = config.Dotfiles.TargetPath
+	if !req.Dotfiles.TargetPath.Changed {
+		resolved.Dotfiles.TargetPath = preferredDotfilesValue(loaded.User.Dotfiles.TargetPath, loaded.Workspace.Dotfiles.TargetPath, trustedWorkspace)
 	}
 	if req.BridgeEnabled != nil {
 		resolved.BridgeEnabled = req.BridgeEnabled.Value
-		if !req.BridgeEnabled.Changed && config.Bridge != nil {
-			resolved.BridgeEnabled = *config.Bridge
+		if !req.BridgeEnabled.Changed {
+			if trustedWorkspace && loaded.Workspace.Bridge != nil {
+				resolved.BridgeEnabled = *loaded.Workspace.Bridge
+			} else if loaded.User.Bridge != nil {
+				resolved.BridgeEnabled = *loaded.User.Bridge
+			}
 		}
 	}
 	if req.SSHAgent != nil {
 		resolved.SSHAgent = req.SSHAgent.Value
-		if !req.SSHAgent.Changed && config.SSHAgent != nil {
-			resolved.SSHAgent = *config.SSHAgent
+		if !req.SSHAgent.Changed {
+			if trustedWorkspace && loaded.Workspace.SSHAgent != nil {
+				resolved.SSHAgent = *loaded.Workspace.SSHAgent
+			} else if loaded.User.SSHAgent != nil {
+				resolved.SSHAgent = *loaded.User.SSHAgent
+			}
 		}
 	}
 	if req.TrustWorkspace != nil {
@@ -139,6 +149,19 @@ func ResolveDefaults(req ResolveDefaultsRequest) (CommandDefaults, error) {
 	}
 
 	return resolved, nil
+}
+
+func preferredDotfilesValue(userValue string, workspaceValue string, trustedWorkspace bool) string {
+	if trustedWorkspace && workspaceValue != "" {
+		return workspaceValue
+	}
+	if userValue != "" {
+		return userValue
+	}
+	if trustedWorkspace {
+		return workspaceValue
+	}
+	return ""
 }
 
 func firstConfigured(cliSet bool, cliValue string, configValue string) string {

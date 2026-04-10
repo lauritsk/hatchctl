@@ -556,6 +556,43 @@ func TestMaterializeReadOnlyRejectsUntrustedFeatureWithoutPrompt(t *testing.T) {
 	}
 }
 
+func TestMaterializeReadOnlyRejectsUntrustedLoopbackFeatureWithoutPrompt(t *testing.T) {
+	t.Parallel()
+
+	stateDir := t.TempDir()
+	ref := "localhost:5000/example/feature@sha256:abc123"
+	prompted := false
+	executor := NewExecutorWithIO(nil, nil, io.Discard, io.Discard)
+	executor.imageVerifier = policy.NewImageVerificationPolicyWithPrompt(false, func(string) (bool, bool, error) {
+		prompted = true
+		return true, true, nil
+	})
+	executor.planner = &workspaceplan.Resolver{
+		ResolveReadOnly: func(context.Context, string, string, devcontainer.ResolveOptions) (devcontainer.ResolvedConfig, error) {
+			return devcontainer.ResolvedConfig{
+				StateDir: stateDir,
+				Features: []devcontainer.ResolvedFeature{{
+					Source:       ref,
+					SourceKind:   "oci",
+					Resolved:     ref,
+					Verification: security.VerificationResult{Ref: ref, Reason: "no signatures found"},
+				}},
+			}, nil
+		},
+	}
+
+	_, err := executor.Materialize(context.Background(), workspaceplan.WorkspacePlan{ReadOnly: true, LockProtected: workspaceplan.LockProtectedArtifacts{StateDir: stateDir}}, false, nil, phaseResolve, "Resolving development container")
+	if err == nil {
+		t.Fatal("expected materialize to reject untrusted loopback feature")
+	}
+	if !strings.Contains(err.Error(), ref) {
+		t.Fatalf("expected error to mention feature ref, got %v", err)
+	}
+	if prompted {
+		t.Fatal("expected read-only materialize to fail without prompting")
+	}
+}
+
 func TestMaterializeReadOnlyUsesPersistedTrustedRefs(t *testing.T) {
 	t.Parallel()
 

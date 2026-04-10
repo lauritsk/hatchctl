@@ -67,19 +67,6 @@ func TestEnsureHostLifecycleAllowedRequiresExplicitTrust(t *testing.T) {
 	}
 }
 
-func TestIsLoopbackOCIReference(t *testing.T) {
-	t.Parallel()
-
-	for _, ref := range []string{"localhost/repo:latest", "localhost:5000/repo:latest", "127.0.0.1:5000/repo:latest"} {
-		if !IsLoopbackOCIReference(ref) {
-			t.Fatalf("expected %q to be loopback", ref)
-		}
-	}
-	if IsLoopbackOCIReference("ghcr.io/example/repo:latest") {
-		t.Fatal("expected remote registry to require verification")
-	}
-}
-
 func TestImageVerificationPolicyWarnsForUnverifiedImages(t *testing.T) {
 	t.Parallel()
 

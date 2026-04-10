@@ -618,11 +618,36 @@ func TestRunUpLoadsWorkspaceConfigTomlDefaults(t *testing.T) {
 	if got.Defaults.FeatureTimeout != 45*time.Second || got.Defaults.LockfilePolicy != string(devcontainer.FeatureLockfilePolicyUpdate) {
 		t.Fatalf("unexpected config defaults %#v", got)
 	}
-	if !got.Defaults.BridgeEnabled || !got.Defaults.SSHAgent || got.Defaults.Dotfiles.Repository != "github.com/example/dotfiles" {
+	if got.Defaults.BridgeEnabled || got.Defaults.SSHAgent || got.Defaults.Dotfiles.Repository != "" {
 		t.Fatalf("unexpected merged workspace config %#v", got)
 	}
 	if got.Defaults.Workspace != workspace {
 		t.Fatalf("unexpected workspace %q", got.Defaults.Workspace)
+	}
+}
+
+func TestRunUpAppliesTrustedWorkspaceConfigTomlHostDefaults(t *testing.T) {
+	isolateConfigHome(t)
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	workspace := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(workspace, ".hatchctl"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(workspace, ".hatchctl", "config.toml"), []byte("bridge = true\nssh = true\n[dotfiles]\nrepository = \"github.com/example/dotfiles\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var got appcore.UpRequest
+	app := NewWithService(&out, &errOut, stubService{up: func(_ context.Context, opts appcore.UpRequest) (appcore.UpResult, error) {
+		got = opts
+		return appcore.UpResult{}, nil
+	}})
+
+	if err := app.Run(context.Background(), []string{"up", "--workspace", workspace, "--trust-workspace"}); err != nil {
+		t.Fatalf("run app: %v", err)
+	}
+	if !got.Defaults.TrustWorkspace || !got.Defaults.BridgeEnabled || !got.Defaults.SSHAgent || got.Defaults.Dotfiles.Repository != "github.com/example/dotfiles" {
+		t.Fatalf("unexpected trusted workspace config %#v", got)
 	}
 }
 

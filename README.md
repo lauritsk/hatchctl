@@ -106,7 +106,9 @@ Use `--` with `exec` to separate `hatchctl` flags from the command you want to r
 
 Dotfiles are configured outside `devcontainer.json`, matching how editor tooling treats them. Most users only need `--dotfiles <repo>`. Use `--dotfiles-install-command` or `--dotfiles-target-path` only when the repository needs a custom install step or checkout location. Matching `HATCHCTL_DOTFILES_*` environment variables are also supported.
 
-Use `--ssh` when you want the container to see the host `ssh-agent` socket. This applies a runtime bind mount plus `SSH_AUTH_SOCK` wiring equivalent to adding ssh-agent passthrough in `devcontainer.json`. On macOS, hatchctl uses the container runtime's `/run/host-services/ssh-auth.sock` proxy instead of binding the raw launchd socket path. You can persist that preference in `.hatchctl/config.toml` with `ssh = true`.
+User-level config applies automatically. Workspace-local `.hatchctl/config.toml` can still provide convenience defaults like config paths and timeouts, but host-affecting defaults from that file such as `bridge`, `ssh`, and `dotfiles` only apply when you also pass `--trust-workspace`.
+
+Use `--ssh` when you want the container to see the host `ssh-agent` socket. This applies a runtime bind mount plus `SSH_AUTH_SOCK` wiring equivalent to adding ssh-agent passthrough in `devcontainer.json`. On macOS, hatchctl uses the container runtime's `/run/host-services/ssh-auth.sock` proxy instead of binding the raw launchd socket path. You can persist that preference in user config, or in workspace-local `.hatchctl/config.toml` when you also opt in with `--trust-workspace`.
 
 Remote feature downloads default to a `90s` HTTP timeout. Override that per command with `--feature-timeout`, for example `hatchctl up --feature-timeout 2m`.
 
@@ -122,17 +124,18 @@ Repo-controlled Docker settings that can expand host access are also gated by de
 
 `config` and `bridge doctor` default to `frozen` so inspection commands do not unexpectedly update dependency state.
 
-Use `--bridge` on macOS when the container needs host-side browser open or localhost callback forwarding during auth flows.
+Use `--bridge` on macOS when the container needs host-side browser open or localhost callback forwarding during auth flows. Forwarded localhost callback ports are randomized and single-use so the bridge does not leave a reusable fixed localhost listener behind.
 
 ## Security Defaults
 
 - `initializeCommand` does not run on the host unless you explicitly opt in with `--allow-host-lifecycle` or `HATCHCTL_ALLOW_HOST_LIFECYCLE=1`
 - repo-controlled Docker settings that expand host access do not run unless you explicitly opt in with `--trust-workspace` or `HATCHCTL_TRUST_WORKSPACE=1`
+- repo-local `.hatchctl/config.toml` values for `bridge`, `ssh`, and `dotfiles` only apply when you explicitly opt in with `--trust-workspace` or `HATCHCTL_TRUST_WORKSPACE=1`
 - direct tarball features must use `https`, except loopback `http` sources used for local development and tests
 - unsigned images warn by default and prompt on TTY; pressing Enter selects `N`
 - unsigned remote OCI features fail by default in non-interactive runs and prompt on TTY; pressing Enter selects `N`
 - set `HATCHCTL_ALLOW_INSECURE_FEATURES=1` only when you intentionally want to bypass remote OCI feature verification
-- the macOS bridge listener binds to loopback only
+- the macOS bridge listener binds to loopback only, and forwarded localhost callback ports use randomized single-use loopback listeners
 - workspace state and cache files are written with owner-only permissions where possible
 
 These defaults are meant to reduce the risk of opening an untrusted repository or consuming an untrusted remote feature source.

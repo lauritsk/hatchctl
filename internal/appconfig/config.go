@@ -29,44 +29,52 @@ type DotfilesConfig struct {
 	TargetPath     string `toml:"target_path"`
 }
 
-func LoadForWorkspace(workspaceHint string) (Config, error) {
-	var merged Config
+type LoadedConfig struct {
+	User      Config
+	Workspace Config
+	Merged    Config
+}
+
+func LoadForWorkspace(workspaceHint string) (LoadedConfig, error) {
+	var loaded LoadedConfig
 	if path, ok, err := userConfigPath(); err != nil {
-		return Config{}, err
+		return LoadedConfig{}, err
 	} else if ok {
 		cfg, err := Load(path)
 		if err != nil {
-			return Config{}, err
+			return LoadedConfig{}, err
 		}
-		merged = merge(merged, cfg)
+		loaded.User = cfg
+		loaded.Merged = merge(loaded.Merged, cfg)
 	}
 
 	workspace := workspaceHint
 	if workspace == "" {
-		workspace = merged.Workspace
+		workspace = loaded.Merged.Workspace
 	}
 	if workspace == "" {
 		cwd, err := os.Getwd()
 		if err != nil {
-			return Config{}, err
+			return LoadedConfig{}, err
 		}
 		workspace = cwd
 	}
 	workspace, err := filepath.Abs(workspace)
 	if err != nil {
-		return Config{}, err
+		return LoadedConfig{}, err
 	}
 
 	if path, ok, err := workspaceConfigPath(workspace); err != nil {
-		return Config{}, err
+		return LoadedConfig{}, err
 	} else if ok {
 		cfg, err := Load(path)
 		if err != nil {
-			return Config{}, err
+			return LoadedConfig{}, err
 		}
-		merged = merge(merged, cfg)
+		loaded.Workspace = cfg
+		loaded.Merged = merge(loaded.Merged, cfg)
 	}
-	return merged, nil
+	return loaded, nil
 }
 
 func Load(path string) (Config, error) {

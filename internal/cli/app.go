@@ -235,6 +235,7 @@ func (a *App) newExecCommand(global *globalOptions) *cobra.Command {
 	var jsonOut bool
 	var remoteEnv []string
 	var sshAgent bool
+	trustWorkspace := appcore.EnvTruthy(appcore.TrustWorkspaceEnvVar)
 	cmd := &cobra.Command{
 		Use:   "exec [-- COMMAND [ARG...]]",
 		Short: "Open a shell or run a command inside the devcontainer",
@@ -264,7 +265,7 @@ func (a *App) newExecCommand(global *globalOptions) *cobra.Command {
 			}
 			renderer := a.newRenderer(jsonOut)
 			defer renderer.Close()
-			defaults, err := appcore.ResolveDefaults(resolveDefaultsRequest(cmd, workspace, configPath, featureTimeout, lockfilePolicy, nil, nil, &sshAgent, appcore.DotfilesOptions{}))
+			defaults, err := appcore.ResolveDefaults(resolveDefaultsRequest(cmd, workspace, configPath, featureTimeout, lockfilePolicy, nil, &trustWorkspace, &sshAgent, appcore.DotfilesOptions{}))
 			if err != nil {
 				return err
 			}
@@ -310,6 +311,7 @@ func (a *App) newExecCommand(global *globalOptions) *cobra.Command {
 	}
 	addWorkspaceFlags(cmd, &workspace, &configPath)
 	addResolutionFlags(cmd, &featureTimeout, &lockfilePolicy, "auto")
+	cmd.Flags().BoolVar(&trustWorkspace, "trust-workspace", trustWorkspace, "trust repo-controlled workspace defaults that expand host access")
 	cmd.Flags().BoolVar(&sshAgent, "ssh", false, "require host ssh-agent passthrough for the managed container")
 	addJSONFlag(cmd, &jsonOut)
 	cmd.Flags().StringArrayVar(&remoteEnv, "env", nil, "set container environment variables as KEY=VALUE; repeat as needed")
@@ -341,6 +343,7 @@ func (a *App) newConfigCommand(global *globalOptions) *cobra.Command {
 	var featureTimeout time.Duration
 	var jsonOut bool
 	var sshAgent bool
+	trustWorkspace := appcore.EnvTruthy(appcore.TrustWorkspaceEnvVar)
 	dotfiles := appcore.DefaultDotfilesOptions()
 	cmd := &cobra.Command{
 		Use:   "config",
@@ -358,7 +361,7 @@ func (a *App) newConfigCommand(global *globalOptions) *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			renderer := a.newRenderer(jsonOut)
 			defer renderer.Close()
-			defaults, err := appcore.ResolveDefaults(resolveDefaultsRequest(cmd, workspace, configPath, featureTimeout, lockfilePolicy, nil, nil, &sshAgent, dotfiles))
+			defaults, err := appcore.ResolveDefaults(resolveDefaultsRequest(cmd, workspace, configPath, featureTimeout, lockfilePolicy, nil, &trustWorkspace, &sshAgent, dotfiles))
 			if err != nil {
 				return err
 			}
@@ -385,6 +388,7 @@ func (a *App) newConfigCommand(global *globalOptions) *cobra.Command {
 	}
 	addWorkspaceFlags(cmd, &workspace, &configPath)
 	addResolutionFlags(cmd, &featureTimeout, &lockfilePolicy, "frozen")
+	cmd.Flags().BoolVar(&trustWorkspace, "trust-workspace", trustWorkspace, "trust repo-controlled workspace defaults that expand host access")
 	cmd.Flags().BoolVar(&sshAgent, "ssh", false, "show config with host ssh-agent passthrough applied")
 	addJSONFlag(cmd, &jsonOut)
 	addDotfilesFlags(cmd, &dotfiles)
@@ -398,6 +402,7 @@ func (a *App) newRunCommand(global *globalOptions) *cobra.Command {
 	var featureTimeout time.Duration
 	var phase string
 	allowHostLifecycle := appcore.EnvTruthy(appcore.AllowHostLifecycleEnvVar)
+	trustWorkspace := appcore.EnvTruthy(appcore.TrustWorkspaceEnvVar)
 	var jsonOut bool
 	dotfiles := appcore.DefaultDotfilesOptions()
 	cmd := &cobra.Command{
@@ -418,7 +423,7 @@ func (a *App) newRunCommand(global *globalOptions) *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			renderer := a.newRenderer(jsonOut)
 			defer renderer.Close()
-			defaults, err := appcore.ResolveDefaults(resolveDefaultsRequest(cmd, workspace, configPath, featureTimeout, lockfilePolicy, nil, nil, nil, dotfiles))
+			defaults, err := appcore.ResolveDefaults(resolveDefaultsRequest(cmd, workspace, configPath, featureTimeout, lockfilePolicy, nil, &trustWorkspace, nil, dotfiles))
 			if err != nil {
 				return err
 			}
@@ -445,6 +450,7 @@ func (a *App) newRunCommand(global *globalOptions) *cobra.Command {
 	addWorkspaceFlags(cmd, &workspace, &configPath)
 	addResolutionFlags(cmd, &featureTimeout, &lockfilePolicy, "auto")
 	cmd.Flags().StringVar(&phase, "phase", "all", "lifecycle phase to run: all, create, start, or attach")
+	cmd.Flags().BoolVar(&trustWorkspace, "trust-workspace", trustWorkspace, "trust repo-controlled workspace defaults that expand host access")
 	cmd.Flags().BoolVar(&allowHostLifecycle, "allow-host-lifecycle", allowHostLifecycle, "trust and run host-side lifecycle commands such as initializeCommand")
 	addJSONFlag(cmd, &jsonOut)
 	addDotfilesFlags(cmd, &dotfiles)

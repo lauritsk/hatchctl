@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -172,6 +173,88 @@ func TestBridgeHostServiceReportsForwardError(t *testing.T) {
 		}
 		if time.Now().After(deadline) {
 			t.Fatalf("status file was not written")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func TestBridgeHostServiceForwardsSingleUseRandomPort(t *testing.T) {
+	t.Parallel()
+
+	session := &Session{ID: "session", StatusPath: filepath.Join(t.TempDir(), "bridge-status.json")}
+	service := newBridgeHostService(session, "container", func(string) error { return nil })
+	service.connectPort = func(_ string, port int, stdin io.Reader, stdout io.Writer) error {
+		if port != 8080 {
+			t.Fatalf("unexpected port %d", port)
+		}
+		payload, err := io.ReadAll(stdin)
+		if err != nil {
+			return err
+		}
+		_, err = stdout.Write(append([]byte("reply:"), payload...))
+		return err
+	}
+
+	hostPort, exact, err := service.ensureForward(8080)
+	if err != nil {
+		t.Fatalf("ensure forward: %v", err)
+	}
+	if exact {
+		t.Fatal("expected randomized bridge host port")
+	}
+	if hostPort == 8080 {
+		t.Fatalf("expected randomized host port, got container port %d", hostPort)
+	}
+
+	conn, err := net.Dial("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(hostPort)))
+	if err != nil {
+		t.Fatalf("dial forward: %v", err)
+	}
+	if _, err := conn.Write([]byte("hello")); err != nil {
+		_ = conn.Close()
+		t.Fatalf("write forward payload: %v", err)
+	}
+	_ = conn.(*net.TCPConn).CloseWrite()
+	data, err := io.ReadAll(conn)
+	_ = conn.Close()
+	if err != nil {
+		t.Fatalf("read forward payload: %v", err)
+	}
+	if got := string(data); got != "reply:hello" {
+		t.Fatalf("unexpected forwarded response %q", got)
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		service.mu.Lock()
+		_, ok := service.forwarded[8080]
+		service.mu.Unlock()
+		if !ok {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("expected single-use forward to be released")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	if _, err := net.DialTimeout("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(hostPort)), 200*time.Millisecond); err == nil {
+		t.Fatal("expected single-use forward listener to be closed after first connection")
+	}
+	deadline = time.Now().Add(2 * time.Second)
+	for {
+		status, err := os.ReadFile(session.StatusPath)
+		if err == nil && strings.Contains(string(status), `"lastEvent": "forward closed"`) {
+			break
+		}
+		if err != nil && !os.IsNotExist(err) {
+			t.Fatalf("read status file: %v", err)
+		}
+		if time.Now().After(deadline) {
+			if err == nil {
+				t.Fatalf("unexpected status file %s", string(status))
+			}
+			t.Fatalf("expected forward close status to be written")
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
@@ -513,10 +596,10 @@ func TestListenForwardPortFallsBackWhenExactPortBusy(t *testing.T) {
 	}
 	defer listener.Close()
 	if exact {
-		t.Fatal("expected fallback listener to use a different host port")
+		t.Fatal("expected randomized bridge host port")
 	}
 	if got := listener.Addr().(*net.TCPAddr).Port; got == port {
-		t.Fatalf("expected fallback port, got exact port %d", got)
+		t.Fatalf("expected randomized host port, got exact port %d", got)
 	}
 }
 

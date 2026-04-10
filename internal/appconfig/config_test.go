@@ -30,10 +30,11 @@ func TestLoadForWorkspaceMergesUserAndWorkspaceConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	config, err := LoadForWorkspace(workspace)
+	loaded, err := LoadForWorkspace(workspace)
 	if err != nil {
 		t.Fatalf("load config: %v", err)
 	}
+	config := loaded.Merged
 	if config.Workspace != "/user/workspace" {
 		t.Fatalf("unexpected workspace %q", config.Workspace)
 	}

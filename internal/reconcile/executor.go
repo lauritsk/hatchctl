@@ -207,7 +207,7 @@ func (e *Executor) VerificationCheck() func(context.Context, string) security.Ve
 
 func (e *Executor) VerifyResolvedFeatures(resolved devcontainer.ResolvedConfig, events ui.Sink) error {
 	for _, feature := range resolved.Features {
-		allowUnverified := feature.SourceKind == "oci" && (policy.AllowInsecureFeatureVerification() || policy.IsLoopbackOCIReference(feature.Resolved))
+		allowUnverified := feature.SourceKind == "oci" && policy.AllowInsecureFeatureVerification()
 		if err := e.imageVerifier.ApplyFeature(feature.Source, feature.Verification, allowUnverified, events); err != nil {
 			return err
 		}

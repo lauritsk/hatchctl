@@ -1,0 +1,89 @@
+package app
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+)
+
+func TestResolveDefaultsIgnoresUntrustedWorkspaceHostSettings(t *testing.T) {
+	workspace := writeConfigFixtures(t)
+
+	got, err := ResolveDefaults(resolveDefaultsRequestForTest(workspace, false))
+	if err != nil {
+		t.Fatalf("resolve defaults: %v", err)
+	}
+
+	if got.ConfigPath != filepath.Join(workspace, "custom", "devcontainer.json") {
+		t.Fatalf("unexpected config path %q", got.ConfigPath)
+	}
+	if got.BridgeEnabled {
+		t.Fatalf("expected untrusted workspace config to leave bridge disabled, got %#v", got)
+	}
+	if got.SSHAgent {
+		t.Fatalf("expected untrusted workspace config to leave ssh disabled, got %#v", got)
+	}
+	if got.Dotfiles.Repository != "github.com/example/user" || got.Dotfiles.InstallCommand != "user-install" || got.Dotfiles.TargetPath != "~/user-dotfiles" {
+		t.Fatalf("unexpected untrusted dotfiles defaults %#v", got.Dotfiles)
+	}
+	if got.FeatureTimeout != 45*time.Second || got.LockfilePolicy != "update" {
+		t.Fatalf("unexpected non-host defaults %#v", got)
+	}
+}
+
+func TestResolveDefaultsAppliesTrustedWorkspaceHostSettings(t *testing.T) {
+	workspace := writeConfigFixtures(t)
+
+	got, err := ResolveDefaults(resolveDefaultsRequestForTest(workspace, true))
+	if err != nil {
+		t.Fatalf("resolve defaults: %v", err)
+	}
+
+	if !got.BridgeEnabled || !got.SSHAgent {
+		t.Fatalf("expected trusted workspace host settings, got %#v", got)
+	}
+	if got.Dotfiles.Repository != "github.com/example/workspace" || got.Dotfiles.InstallCommand != "workspace-install" || got.Dotfiles.TargetPath != "~/workspace-dotfiles" {
+		t.Fatalf("unexpected trusted dotfiles defaults %#v", got.Dotfiles)
+	}
+}
+
+func writeConfigFixtures(t *testing.T) string {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("APPDATA", filepath.Join(home, "AppData", "Roaming"))
+	configRoot, err := os.UserConfigDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	userDir := filepath.Join(configRoot, "hatchctl")
+	if err := os.MkdirAll(userDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	workspace := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(workspace, ".hatchctl"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(userDir, "config.toml"), []byte("lockfile_policy = \"update\"\nfeature_timeout = \"45s\"\nbridge = false\nssh = false\n[dotfiles]\nrepository = \"github.com/example/user\"\ninstall_command = \"user-install\"\ntarget_path = \"~/user-dotfiles\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(workspace, ".hatchctl", "config.toml"), []byte("config = \"../custom/devcontainer.json\"\nbridge = true\nssh = true\n[dotfiles]\nrepository = \"github.com/example/workspace\"\ninstall_command = \"workspace-install\"\ntarget_path = \"~/workspace-dotfiles\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return workspace
+}
+
+func resolveDefaultsRequestForTest(workspace string, trustWorkspace bool) ResolveDefaultsRequest {
+	return ResolveDefaultsRequest{
+		Workspace:      FlagValue[string]{Value: workspace, Changed: true},
+		ConfigPath:     FlagValue[string]{},
+		FeatureTimeout: FlagValue[time.Duration]{},
+		LockfilePolicy: FlagValue[string]{Value: "auto"},
+		BridgeEnabled:  &FlagValue[bool]{Value: false},
+		TrustWorkspace: &FlagValue[bool]{Value: trustWorkspace},
+		SSHAgent:       &FlagValue[bool]{Value: false},
+		Dotfiles:       DotfilesOptionValues{},
+	}
+}
