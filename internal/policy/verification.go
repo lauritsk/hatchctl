@@ -16,10 +16,11 @@ import (
 )
 
 type ImageVerificationPolicy struct {
-	strict bool
-	prompt VerificationPrompter
-	mu     sync.Mutex
-	trust  map[string]struct{}
+	strict  bool
+	prompt  VerificationPrompter
+	signers []security.TrustedSigner
+	mu      sync.Mutex
+	trust   map[string]struct{}
 }
 
 type VerificationPrompter func(string) (bool, bool, error)
@@ -56,9 +57,10 @@ func (p *ImageVerificationPolicy) CloneWithIO(stdin io.Reader, stderr io.Writer)
 		return NewImageVerificationPolicy(stdin, stderr)
 	}
 	clone := &ImageVerificationPolicy{
-		strict: p.strict,
-		prompt: NewVerificationPrompter(stdin, stderr),
-		trust:  map[string]struct{}{},
+		strict:  p.strict,
+		prompt:  NewVerificationPrompter(stdin, stderr),
+		signers: append([]security.TrustedSigner(nil), p.signers...),
+		trust:   map[string]struct{}{},
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -69,7 +71,19 @@ func (p *ImageVerificationPolicy) CloneWithIO(stdin io.Reader, stderr io.Writer)
 }
 
 func (p *ImageVerificationPolicy) Check(ctx context.Context, ref string) security.VerificationResult {
-	return security.VerifyImage(ctx, ref)
+	p.mu.Lock()
+	signers := append([]security.TrustedSigner(nil), p.signers...)
+	p.mu.Unlock()
+	return security.VerifyImageWithSigners(ctx, ref, signers)
+}
+
+func (p *ImageVerificationPolicy) SetTrustedSigners(signers []security.TrustedSigner) {
+	if p == nil {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.signers = append([]security.TrustedSigner(nil), signers...)
 }
 
 func (p *ImageVerificationPolicy) ApplyImage(result security.VerificationResult, events ui.Sink) error {

@@ -27,6 +27,9 @@ func TestResolveDefaultsIgnoresUntrustedWorkspaceHostSettings(t *testing.T) {
 	if got.Dotfiles.Repository != "github.com/example/user" || got.Dotfiles.InstallCommand != "user-install" || got.Dotfiles.TargetPath != "~/user-dotfiles" {
 		t.Fatalf("unexpected untrusted dotfiles defaults %#v", got.Dotfiles)
 	}
+	if len(got.TrustedSigners) != 1 || got.TrustedSigners[0].Subject != "user@example.com" {
+		t.Fatalf("unexpected untrusted trusted signers %#v", got.TrustedSigners)
+	}
 	if got.FeatureTimeout != 45*time.Second || got.LockfilePolicy != "update" {
 		t.Fatalf("unexpected non-host defaults %#v", got)
 	}
@@ -45,6 +48,9 @@ func TestResolveDefaultsAppliesTrustedWorkspaceHostSettings(t *testing.T) {
 	}
 	if got.Dotfiles.Repository != "github.com/example/workspace" || got.Dotfiles.InstallCommand != "workspace-install" || got.Dotfiles.TargetPath != "~/workspace-dotfiles" {
 		t.Fatalf("unexpected trusted dotfiles defaults %#v", got.Dotfiles)
+	}
+	if len(got.TrustedSigners) != 1 || got.TrustedSigners[0].Subject != "workspace@example.com" {
+		t.Fatalf("unexpected trusted signers %#v", got.TrustedSigners)
 	}
 }
 
@@ -66,10 +72,10 @@ func writeConfigFixtures(t *testing.T) string {
 	if err := os.MkdirAll(filepath.Join(workspace, ".hatchctl"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(userDir, "config.toml"), []byte("lockfile_policy = \"update\"\nfeature_timeout = \"45s\"\nbridge = false\nssh = false\n[dotfiles]\nrepository = \"github.com/example/user\"\ninstall_command = \"user-install\"\ntarget_path = \"~/user-dotfiles\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(userDir, "config.toml"), []byte("lockfile_policy = \"update\"\nfeature_timeout = \"45s\"\nbridge = false\nssh = false\n[dotfiles]\nrepository = \"github.com/example/user\"\ninstall_command = \"user-install\"\ntarget_path = \"~/user-dotfiles\"\n[[verification.trusted_signers]]\nissuer = \"https://issuer.user.example\"\nsubject = \"user@example.com\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(workspace, ".hatchctl", "config.toml"), []byte("config = \"../custom/devcontainer.json\"\nbridge = true\nssh = true\n[dotfiles]\nrepository = \"github.com/example/workspace\"\ninstall_command = \"workspace-install\"\ntarget_path = \"~/workspace-dotfiles\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(workspace, ".hatchctl", "config.toml"), []byte("config = \"../custom/devcontainer.json\"\nbridge = true\nssh = true\n[dotfiles]\nrepository = \"github.com/example/workspace\"\ninstall_command = \"workspace-install\"\ntarget_path = \"~/workspace-dotfiles\"\n[[verification.trusted_signers]]\nissuer = \"https://issuer.workspace.example\"\nsubject = \"workspace@example.com\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	return workspace

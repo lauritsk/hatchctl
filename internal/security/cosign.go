@@ -7,9 +7,12 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/name"
+	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/sigstore/cosign/v3/pkg/cosign"
 	cosignoci "github.com/sigstore/cosign/v3/pkg/oci"
+	ociremote "github.com/sigstore/cosign/v3/pkg/oci/remote"
 	"github.com/sigstore/sigstore-go/pkg/root"
 )
 
@@ -19,9 +22,10 @@ const (
 )
 
 var (
-	parseReference        = name.ParseReference
-	trustedRootFunc       = cosign.TrustedRoot
-	verifyImageSignatures = cosign.VerifyImageSignatures
+	parseReference          = name.ParseReference
+	trustedRootFunc         = cosign.TrustedRoot
+	verifyImageAttestations = cosign.VerifyImageAttestations
+	verifyImageSignatures   = cosign.VerifyImageSignatures
 
 	trustedRootOnce sync.Once
 	trustedRootVal  root.TrustedMaterial
@@ -35,6 +39,10 @@ type VerificationResult struct {
 }
 
 func VerifyImage(ctx context.Context, ref string) VerificationResult {
+	return VerifyImageWithSigners(ctx, ref, nil)
+}
+
+func VerifyImageWithSigners(ctx context.Context, ref string, signers []TrustedSigner) VerificationResult {
 	ref = strings.TrimSpace(ref)
 	if ref == "" {
 		return VerificationResult{Verified: true}
@@ -47,12 +55,34 @@ func VerifyImage(ctx context.Context, ref string) VerificationResult {
 	if err != nil {
 		return VerificationResult{Ref: ref, Reason: fmt.Sprintf("load sigstore trusted root: %v", err)}
 	}
-	_, _, err = verifyImageSignatures(ctx, parsedRef, &cosign.CheckOpts{
-		TrustedMaterial: trustedMaterial,
-		ClaimVerifier:   cosign.SimpleClaimVerifier,
+	identities := signerIdentities(parsedRef, signers)
+	registryOpts := []ociremote.Option{ociremote.WithRemoteOptions(
+		remote.WithContext(ctx),
+		remote.WithAuthFromKeychain(authn.DefaultKeychain),
+	)}
+	_, _, err = verifyImageAttestations(ctx, parsedRef, &cosign.CheckOpts{
+		TrustedMaterial:    trustedMaterial,
+		ClaimVerifier:      cosign.IntotoSubjectClaimVerifier,
+		Identities:         identities,
+		NewBundleFormat:    true,
+		RegistryClientOpts: registryOpts,
 	})
 	if err == nil {
 		return VerificationResult{Ref: ref, Verified: true}
+	}
+	bundleErr := err
+	_, _, err = verifyImageSignatures(ctx, parsedRef, &cosign.CheckOpts{
+		TrustedMaterial:    trustedMaterial,
+		ClaimVerifier:      cosign.SimpleClaimVerifier,
+		Identities:         identities,
+		ExperimentalOCI11:  true,
+		RegistryClientOpts: registryOpts,
+	})
+	if err == nil {
+		return VerificationResult{Ref: ref, Verified: true}
+	}
+	if !isMissingSignatureMaterial(bundleErr) {
+		return VerificationResult{Ref: ref, Reason: fmt.Sprintf("verification failed: %v", bundleErr)}
 	}
 	var noSigs *cosign.ErrNoSignaturesFound
 	var noMatch *cosign.ErrNoMatchingSignatures
@@ -64,6 +94,16 @@ func VerifyImage(ctx context.Context, ref string) VerificationResult {
 		return VerificationResult{Ref: ref, Reason: reason}
 	}
 	return VerificationResult{Ref: ref, Reason: fmt.Sprintf("verification failed: %v", err)}
+}
+
+func isMissingSignatureMaterial(err error) bool {
+	if err == nil {
+		return false
+	}
+	var noAttestations *cosign.ErrNoMatchingAttestations
+	var noSignatures *cosign.ErrNoSignaturesFound
+	var noMatchingSignatures *cosign.ErrNoMatchingSignatures
+	return errors.As(err, &noAttestations) || errors.As(err, &noSignatures) || errors.As(err, &noMatchingSignatures)
 }
 
 func trustedMaterial() (root.TrustedMaterial, error) {

@@ -101,6 +101,7 @@ func NewDefault() *Service {
 }
 
 func (s *Service) Up(ctx context.Context, req UpRequest) (UpResult, error) {
+	s.executor.SetTrustedSigners(req.Defaults.TrustedSigners)
 	policy, err := devcontainer.ParseFeatureLockfilePolicy(req.Defaults.LockfilePolicy)
 	if err != nil {
 		return UpResult{}, err
@@ -113,6 +114,7 @@ func (s *Service) Up(ctx context.Context, req UpRequest) (UpResult, error) {
 }
 
 func (s *Service) Build(ctx context.Context, req BuildRequest) (BuildResult, error) {
+	s.executor.SetTrustedSigners(req.Defaults.TrustedSigners)
 	policy, err := devcontainer.ParseFeatureLockfilePolicy(req.Defaults.LockfilePolicy)
 	if err != nil {
 		return BuildResult{}, err
@@ -125,6 +127,7 @@ func (s *Service) Build(ctx context.Context, req BuildRequest) (BuildResult, err
 }
 
 func (s *Service) Exec(ctx context.Context, req ExecRequest) (int, error) {
+	s.executor.SetTrustedSigners(req.Defaults.TrustedSigners)
 	policy, err := devcontainer.ParseFeatureLockfilePolicy(req.Defaults.LockfilePolicy)
 	if err != nil {
 		return 0, err
@@ -140,6 +143,7 @@ func (s *Service) Exec(ctx context.Context, req ExecRequest) (int, error) {
 }
 
 func (s *Service) ReadConfig(ctx context.Context, req ReadConfigRequest) (ReadConfigResult, error) {
+	s.executor.SetTrustedSigners(req.Defaults.TrustedSigners)
 	policy, err := devcontainer.ParseFeatureLockfilePolicy(req.Defaults.LockfilePolicy)
 	if err != nil {
 		return ReadConfigResult{}, err
@@ -152,6 +156,7 @@ func (s *Service) ReadConfig(ctx context.Context, req ReadConfigRequest) (ReadCo
 }
 
 func (s *Service) RunLifecycle(ctx context.Context, req RunLifecycleRequest) (RunLifecycleResult, error) {
+	s.executor.SetTrustedSigners(req.Defaults.TrustedSigners)
 	policy, err := devcontainer.ParseFeatureLockfilePolicy(req.Defaults.LockfilePolicy)
 	if err != nil {
 		return RunLifecycleResult{}, err
@@ -169,6 +174,7 @@ func (s *Service) RunLifecycle(ctx context.Context, req RunLifecycleRequest) (Ru
 }
 
 func (s *Service) BridgeDoctor(ctx context.Context, req BridgeDoctorRequest) (bridge.Report, error) {
+	s.executor.SetTrustedSigners(req.Defaults.TrustedSigners)
 	policy, err := devcontainer.ParseFeatureLockfilePolicy(req.Defaults.LockfilePolicy)
 	if err != nil {
 		return bridge.Report{}, err

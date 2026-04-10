@@ -8,18 +8,20 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
+	"github.com/lauritsk/hatchctl/internal/security"
 )
 
 type Config struct {
-	Workspace      string         `toml:"workspace"`
-	ConfigPath     string         `toml:"config"`
-	StateDir       string         `toml:"state_dir"`
-	CacheDir       string         `toml:"cache_dir"`
-	FeatureTimeout string         `toml:"feature_timeout"`
-	LockfilePolicy string         `toml:"lockfile_policy"`
-	Bridge         *bool          `toml:"bridge"`
-	SSHAgent       *bool          `toml:"ssh"`
-	Dotfiles       DotfilesConfig `toml:"dotfiles"`
+	Workspace      string             `toml:"workspace"`
+	ConfigPath     string             `toml:"config"`
+	StateDir       string             `toml:"state_dir"`
+	CacheDir       string             `toml:"cache_dir"`
+	FeatureTimeout string             `toml:"feature_timeout"`
+	LockfilePolicy string             `toml:"lockfile_policy"`
+	Bridge         *bool              `toml:"bridge"`
+	SSHAgent       *bool              `toml:"ssh"`
+	Dotfiles       DotfilesConfig     `toml:"dotfiles"`
+	Verification   VerificationConfig `toml:"verification"`
 	loadedFrom     string
 }
 
@@ -27,6 +29,10 @@ type DotfilesConfig struct {
 	Repository     string `toml:"repository"`
 	InstallCommand string `toml:"install_command"`
 	TargetPath     string `toml:"target_path"`
+}
+
+type VerificationConfig struct {
+	TrustedSigners []security.TrustedSigner `toml:"trusted_signers"`
 }
 
 type LoadedConfig struct {
@@ -142,6 +148,9 @@ func merge(base Config, override Config) Config {
 	}
 	if override.Dotfiles.TargetPath != "" {
 		merged.Dotfiles.TargetPath = override.Dotfiles.TargetPath
+	}
+	if len(override.Verification.TrustedSigners) > 0 {
+		merged.Verification.TrustedSigners = append([]security.TrustedSigner(nil), override.Verification.TrustedSigners...)
 	}
 	return merged
 }

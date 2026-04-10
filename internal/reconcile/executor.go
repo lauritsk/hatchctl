@@ -40,13 +40,14 @@ type observerEngine struct {
 }
 
 type Executor struct {
-	stdin         io.Reader
-	stdout        io.Writer
-	stderr        io.Writer
-	engine        engine
-	hostCommand   command.Runner
-	imageVerifier *policy.ImageVerificationPolicy
-	planner       *workspaceplan.Resolver
+	stdin          io.Reader
+	stdout         io.Writer
+	stderr         io.Writer
+	engine         engine
+	hostCommand    command.Runner
+	trustedSigners []security.TrustedSigner
+	imageVerifier  *policy.ImageVerificationPolicy
+	planner        *workspaceplan.Resolver
 }
 
 type DotfilesStatus struct {
@@ -201,6 +202,16 @@ func (e *Executor) cloneWithIO(stdin io.Reader, stdout io.Writer, stderr io.Writ
 	return &clone
 }
 
+func (e *Executor) SetTrustedSigners(signers []security.TrustedSigner) {
+	if e == nil {
+		return
+	}
+	e.trustedSigners = append([]security.TrustedSigner(nil), signers...)
+	if e.imageVerifier != nil {
+		e.imageVerifier.SetTrustedSigners(e.trustedSigners)
+	}
+}
+
 func (e *Executor) VerificationCheck() func(context.Context, string) security.VerificationResult {
 	return e.imageVerifier.Check
 }
@@ -242,6 +253,7 @@ func (e *Executor) prepareVerificationPolicy(workspacePlan workspaceplan.Workspa
 	if e.imageVerifier == nil {
 		e.imageVerifier = policy.NewImageVerificationPolicy(e.stdin, e.stderr)
 	}
+	e.imageVerifier.SetTrustedSigners(e.trustedSigners)
 	if workspacePlan.LockProtected.StateDir != "" {
 		state, err := storefs.ReadWorkspaceState(workspacePlan.LockProtected.StateDir)
 		if err != nil {

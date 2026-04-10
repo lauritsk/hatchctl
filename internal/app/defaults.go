@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/lauritsk/hatchctl/internal/appconfig"
+	"github.com/lauritsk/hatchctl/internal/security"
 )
 
 const (
@@ -40,6 +41,7 @@ type CommandDefaults struct {
 	BridgeEnabled  bool
 	TrustWorkspace bool
 	SSHAgent       bool
+	TrustedSigners []security.TrustedSigner
 	Dotfiles       DotfilesOptions
 }
 
@@ -123,6 +125,10 @@ func ResolveDefaults(req ResolveDefaultsRequest) (CommandDefaults, error) {
 	}
 	if !req.Dotfiles.TargetPath.Changed {
 		resolved.Dotfiles.TargetPath = preferredDotfilesValue(loaded.User.Dotfiles.TargetPath, loaded.Workspace.Dotfiles.TargetPath, trustedWorkspace)
+	}
+	resolved.TrustedSigners = append([]security.TrustedSigner(nil), loaded.User.Verification.TrustedSigners...)
+	if trustedWorkspace && len(loaded.Workspace.Verification.TrustedSigners) > 0 {
+		resolved.TrustedSigners = append([]security.TrustedSigner(nil), loaded.Workspace.Verification.TrustedSigners...)
 	}
 	if req.BridgeEnabled != nil {
 		resolved.BridgeEnabled = req.BridgeEnabled.Value

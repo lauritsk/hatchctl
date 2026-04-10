@@ -108,6 +108,15 @@ Dotfiles are configured outside `devcontainer.json`, matching how editor tooling
 
 User-level config applies automatically. Workspace-local `.hatchctl/config.toml` can still provide convenience defaults like config paths and timeouts, but host-affecting defaults from that file such as `bridge`, `ssh`, and `dotfiles` only apply when you also pass `--trust-workspace`.
 
+Image verification signer trust is configurable in `.hatchctl/config.toml` too. When you do not configure signers explicitly, `hatchctl` recommends a safe default for `ghcr.io/<owner>/<repo>` images by trusting GitHub Actions keyless signatures from the same GitHub repository. Override that with explicit signers when you need a narrower or different policy:
+
+```toml
+[verification]
+[[verification.trusted_signers]]
+issuer = "https://token.actions.githubusercontent.com"
+subject_regexp = "^https://github.com/lauritsk/devcontainer/.github/workflows/release.yml@refs/tags/.+$"
+```
+
 Use `--ssh` when you want the container to see the host `ssh-agent` socket. This applies a runtime bind mount plus `SSH_AUTH_SOCK` wiring equivalent to adding ssh-agent passthrough in `devcontainer.json`. On macOS, hatchctl uses the container runtime's `/run/host-services/ssh-auth.sock` proxy instead of binding the raw launchd socket path. You can persist that preference in user config, or in workspace-local `.hatchctl/config.toml` when you also opt in with `--trust-workspace`.
 
 Remote feature downloads default to a `90s` HTTP timeout. Override that per command with `--feature-timeout`, for example `hatchctl up --feature-timeout 2m`.

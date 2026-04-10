@@ -1,8 +1,4 @@
 {
     "name": "hatchctl",
-    "image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04@sha256:d94c97dd9cacf183d0a6fd12a8e87b526e9e928307674ae9c94139139c0c6eae",
-    "features": {
-        "ghcr.io/devcontainers-extra/features/fish-apt-get:1": {},
-        "ghcr.io/devcontainers-extra/features/mise:1": {},
-    },
+    "image": "ghcr.io/lauritsk/devcontainer:latest@sha256:5aa0ae57596c6929b349b31eb0caf854b9f69c8c6548adf87ae1e045d97ef284"
 }

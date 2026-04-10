@@ -100,6 +100,11 @@ func (e *Executor) ReconcileImage(ctx context.Context, workspacePlan workspacepl
 				return "", ImagePlan{}, err
 			}
 		}
+		if plan.TargetImage != "" {
+			if err := e.ensureLocalImage(ctx, plan.TargetImage, events); err != nil {
+				return "", ImagePlan{}, err
+			}
+		}
 		return plan.TargetImage, plan, nil
 	case ImageActionReuseTarget:
 		return plan.TargetImage, plan, nil
