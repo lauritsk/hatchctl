@@ -1,4 +1,4 @@
 {
     "name": "hatchctl",
-    "image": "ghcr.io/lauritsk/devcontainer:latest@sha256:5aa0ae57596c6929b349b31eb0caf854b9f69c8c6548adf87ae1e045d97ef284"
+    "image": "ghcr.io/lauritsk/devcontainer:0.1.3@sha256:4806509de875997ffb5d2bbfb178b860fccdc5d738b0830085147319b6fa849a"
 }

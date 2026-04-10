@@ -2,7 +2,7 @@
 actionlint = "1.7.12"
 cocogitto = "7.0.0"
 cosign = "3.0.6"
-"github:lauritsk/hatchctl" = "0.6.12"
+"github:lauritsk/hatchctl" = "0.6.13"
 gitleaks = "8.30.1"
 go = "1.26.2"
 "go:golang.org/x/vuln/cmd/govulncheck" = "latest"

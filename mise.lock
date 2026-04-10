@@ -111,38 +111,38 @@ url = "https://github.com/sigstore/cosign/releases/download/v3.0.6/cosign-window
 provenance = "cosign"
 
 [[tools."github:lauritsk/hatchctl"]]
-version = "0.6.12"
+version = "0.6.13"
 backend = "github:lauritsk/hatchctl"
 
 [tools."github:lauritsk/hatchctl"."platforms.linux-arm64"]
-checksum = "sha256:44c22255ad6385603f92321642db52d68d2514036863efb8f062999b628dcad7"
-url = "https://github.com/lauritsk/hatchctl/releases/download/v0.6.12/hatchctl_Linux_arm64.tar.gz"
-url_api = "https://api.github.com/repos/lauritsk/hatchctl/releases/assets/393421131"
+checksum = "sha256:445d61c3a5a63195aaf6ed3b7a9e3007261e6bdc6fbd4328afd1ccf4bd7e45c2"
+url = "https://github.com/lauritsk/hatchctl/releases/download/v0.6.13/hatchctl_Linux_arm64.tar.gz"
+url_api = "https://api.github.com/repos/lauritsk/hatchctl/releases/assets/393555487"
 
 [tools."github:lauritsk/hatchctl"."platforms.linux-arm64-musl"]
-checksum = "sha256:44c22255ad6385603f92321642db52d68d2514036863efb8f062999b628dcad7"
-url = "https://github.com/lauritsk/hatchctl/releases/download/v0.6.12/hatchctl_Linux_arm64.tar.gz"
-url_api = "https://api.github.com/repos/lauritsk/hatchctl/releases/assets/393421131"
+checksum = "sha256:445d61c3a5a63195aaf6ed3b7a9e3007261e6bdc6fbd4328afd1ccf4bd7e45c2"
+url = "https://github.com/lauritsk/hatchctl/releases/download/v0.6.13/hatchctl_Linux_arm64.tar.gz"
+url_api = "https://api.github.com/repos/lauritsk/hatchctl/releases/assets/393555487"
 
 [tools."github:lauritsk/hatchctl"."platforms.linux-x64"]
-checksum = "sha256:94031fa30bf4b350842906edde03f14b11380123bdec8ce40638d889d25fd203"
-url = "https://github.com/lauritsk/hatchctl/releases/download/v0.6.12/hatchctl_Linux_x86_64.tar.gz"
-url_api = "https://api.github.com/repos/lauritsk/hatchctl/releases/assets/393421132"
+checksum = "sha256:6918fad5582303e36ea315115fe68b0d718631463dfeec61c69d51e0ccdc1d47"
+url = "https://github.com/lauritsk/hatchctl/releases/download/v0.6.13/hatchctl_Linux_x86_64.tar.gz"
+url_api = "https://api.github.com/repos/lauritsk/hatchctl/releases/assets/393555486"
 
 [tools."github:lauritsk/hatchctl"."platforms.linux-x64-musl"]
-checksum = "sha256:94031fa30bf4b350842906edde03f14b11380123bdec8ce40638d889d25fd203"
-url = "https://github.com/lauritsk/hatchctl/releases/download/v0.6.12/hatchctl_Linux_x86_64.tar.gz"
-url_api = "https://api.github.com/repos/lauritsk/hatchctl/releases/assets/393421132"
+checksum = "sha256:6918fad5582303e36ea315115fe68b0d718631463dfeec61c69d51e0ccdc1d47"
+url = "https://github.com/lauritsk/hatchctl/releases/download/v0.6.13/hatchctl_Linux_x86_64.tar.gz"
+url_api = "https://api.github.com/repos/lauritsk/hatchctl/releases/assets/393555486"
 
 [tools."github:lauritsk/hatchctl"."platforms.macos-arm64"]
-checksum = "sha256:4c4140a215e5e8985006985eb51e893d838e2f92842fffe78c164f015fa6b97b"
-url = "https://github.com/lauritsk/hatchctl/releases/download/v0.6.12/hatchctl_Darwin_arm64.tar.gz"
-url_api = "https://api.github.com/repos/lauritsk/hatchctl/releases/assets/393421134"
+checksum = "sha256:f668776e381fa051e8832df5b6ee5df79d147241f889d5457a7a4b16769696c3"
+url = "https://github.com/lauritsk/hatchctl/releases/download/v0.6.13/hatchctl_Darwin_arm64.tar.gz"
+url_api = "https://api.github.com/repos/lauritsk/hatchctl/releases/assets/393555485"
 
 [tools."github:lauritsk/hatchctl"."platforms.macos-x64"]
-checksum = "sha256:83dfe9329c951f119763d7358f967580eaefc782940c32677893e968d7bc270b"
-url = "https://github.com/lauritsk/hatchctl/releases/download/v0.6.12/hatchctl_Darwin_x86_64.tar.gz"
-url_api = "https://api.github.com/repos/lauritsk/hatchctl/releases/assets/393421133"
+checksum = "sha256:400c83dbe0ec1ca6904a9d91ba6b50792e41a7d1d67d15977099b47ad5ad910f"
+url = "https://github.com/lauritsk/hatchctl/releases/download/v0.6.13/hatchctl_Darwin_x86_64.tar.gz"
+url_api = "https://api.github.com/repos/lauritsk/hatchctl/releases/assets/393555484"
 
 [[tools.gitleaks]]
 version = "8.30.1"
