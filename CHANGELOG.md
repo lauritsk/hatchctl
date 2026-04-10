@@ -2,6 +2,17 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## [v0.6.12](https://github.com/lauritsk/hatchctl/compare/87c9d5129661b3b6a94424baef2bfba43a345bd1..v0.6.12) - 2026-04-10
+#### Bug Fixes
+- (**bridge**) Preserve exact localhost callback ports for OAuth flows - ([f5459be](https://github.com/lauritsk/hatchctl/commit/f5459be820dc5cdf36707367915673791feec617)) - Karl Hans Laurits
+- (**release**) Generate archive SBOMs explicitly - ([b08de67](https://github.com/lauritsk/hatchctl/commit/b08de67c3f02b07a1065b890d515433fa751b392)) - Karl Hans Laurits
+#### Documentation
+- remove unnecessary security audit doc - ([87c9d51](https://github.com/lauritsk/hatchctl/commit/87c9d5129661b3b6a94424baef2bfba43a345bd1)) - Karl Hans Laurits
+#### Miscellaneous Chores
+- (**mise**) Update hatchctl tool version - ([b8bcb47](https://github.com/lauritsk/hatchctl/commit/b8bcb47498e654fa3311bcd25e79d5c08b295eee)) - Karl Hans Laurits
+
+- - -
+
 ## [v0.6.11](https://github.com/lauritsk/hatchctl/compare/948295271fe7457ea24dc71846fb63838463c65a..v0.6.11) - 2026-04-10
 #### Bug Fixes
 - (**release**) Remove git tag section from goreleaser config - ([9482952](https://github.com/lauritsk/hatchctl/commit/948295271fe7457ea24dc71846fb63838463c65a)) - Karl Hans Laurits
