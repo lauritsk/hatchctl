@@ -56,34 +56,54 @@ func VerifyImageWithSigners(ctx context.Context, ref string, signers []TrustedSi
 		return VerificationResult{Ref: ref, Reason: fmt.Sprintf("load sigstore trusted root: %v", err)}
 	}
 	identities := signerIdentities(parsedRef, signers)
-	registryOpts := []ociremote.Option{ociremote.WithRemoteOptions(
+	registryOpts := registryClientOptions(ctx)
+	_, _, err = verifyImageAttestations(ctx, parsedRef, bundleCheckOpts(trustedMaterial, identities, registryOpts))
+	if err == nil {
+		return VerificationResult{Ref: ref, Verified: true}
+	}
+	bundleErr := err
+	_, _, err = verifyImageSignatures(ctx, parsedRef, signatureCheckOpts(trustedMaterial, identities, registryOpts))
+	if err == nil {
+		return VerificationResult{Ref: ref, Verified: true}
+	}
+	if !isMissingSignatureMaterial(bundleErr) {
+		return verificationFailure(ref, bundleErr)
+	}
+	return signatureVerificationFailure(ref, err)
+}
+
+func registryClientOptions(ctx context.Context) []ociremote.Option {
+	return []ociremote.Option{ociremote.WithRemoteOptions(
 		remote.WithContext(ctx),
 		remote.WithAuthFromKeychain(authn.DefaultKeychain),
 	)}
-	_, _, err = verifyImageAttestations(ctx, parsedRef, &cosign.CheckOpts{
+}
+
+func bundleCheckOpts(trustedMaterial root.TrustedMaterial, identities []cosign.Identity, registryOpts []ociremote.Option) *cosign.CheckOpts {
+	return &cosign.CheckOpts{
 		TrustedMaterial:    trustedMaterial,
 		ClaimVerifier:      cosign.IntotoSubjectClaimVerifier,
 		Identities:         identities,
 		NewBundleFormat:    true,
 		RegistryClientOpts: registryOpts,
-	})
-	if err == nil {
-		return VerificationResult{Ref: ref, Verified: true}
 	}
-	bundleErr := err
-	_, _, err = verifyImageSignatures(ctx, parsedRef, &cosign.CheckOpts{
+}
+
+func signatureCheckOpts(trustedMaterial root.TrustedMaterial, identities []cosign.Identity, registryOpts []ociremote.Option) *cosign.CheckOpts {
+	return &cosign.CheckOpts{
 		TrustedMaterial:    trustedMaterial,
 		ClaimVerifier:      cosign.SimpleClaimVerifier,
 		Identities:         identities,
 		ExperimentalOCI11:  true,
 		RegistryClientOpts: registryOpts,
-	})
-	if err == nil {
-		return VerificationResult{Ref: ref, Verified: true}
 	}
-	if !isMissingSignatureMaterial(bundleErr) {
-		return VerificationResult{Ref: ref, Reason: fmt.Sprintf("verification failed: %v", bundleErr)}
-	}
+}
+
+func verificationFailure(ref string, err error) VerificationResult {
+	return VerificationResult{Ref: ref, Reason: fmt.Sprintf("verification failed: %v", err)}
+}
+
+func signatureVerificationFailure(ref string, err error) VerificationResult {
 	var noSigs *cosign.ErrNoSignaturesFound
 	var noMatch *cosign.ErrNoMatchingSignatures
 	if errors.As(err, &noSigs) || errors.As(err, &noMatch) {
@@ -93,7 +113,7 @@ func VerifyImageWithSigners(ctx context.Context, ref string, signers []TrustedSi
 		}
 		return VerificationResult{Ref: ref, Reason: reason}
 	}
-	return VerificationResult{Ref: ref, Reason: fmt.Sprintf("verification failed: %v", err)}
+	return verificationFailure(ref, err)
 }
 
 func isMissingSignatureMaterial(err error) bool {

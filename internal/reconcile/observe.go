@@ -102,37 +102,13 @@ func NewObserver(backend backend) *Observer {
 
 func (o *Observer) Observe(ctx context.Context, req ObserveRequest) (ObservedState, error) {
 	o = o.withDefaults()
-	observed := ObservedState{
-		Plan:     req.Plan,
-		Resolved: req.Resolved,
-		ImageRef: req.ImageRef,
-		Target: RuntimeTarget{
-			Kind:           targetKind(req.Resolved),
-			Image:          req.ImageRef,
-			ContainerName:  req.Resolved.ContainerName,
-			ComposeProject: req.Resolved.ComposeProject,
-			ComposeService: req.Resolved.ComposeService,
-		},
-		Control: ControlState{
-			PlanCachePath: filepath.Join(req.Resolved.CacheDir, "resolved-plan.json"),
-		},
-	}
+	observed := newObservedState(req)
 	if req.LoadControlState {
-		state, err := o.readState(req.Resolved.StateDir)
+		control, err := o.loadControlState(req.Resolved, observed.Control.PlanCachePath)
 		if err != nil {
 			return ObservedState{}, err
 		}
-		observed.Control.WorkspaceState = state
-		coordination, err := o.readCoordination(req.Resolved.StateDir)
-		if err != nil && !os.IsNotExist(err) {
-			return ObservedState{}, err
-		}
-		observed.Control.Coordination = coordination
-		if _, err := os.Stat(observed.Control.PlanCachePath); err == nil {
-			observed.Control.PlanCacheExists = true
-		} else if !os.IsNotExist(err) {
-			return ObservedState{}, err
-		}
+		observed.Control = control
 	}
 	if req.ObserveTarget {
 		target, state, container, err := o.observeTarget(ctx, req.Resolved, observed.Control.WorkspaceState, req.InspectTarget, req.AllowMissingTarget)
@@ -145,17 +121,57 @@ func (o *Observer) Observe(ctx context.Context, req ObserveRequest) (ObservedSta
 		observed.Capability = observeCapabilities(container, state, req.Resolved)
 	}
 	if req.ObserveImage && req.ImageRef != "" {
-		inspect, err := o.backend.InspectImage(ctx, req.ImageRef)
+		inspect, err := o.observeImage(ctx, req.ImageRef)
 		if err != nil {
-			if !docker.IsNotFound(err) {
-				return ObservedState{}, err
-			}
-		} else {
-			observed.Image = &inspect
+			return ObservedState{}, err
 		}
+		observed.Image = inspect
 	}
 	observed.ReadTarget = observed.readToken()
 	return observed, nil
+}
+
+func newObservedState(req ObserveRequest) ObservedState {
+	return ObservedState{
+		Plan:     req.Plan,
+		Resolved: req.Resolved,
+		ImageRef: req.ImageRef,
+		Target:   runtimeTargetFromResolved(req.Resolved, req.ImageRef),
+		Control: ControlState{
+			PlanCachePath: filepath.Join(req.Resolved.CacheDir, "resolved-plan.json"),
+		},
+	}
+}
+
+func (o *Observer) loadControlState(resolved devcontainer.ResolvedConfig, planCachePath string) (ControlState, error) {
+	control := ControlState{PlanCachePath: planCachePath}
+	state, err := o.readState(resolved.StateDir)
+	if err != nil {
+		return ControlState{}, err
+	}
+	control.WorkspaceState = state
+	coordination, err := o.readCoordination(resolved.StateDir)
+	if err != nil && !os.IsNotExist(err) {
+		return ControlState{}, err
+	}
+	control.Coordination = coordination
+	if _, err := os.Stat(planCachePath); err == nil {
+		control.PlanCacheExists = true
+	} else if !os.IsNotExist(err) {
+		return ControlState{}, err
+	}
+	return control, nil
+}
+
+func (o *Observer) observeImage(ctx context.Context, imageRef string) (*docker.ImageInspect, error) {
+	inspect, err := o.backend.InspectImage(ctx, imageRef)
+	if err != nil {
+		if docker.IsNotFound(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &inspect, nil
 }
 
 func (o *Observer) RevalidateReadToken(ctx context.Context, observed ObservedState) error {
@@ -204,55 +220,71 @@ func readTokenMatchesInspect(token ReadToken, inspect docker.ContainerInspect) b
 
 func (o *Observer) observeTarget(ctx context.Context, resolved devcontainer.ResolvedConfig, state devcontainer.State, inspectTarget bool, allowMissing bool) (RuntimeTarget, devcontainer.State, *docker.ContainerInspect, error) {
 	previousContainerID := state.ContainerID
-	var candidates []docker.ContainerInspect
-	var container *docker.ContainerInspect
-	if resolved.SourceKind == "compose" {
-		inspects, primary, err := o.observeComposeProject(ctx, resolved)
-		if err != nil {
-			if allowMissing && errors.Is(err, ErrObservedTargetNotFound) {
-				return RuntimeTarget{Kind: TargetKindComposeService, Image: resolved.ImageName, ContainerName: resolved.ContainerName, ComposeProject: resolved.ComposeProject, ComposeService: resolved.ComposeService}, clearedState(state), nil, nil
-			}
-			return RuntimeTarget{}, devcontainer.State{}, nil, err
+	target, container, err := o.lookupRuntimeTarget(ctx, resolved, state)
+	if err != nil {
+		if allowMissing && errors.Is(err, ErrObservedTargetNotFound) {
+			return runtimeTargetFromResolved(resolved, resolved.ImageName), clearedState(state), nil, nil
 		}
-		candidates = inspects
-		if primary != nil {
-			container = primary
-		}
-	} else {
-		inspect, err := o.observeManagedContainer(ctx, resolved, state)
-		if err != nil {
-			if allowMissing && errors.Is(err, ErrObservedTargetNotFound) {
-				return RuntimeTarget{Kind: TargetKindManagedContainer, Image: resolved.ImageName, ContainerName: resolved.ContainerName}, clearedState(state), nil, nil
-			}
-			return RuntimeTarget{}, devcontainer.State{}, nil, err
-		}
-		if inspect != nil {
-			candidates = []docker.ContainerInspect{*inspect}
-			container = inspect
-		}
+		return RuntimeTarget{}, devcontainer.State{}, nil, err
 	}
-	target := RuntimeTarget{
-		Kind:           targetKind(resolved),
-		Image:          resolved.ImageName,
-		ContainerName:  resolved.ContainerName,
-		ComposeProject: resolved.ComposeProject,
-		ComposeService: resolved.ComposeService,
-		Containers:     candidates,
-	}
+	state = observedTargetState(state, previousContainerID, container)
 	if container != nil {
 		target.PrimaryContainer = container.ID
-		if previousContainerID != "" && previousContainerID != container.ID {
-			state = clearedState(state)
-		}
-		state.ContainerID = container.ID
-	}
-	if container == nil {
-		state = clearedState(state)
 	}
 	if !inspectTarget {
 		container = nil
 	}
 	return target, state, container, nil
+}
+
+func (o *Observer) lookupRuntimeTarget(ctx context.Context, resolved devcontainer.ResolvedConfig, state devcontainer.State) (RuntimeTarget, *docker.ContainerInspect, error) {
+	if resolved.SourceKind == "compose" {
+		return o.lookupComposeTarget(ctx, resolved)
+	}
+	return o.lookupManagedTarget(ctx, resolved, state)
+}
+
+func (o *Observer) lookupComposeTarget(ctx context.Context, resolved devcontainer.ResolvedConfig) (RuntimeTarget, *docker.ContainerInspect, error) {
+	inspects, primary, err := o.observeComposeProject(ctx, resolved)
+	if err != nil {
+		return RuntimeTarget{}, nil, err
+	}
+	target := runtimeTargetFromResolved(resolved, resolved.ImageName)
+	target.Containers = inspects
+	return target, primary, nil
+}
+
+func (o *Observer) lookupManagedTarget(ctx context.Context, resolved devcontainer.ResolvedConfig, state devcontainer.State) (RuntimeTarget, *docker.ContainerInspect, error) {
+	inspect, err := o.observeManagedContainer(ctx, resolved, state)
+	if err != nil {
+		return RuntimeTarget{}, nil, err
+	}
+	target := runtimeTargetFromResolved(resolved, resolved.ImageName)
+	if inspect != nil {
+		target.Containers = []docker.ContainerInspect{*inspect}
+	}
+	return target, inspect, nil
+}
+
+func runtimeTargetFromResolved(resolved devcontainer.ResolvedConfig, image string) RuntimeTarget {
+	return RuntimeTarget{
+		Kind:           targetKind(resolved),
+		Image:          image,
+		ContainerName:  resolved.ContainerName,
+		ComposeProject: resolved.ComposeProject,
+		ComposeService: resolved.ComposeService,
+	}
+}
+
+func observedTargetState(state devcontainer.State, previousContainerID string, container *docker.ContainerInspect) devcontainer.State {
+	if container == nil {
+		return clearedState(state)
+	}
+	if previousContainerID != "" && previousContainerID != container.ID {
+		state = clearedState(state)
+	}
+	state.ContainerID = container.ID
+	return state
 }
 
 func (o *Observer) observeManagedContainer(ctx context.Context, resolved devcontainer.ResolvedConfig, state devcontainer.State) (*docker.ContainerInspect, error) {

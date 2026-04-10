@@ -8,6 +8,7 @@ import (
 
 	"github.com/lauritsk/hatchctl/internal/bridge"
 	bridgecap "github.com/lauritsk/hatchctl/internal/capability/bridge"
+	capdot "github.com/lauritsk/hatchctl/internal/capability/dotfiles"
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	ui "github.com/lauritsk/hatchctl/internal/display"
 	"github.com/lauritsk/hatchctl/internal/docker"
@@ -60,114 +61,27 @@ type BridgeDoctorOptions struct {
 
 func (e *Executor) Up(ctx context.Context, workspacePlan workspaceplan.WorkspacePlan, opts UpOptions) (UpResult, error) {
 	executor := e.cloneWithIO(opts.IO.Stdin, opts.IO.Stdout, opts.IO.Stderr)
-	dotfiles, err := normalizeDotfilesPreference(workspacePlan.Preferences.Dotfiles)
+	session, resolved, dotfiles, tracker, workspacePlan, err := executor.prepareUp(ctx, workspacePlan, opts)
 	if err != nil {
 		return UpResult{}, err
 	}
-	resolved, err := executor.Materialize(ctx, workspacePlan, opts.Debug, opts.IO.Events, phaseResolve, "Resolving development container")
-	if err != nil {
-		return UpResult{}, err
-	}
-	workspacePlan = workspacePlan.WithResolved(resolved)
-	session, err := executor.PrepareObservedSession(ctx, ObservedSessionOptions{Plan: workspacePlan, Resolved: resolved, Debug: opts.Debug, Events: opts.IO.Events, LoadState: true, AllowMissingContainer: true, InspectContainer: true})
-	if err != nil {
-		return UpResult{}, err
-	}
-	resolved = session.Resolved()
-	if err := policy.EnsureWorkspaceTrust(resolved, workspacePlan.Trust.WorkspaceAllowed); err != nil {
-		return UpResult{}, err
-	}
-	if err := storefs.EnsureWorkspaceStateDir(resolved.StateDir); err != nil {
-		return UpResult{}, err
-	}
-	state := session.State()
-	tracker := NewStateTracker(resolved.StateDir, state)
-	executor.emitPhaseProgress(opts.IO.Events, phaseImage, "Reconciling container image")
-	image, imagePlan, err := executor.ReconcileImage(ctx, workspacePlan, resolved, opts.IO.Events)
-	if err != nil {
-		return UpResult{}, err
-	}
-	executor.emitPhaseProgress(opts.IO.Events, phaseImage, "Applying runtime metadata")
-	if err := executor.EnrichMergedConfig(ctx, &resolved, image); err != nil {
-		return UpResult{}, err
-	}
-	if workspacePlan.Capabilities.SSHAgent.Enabled {
-		if resolved.Merged, err = injectSSHAgent(resolved.Merged); err != nil {
-			return UpResult{}, err
-		}
-	}
-	helperArch, err := executor.InspectImageArchitecture(ctx, image)
-	if err != nil {
-		return UpResult{}, err
-	}
-	var bridgeSession *bridge.Session
-	executor.emitPhaseProgress(opts.IO.Events, phaseBridge, "Configuring bridge support")
-	if workspacePlan.Capabilities.Bridge.Enabled {
-		bridgeSession, err = bridgecap.Prepare(resolved.StateDir, helperArch)
-		if err == nil {
-			resolved.Merged = bridgecap.Inject(bridgeSession, resolved.Merged)
-		}
-	}
+	resolved, image, imagePlan, bridgeSession, err := executor.prepareUpRuntime(ctx, workspacePlan, resolved, opts.IO.Events)
 	if err != nil {
 		return UpResult{}, err
 	}
 	session.SetResolved(resolved)
-	executor.emitPhaseProgress(opts.IO.Events, phaseContainer, "Reconciling managed container")
-	containerID, containerKey, created, err := executor.ReconcileContainer(ctx, session.Observed(), resolved, image, imagePlan, workspacePlan.Capabilities.Bridge.Enabled, workspacePlan.Capabilities.SSHAgent.Enabled, opts.Recreate, opts.IO.Events)
+	containerID, containerKey, created, err := executor.reconcileUpContainer(ctx, session, tracker, workspacePlan, resolved, image, imagePlan, opts.Recreate, opts.IO.Events)
 	if err != nil {
 		return UpResult{}, err
 	}
-	tracker.ApplyContainer(containerID, containerKey, created)
-	if err := tracker.Persist(); err != nil {
+	bridgeReport, err := executor.startUpBridge(ctx, tracker, bridgeSession, containerKey, containerID, opts.IO.Events)
+	if err != nil {
 		return UpResult{}, err
 	}
 	session.SetState(tracker.State())
-	state = session.State()
-	session.SetContainerID(containerID)
-	inspect, err := executor.engine.InspectContainer(ctx, dockercli.InspectContainerRequest{ContainerID: containerID})
-	if err != nil {
+	if err := executor.runUpLifecycle(ctx, session, tracker, workspacePlan, dotfiles, containerKey, created, opts.IO.Events); err != nil {
 		return UpResult{}, err
 	}
-	session.SetContainerInspect(&inspect)
-	executor.emitPhaseProgress(opts.IO.Events, phaseContainer, "Reconciling container user")
-	if err := executor.EnsureUpdatedUIDContainer(ctx, resolved, image, containerID, opts.IO.Events); err != nil {
-		return UpResult{}, err
-	}
-	var bridgeReport *bridge.Report
-	if bridgeSession != nil {
-		tracker.BeginBridge("start", containerKey)
-		if err := tracker.Persist(); err != nil {
-			return UpResult{}, err
-		}
-		executor.emitPhaseProgress(opts.IO.Events, phaseBridge, "Starting bridge session")
-		startedBridge, err := bridgecap.Start(bridgeSession, containerID)
-		if err != nil {
-			return UpResult{}, err
-		}
-		bridgeReport = bridge.ReportFromSession(startedBridge)
-		tracker.EnableBridge(bridgeReport.ID)
-		if err := tracker.Persist(); err != nil {
-			return UpResult{}, err
-		}
-	}
-	session.SetState(tracker.State())
-	state = session.State()
-	lifecycleKey, err := executor.DesiredLifecycleKey(resolved, containerKey, DotfilesConfig{Repository: dotfiles.Repository, InstallCommand: dotfiles.InstallCommand, TargetPath: dotfiles.TargetPath})
-	if err != nil {
-		return UpResult{}, err
-	}
-	observed := session.Observed()
-	dotfilesConfig := DotfilesConfig{Repository: dotfiles.Repository, InstallCommand: dotfiles.InstallCommand, TargetPath: dotfiles.TargetPath}
-	lifecyclePlan := PlanUpLifecycle(observed, DesiredLifecycle{Key: lifecycleKey, Dotfiles: dotfilesConfig, Created: created})
-	tracker.BeginPlannedLifecycle(lifecyclePlan, DotfilesNeedsInstall(state, dotfiles))
-	if err := tracker.Persist(); err != nil {
-		return UpResult{}, err
-	}
-	executor.emitPhaseProgress(opts.IO.Events, phaseLifecycle, "Running lifecycle commands")
-	if err := executor.RunLifecyclePlan(ctx, observed, state, dotfiles, workspacePlan.Trust.HostLifecycleAllowed, opts.IO.Events, lifecyclePlan); err != nil {
-		return UpResult{}, err
-	}
-	tracker.CompletePlannedLifecycle(lifecyclePlan, dotfilesConfig, DotfilesNeedsInstall(state, dotfiles))
 	if bridgeReport == nil {
 		tracker.DisableBridge()
 	}
@@ -177,6 +91,134 @@ func (e *Executor) Up(ctx context.Context, workspacePlan workspaceplan.Workspace
 		return UpResult{}, err
 	}
 	return UpResult{ContainerID: containerID, Image: image, RemoteWorkspaceFolder: resolved.RemoteWorkspace, StateDir: resolved.StateDir, Bridge: bridgeReport}, nil
+}
+
+func (e *Executor) prepareUp(ctx context.Context, workspacePlan workspaceplan.WorkspacePlan, opts UpOptions) (*Session, devcontainer.ResolvedConfig, capdot.Config, *StateTracker, workspaceplan.WorkspacePlan, error) {
+	dotfiles, err := normalizeDotfilesPreference(workspacePlan.Preferences.Dotfiles)
+	if err != nil {
+		return nil, devcontainer.ResolvedConfig{}, capdot.Config{}, nil, workspaceplan.WorkspacePlan{}, err
+	}
+	resolved, err := e.Materialize(ctx, workspacePlan, opts.Debug, opts.IO.Events, phaseResolve, "Resolving development container")
+	if err != nil {
+		return nil, devcontainer.ResolvedConfig{}, capdot.Config{}, nil, workspaceplan.WorkspacePlan{}, err
+	}
+	workspacePlan = workspacePlan.WithResolved(resolved)
+	session, err := e.PrepareObservedSession(ctx, ObservedSessionOptions{Plan: workspacePlan, Resolved: resolved, Debug: opts.Debug, Events: opts.IO.Events, LoadState: true, AllowMissingContainer: true, InspectContainer: true})
+	if err != nil {
+		return nil, devcontainer.ResolvedConfig{}, capdot.Config{}, nil, workspaceplan.WorkspacePlan{}, err
+	}
+	resolved = session.Resolved()
+	if err := policy.EnsureWorkspaceTrust(resolved, workspacePlan.Trust.WorkspaceAllowed); err != nil {
+		return nil, devcontainer.ResolvedConfig{}, capdot.Config{}, nil, workspaceplan.WorkspacePlan{}, err
+	}
+	if err := storefs.EnsureWorkspaceStateDir(resolved.StateDir); err != nil {
+		return nil, devcontainer.ResolvedConfig{}, capdot.Config{}, nil, workspaceplan.WorkspacePlan{}, err
+	}
+	tracker := NewStateTracker(resolved.StateDir, session.State())
+	return session, resolved, dotfiles, tracker, workspacePlan, nil
+}
+
+func (e *Executor) prepareUpRuntime(ctx context.Context, workspacePlan workspaceplan.WorkspacePlan, resolved devcontainer.ResolvedConfig, events ui.Sink) (devcontainer.ResolvedConfig, string, ImagePlan, *bridge.Session, error) {
+	e.emitPhaseProgress(events, phaseImage, "Reconciling container image")
+	image, imagePlan, err := e.ReconcileImage(ctx, workspacePlan, resolved, events)
+	if err != nil {
+		return devcontainer.ResolvedConfig{}, "", ImagePlan{}, nil, err
+	}
+	e.emitPhaseProgress(events, phaseImage, "Applying runtime metadata")
+	if err := e.EnrichMergedConfig(ctx, &resolved, image); err != nil {
+		return devcontainer.ResolvedConfig{}, "", ImagePlan{}, nil, err
+	}
+	if workspacePlan.Capabilities.SSHAgent.Enabled {
+		if resolved.Merged, err = injectSSHAgent(resolved.Merged); err != nil {
+			return devcontainer.ResolvedConfig{}, "", ImagePlan{}, nil, err
+		}
+	}
+	bridgeSession, err := e.prepareUpBridge(ctx, resolved.StateDir, image, workspacePlan.Capabilities.Bridge.Enabled, events)
+	if err != nil {
+		return devcontainer.ResolvedConfig{}, "", ImagePlan{}, nil, err
+	}
+	if bridgeSession != nil {
+		resolved.Merged = bridgecap.Inject(bridgeSession, resolved.Merged)
+	}
+	return resolved, image, imagePlan, bridgeSession, nil
+}
+
+func (e *Executor) prepareUpBridge(ctx context.Context, stateDir string, image string, enabled bool, events ui.Sink) (*bridge.Session, error) {
+	e.emitPhaseProgress(events, phaseBridge, "Configuring bridge support")
+	if !enabled {
+		return nil, nil
+	}
+	helperArch, err := e.InspectImageArchitecture(ctx, image)
+	if err != nil {
+		return nil, err
+	}
+	return bridgecap.Prepare(stateDir, helperArch)
+}
+
+func (e *Executor) reconcileUpContainer(ctx context.Context, session *Session, tracker *StateTracker, workspacePlan workspaceplan.WorkspacePlan, resolved devcontainer.ResolvedConfig, image string, imagePlan ImagePlan, recreate bool, events ui.Sink) (string, string, bool, error) {
+	e.emitPhaseProgress(events, phaseContainer, "Reconciling managed container")
+	containerID, containerKey, created, err := e.ReconcileContainer(ctx, session.Observed(), resolved, image, imagePlan, workspacePlan.Capabilities.Bridge.Enabled, workspacePlan.Capabilities.SSHAgent.Enabled, recreate, events)
+	if err != nil {
+		return "", "", false, err
+	}
+	tracker.ApplyContainer(containerID, containerKey, created)
+	if err := tracker.Persist(); err != nil {
+		return "", "", false, err
+	}
+	session.SetState(tracker.State())
+	session.SetContainerID(containerID)
+	inspect, err := e.engine.InspectContainer(ctx, dockercli.InspectContainerRequest{ContainerID: containerID})
+	if err != nil {
+		return "", "", false, err
+	}
+	session.SetContainerInspect(&inspect)
+	e.emitPhaseProgress(events, phaseContainer, "Reconciling container user")
+	if err := e.EnsureUpdatedUIDContainer(ctx, resolved, image, containerID, events); err != nil {
+		return "", "", false, err
+	}
+	return containerID, containerKey, created, nil
+}
+
+func (e *Executor) startUpBridge(ctx context.Context, tracker *StateTracker, bridgeSession *bridge.Session, containerKey string, containerID string, events ui.Sink) (*bridge.Report, error) {
+	if bridgeSession == nil {
+		return nil, nil
+	}
+	tracker.BeginBridge("start", containerKey)
+	if err := tracker.Persist(); err != nil {
+		return nil, err
+	}
+	e.emitPhaseProgress(events, phaseBridge, "Starting bridge session")
+	startedBridge, err := bridgecap.Start(bridgeSession, containerID)
+	if err != nil {
+		return nil, err
+	}
+	bridgeReport := bridge.ReportFromSession(startedBridge)
+	tracker.EnableBridge(bridgeReport.ID)
+	if err := tracker.Persist(); err != nil {
+		return nil, err
+	}
+	return bridgeReport, nil
+}
+
+func (e *Executor) runUpLifecycle(ctx context.Context, session *Session, tracker *StateTracker, workspacePlan workspaceplan.WorkspacePlan, dotfiles capdot.Config, containerKey string, created bool, events ui.Sink) error {
+	state := session.State()
+	dotfilesConfig := DotfilesConfig{Repository: dotfiles.Repository, InstallCommand: dotfiles.InstallCommand, TargetPath: dotfiles.TargetPath}
+	lifecycleKey, err := e.DesiredLifecycleKey(session.Resolved(), containerKey, dotfilesConfig)
+	if err != nil {
+		return err
+	}
+	observed := session.Observed()
+	lifecyclePlan := PlanUpLifecycle(observed, DesiredLifecycle{Key: lifecycleKey, Dotfiles: dotfilesConfig, Created: created})
+	tracker.BeginPlannedLifecycle(lifecyclePlan, DotfilesNeedsInstall(state, dotfiles))
+	if err := tracker.Persist(); err != nil {
+		return err
+	}
+	e.emitPhaseProgress(events, phaseLifecycle, "Running lifecycle commands")
+	if err := e.RunLifecyclePlan(ctx, observed, state, dotfiles, workspacePlan.Trust.HostLifecycleAllowed, events, lifecyclePlan); err != nil {
+		return err
+	}
+	tracker.CompletePlannedLifecycle(lifecyclePlan, dotfilesConfig, DotfilesNeedsInstall(state, dotfiles))
+	return nil
 }
 
 func (e *Executor) Build(ctx context.Context, workspacePlan workspaceplan.WorkspacePlan, opts BuildOptions) (BuildResult, error) {

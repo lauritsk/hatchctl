@@ -89,15 +89,9 @@ func ResolveDefaults(req ResolveDefaultsRequest) (CommandDefaults, error) {
 	config := loaded.Merged
 	trustedWorkspace := req.TrustWorkspace != nil && req.TrustWorkspace.Value
 
-	resolvedTimeout := req.FeatureTimeout.Value
-	if !req.FeatureTimeout.Changed {
-		timeout, err := config.FeatureTimeoutDuration()
-		if err != nil {
-			return CommandDefaults{}, err
-		}
-		if timeout > 0 {
-			resolvedTimeout = timeout
-		}
+	resolvedTimeout, err := resolveFeatureTimeout(config, req.FeatureTimeout)
+	if err != nil {
+		return CommandDefaults{}, err
 	}
 
 	resolved := CommandDefaults{
@@ -106,55 +100,84 @@ func ResolveDefaults(req ResolveDefaultsRequest) (CommandDefaults, error) {
 		StateDir:       config.StateDir,
 		CacheDir:       config.CacheDir,
 		FeatureTimeout: resolvedTimeout,
-		LockfilePolicy: req.LockfilePolicy.Value,
-		Dotfiles: DotfilesOptions{
-			Repository:     req.Dotfiles.Repository.Value,
-			InstallCommand: req.Dotfiles.InstallCommand.Value,
-			TargetPath:     req.Dotfiles.TargetPath.Value,
-		},
+		LockfilePolicy: resolveLockfilePolicy(config, req.LockfilePolicy),
+		Dotfiles:       resolveDotfilesDefaults(loaded, req.Dotfiles, trustedWorkspace),
+		TrustedSigners: resolveTrustedSigners(loaded, trustedWorkspace),
 	}
 
-	if !req.LockfilePolicy.Changed && config.LockfilePolicy != "" {
-		resolved.LockfilePolicy = config.LockfilePolicy
-	}
-	if !req.Dotfiles.Repository.Changed {
-		resolved.Dotfiles.Repository = preferredDotfilesValue(loaded.User.Dotfiles.Repository, loaded.Workspace.Dotfiles.Repository, trustedWorkspace)
-	}
-	if !req.Dotfiles.InstallCommand.Changed {
-		resolved.Dotfiles.InstallCommand = preferredDotfilesValue(loaded.User.Dotfiles.InstallCommand, loaded.Workspace.Dotfiles.InstallCommand, trustedWorkspace)
-	}
-	if !req.Dotfiles.TargetPath.Changed {
-		resolved.Dotfiles.TargetPath = preferredDotfilesValue(loaded.User.Dotfiles.TargetPath, loaded.Workspace.Dotfiles.TargetPath, trustedWorkspace)
-	}
-	resolved.TrustedSigners = append([]security.TrustedSigner(nil), loaded.User.Verification.TrustedSigners...)
-	if trustedWorkspace && len(loaded.Workspace.Verification.TrustedSigners) > 0 {
-		resolved.TrustedSigners = append([]security.TrustedSigner(nil), loaded.Workspace.Verification.TrustedSigners...)
-	}
-	if req.BridgeEnabled != nil {
-		resolved.BridgeEnabled = req.BridgeEnabled.Value
-		if !req.BridgeEnabled.Changed {
-			if trustedWorkspace && loaded.Workspace.Bridge != nil {
-				resolved.BridgeEnabled = *loaded.Workspace.Bridge
-			} else if loaded.User.Bridge != nil {
-				resolved.BridgeEnabled = *loaded.User.Bridge
-			}
-		}
-	}
-	if req.SSHAgent != nil {
-		resolved.SSHAgent = req.SSHAgent.Value
-		if !req.SSHAgent.Changed {
-			if trustedWorkspace && loaded.Workspace.SSHAgent != nil {
-				resolved.SSHAgent = *loaded.Workspace.SSHAgent
-			} else if loaded.User.SSHAgent != nil {
-				resolved.SSHAgent = *loaded.User.SSHAgent
-			}
-		}
-	}
+	resolveOptionalBoolDefault(&resolved.BridgeEnabled, req.BridgeEnabled, loaded.User.Bridge, loaded.Workspace.Bridge, trustedWorkspace)
+	resolveOptionalBoolDefault(&resolved.SSHAgent, req.SSHAgent, loaded.User.SSHAgent, loaded.Workspace.SSHAgent, trustedWorkspace)
 	if req.TrustWorkspace != nil {
 		resolved.TrustWorkspace = req.TrustWorkspace.Value
 	}
 
 	return resolved, nil
+}
+
+func resolveFeatureTimeout(config appconfig.Config, flag FlagValue[time.Duration]) (time.Duration, error) {
+	if flag.Changed {
+		return flag.Value, nil
+	}
+	timeout, err := config.FeatureTimeoutDuration()
+	if err != nil {
+		return 0, err
+	}
+	if timeout > 0 {
+		return timeout, nil
+	}
+	return flag.Value, nil
+}
+
+func resolveLockfilePolicy(config appconfig.Config, flag FlagValue[string]) string {
+	if !flag.Changed && config.LockfilePolicy != "" {
+		return config.LockfilePolicy
+	}
+	return flag.Value
+}
+
+func resolveDotfilesDefaults(loaded appconfig.LoadedConfig, flags DotfilesOptionValues, trustedWorkspace bool) DotfilesOptions {
+	return DotfilesOptions{
+		Repository: resolveDotfilesValue(flags.Repository, loaded.User.Dotfiles.Repository, loaded.Workspace.Dotfiles.Repository, trustedWorkspace),
+		InstallCommand: resolveDotfilesValue(
+			flags.InstallCommand,
+			loaded.User.Dotfiles.InstallCommand,
+			loaded.Workspace.Dotfiles.InstallCommand,
+			trustedWorkspace,
+		),
+		TargetPath: resolveDotfilesValue(flags.TargetPath, loaded.User.Dotfiles.TargetPath, loaded.Workspace.Dotfiles.TargetPath, trustedWorkspace),
+	}
+}
+
+func resolveDotfilesValue(flag FlagValue[string], userValue string, workspaceValue string, trustedWorkspace bool) string {
+	if flag.Changed {
+		return flag.Value
+	}
+	return preferredDotfilesValue(userValue, workspaceValue, trustedWorkspace)
+}
+
+func resolveTrustedSigners(loaded appconfig.LoadedConfig, trustedWorkspace bool) []security.TrustedSigner {
+	signers := append([]security.TrustedSigner(nil), loaded.User.Verification.TrustedSigners...)
+	if trustedWorkspace && len(loaded.Workspace.Verification.TrustedSigners) > 0 {
+		signers = append([]security.TrustedSigner(nil), loaded.Workspace.Verification.TrustedSigners...)
+	}
+	return signers
+}
+
+func resolveOptionalBoolDefault(target *bool, flag *FlagValue[bool], userValue *bool, workspaceValue *bool, trustedWorkspace bool) {
+	if flag == nil {
+		return
+	}
+	*target = flag.Value
+	if flag.Changed {
+		return
+	}
+	if trustedWorkspace && workspaceValue != nil {
+		*target = *workspaceValue
+		return
+	}
+	if userValue != nil {
+		*target = *userValue
+	}
 }
 
 func preferredDotfilesValue(userValue string, workspaceValue string, trustedWorkspace bool) string {
