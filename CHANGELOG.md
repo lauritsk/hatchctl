@@ -2,6 +2,14 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## [v0.6.8](https://github.com/lauritsk/hatchctl/compare/2df92c03eca16d23f588e11f9e7bfdc269527967..v0.6.8) - 2026-04-10
+#### Bug Fixes
+- (**runtime**) Persist workspace trust between up and exec - ([ba0df58](https://github.com/lauritsk/hatchctl/commit/ba0df581d206d7b19657ca8ba2839fb02f8bb247)) - Karl Hans Laurits
+#### Miscellaneous Chores
+- (**mise**) Update hatchctl tool version - ([2df92c0](https://github.com/lauritsk/hatchctl/commit/2df92c03eca16d23f588e11f9e7bfdc269527967)) - Karl Hans Laurits
+
+- - -
+
 ## [v0.6.7](https://github.com/lauritsk/hatchctl/compare/d162e2fa39be7c18940437ce3dfdc0e4267bb294..v0.6.7) - 2026-04-09
 #### Bug Fixes
 - (**repo**) Surface cache warnings and verify supported runtimes - ([d162e2f](https://github.com/lauritsk/hatchctl/commit/d162e2fa39be7c18940437ce3dfdc0e4267bb294)) - Karl Hans Laurits
