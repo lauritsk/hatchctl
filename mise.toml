@@ -1,6 +1,14 @@
 [tools]
+actionlint = "1.7.12"
+cocogitto = "7.0.0"
+cosign = "3.0.6"
 "github:lauritsk/hatchctl" = "0.6.12"
+gitleaks = "8.30.1"
 go = "1.26.2"
+"go:golang.org/x/vuln/cmd/govulncheck" = "latest"
+gofumpt = "0.9.2"
+goreleaser = "2.15.2"
+syft = "1.42.4"
 
 [hooks]
 enter = { task = "setup" }
@@ -14,22 +22,22 @@ description = "Run hatchctl from source"
 run = "go run ./cmd/hatchctl"
 
 [tasks.commit]
-tools.cocogitto = "7.0.0"
+# tools.cocogitto = "7.0.0"
 description = "Create a conventional commit"
 run = "cog commit"
 
 [tasks.format]
-tools.gofumpt = "0.9.2"
+# tools.gofumpt = "0.9.2"
 description = "Format Go source files"
 run = "files=$(git ls-files --cached --modified --others --exclude-standard -- '*.go' | while IFS= read -r file; do [ -e \"$file\" ] && printf '%s\n' \"$file\"; done); [ -z \"$files\" ] || gofumpt -w $files"
 
 [tasks."lint:go"]
-tools.gofumpt = "0.9.2"
+# tools.gofumpt = "0.9.2"
 description = "Check Go formatting and vet packages"
 run = "files=$(git ls-files --cached --modified --others --exclude-standard -- '*.go' | while IFS= read -r file; do [ -e \"$file\" ] && printf '%s\n' \"$file\"; done); test -z \"$( [ -z \"$files\" ] || gofumpt -l $files )\" && go vet ./..."
 
 [tasks."lint:actions"]
-tools.actionlint = "1.7.12"
+# tools.actionlint = "1.7.12"
 description = "Lint GitHub Actions workflows"
 run = "actionlint"
 
@@ -67,27 +75,27 @@ chmod 0755 internal/bridge/generated/assets/linux_amd64/hatchctl internal/bridge
 """
 
 [tasks.audit]
-tools."go:golang.org/x/vuln/cmd/govulncheck" = "1.1.4"
+# tools."go:golang.org/x/vuln/cmd/govulncheck" = "1.1.4"
 description = "Audit project dependencies"
 run = "govulncheck ./..."
 
 [tasks.secrets]
-tools.gitleaks = "8.30.1"
+# tools.gitleaks = "8.30.1"
 description = "Scan the repository for secrets"
 run = "gitleaks dir ."
 
 [tasks.commits]
-tools.cocogitto = "7.0.0"
+# tools.cocogitto = "7.0.0"
 description = "Enforce conventional commits"
 run = "cog check"
 
 [tasks."release:version"]
-tools.cocogitto = "7.0.0"
+# tools.cocogitto = "7.0.0"
 description = "Create the next version and tag"
 run = "cog bump --auto"
 
 [tasks."release:check"]
-tools.goreleaser = "2.15.2"
+# tools.goreleaser = "2.15.2"
 description = "Validate GoReleaser configuration"
 run = "goreleaser check"
 
@@ -96,9 +104,9 @@ description = "Verify release prerequisites are clean"
 run = "tmp=$(mktemp -d) && trap 'git worktree remove --force \"$tmp\"' EXIT && git worktree add --quiet --detach \"$tmp\" HEAD && (cd \"$tmp\" && go mod tidy && test -z \"$(git status --porcelain -- go.mod go.sum)\" && go generate ./... && test -z \"$(git status --porcelain)\")"
 
 [tasks."release:publish"]
-tools.goreleaser = "2.15.2"
-tools.syft = "1.42.3"
-tools.cosign = "3.0.6"
+# tools.goreleaser = "2.15.2"
+# tools.syft = "1.42.3"
+# tools.cosign = "3.0.6"
 description = "Publish release artifacts for the current tag"
 depends = ["check", "release:verify"]
 run = "goreleaser release --clean"
