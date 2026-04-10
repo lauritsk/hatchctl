@@ -65,7 +65,7 @@ func TestBuildWorkspacePlanMapsExplicitIntentAndArtifacts(t *testing.T) {
 func TestBuildWorkspacePlanMarksReadOnlyIntentSeparatelyFromMaterialization(t *testing.T) {
 	t.Parallel()
 
-	workspace, configPath := newPlanTestWorkspace(t, `{"image":"alpine:3.20","workspaceFolder":"/workspaces/demo"}`)
+	workspace, configPath := newPlanTestWorkspace(t, `{"image":"alpine:3.23","workspaceFolder":"/workspaces/demo"}`)
 	workspacePlan, err := BuildWorkspacePlan(BuildWorkspacePlanRequest{
 		Workspace:      workspace,
 		ConfigPath:     configPath,

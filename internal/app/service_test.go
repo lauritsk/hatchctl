@@ -71,7 +71,7 @@ func testWorkspaceDefaults(t *testing.T) (string, CommandDefaults) {
 		t.Fatal(err)
 	}
 	configPath := filepath.Join(configDir, "devcontainer.json")
-	if err := os.WriteFile(configPath, []byte(`{"image":"alpine:3.20","workspaceFolder":"/workspaces/demo"}`), 0o644); err != nil {
+	if err := os.WriteFile(configPath, []byte(`{"image":"alpine:3.23","workspaceFolder":"/workspaces/demo"}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	return workspace, CommandDefaults{Workspace: workspace, ConfigPath: configPath, LockfilePolicy: "auto"}

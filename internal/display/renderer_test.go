@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 )
 
 func TestLineSpinnerHidesAndRestoresCursor(t *testing.T) {
@@ -31,7 +31,7 @@ func TestLineSpinnerUsesVisibleWidthForPadding(t *testing.T) {
 	t.Parallel()
 
 	var buf bytes.Buffer
-	s := &lineSpinner{w: &buf, styles: styles{frame: lipgloss.NewStyle().Foreground(lipgloss.Color("6"))}}
+	s := &lineSpinner{w: &buf, styles: styles{frame: lipgloss.NewStyle().Foreground(lipgloss.Cyan)}}
 
 	first := s.styles.frame.Render("dot") + " message"
 	second := "x"

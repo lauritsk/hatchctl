@@ -240,7 +240,7 @@ func TestLoadNormalizesForwardPorts(t *testing.T) {
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "devcontainer.json")
 	contents := `{
-		"image": "alpine:3.20",
+		"image": "alpine:3.23",
 		"forwardPorts": [3000, "localhost:3000", "service:9000"]
 	}`
 	writeTestFile(t, configPath, contents)
@@ -259,7 +259,7 @@ func TestResolveComposeConfigParsesComposeFiles(t *testing.T) {
 
 	workspace, configDir := newTestWorkspace(t)
 	composePath := filepath.Join(configDir, "compose.yaml")
-	writeTestFile(t, composePath, "services:\n  app:\n    image: alpine:3.20\n")
+	writeTestFile(t, composePath, "services:\n  app:\n    image: alpine:3.23\n")
 	configPath := filepath.Join(configDir, "devcontainer.json")
 	writeTestFile(t, configPath, `{
 		"dockerComposeFile": ["compose.yaml"],
@@ -290,7 +290,7 @@ func TestResolveComposeConfigRequiresServiceAndWorkspaceFolder(t *testing.T) {
 
 	workspace, configDir := newTestWorkspace(t)
 	composePath := filepath.Join(configDir, "compose.yaml")
-	writeTestFile(t, composePath, "services:\n  app:\n    image: alpine:3.20\n")
+	writeTestFile(t, composePath, "services:\n  app:\n    image: alpine:3.23\n")
 	configPath := filepath.Join(configDir, "devcontainer.json")
 	writeTestFile(t, configPath, `{"dockerComposeFile":"compose.yaml"}`)
 	if _, err := Resolve(context.Background(), workspace, ""); err == nil || !strings.Contains(err.Error(), `must set "service"`) {
@@ -306,7 +306,7 @@ func TestResolveSupportsContainerfile(t *testing.T) {
 	t.Parallel()
 
 	workspace, configDir := newTestWorkspace(t)
-	writeTestFile(t, filepath.Join(configDir, "Containerfile"), "FROM alpine:3.20\n")
+	writeTestFile(t, filepath.Join(configDir, "Containerfile"), "FROM alpine:3.23\n")
 	configPath := filepath.Join(configDir, "devcontainer.json")
 	writeTestFile(t, configPath, `{
 		"dockerFile": "Containerfile",
@@ -339,7 +339,7 @@ func TestResolveComposeConfigSupportsCommonComposeFilenames(t *testing.T) {
 				t.Fatal(err)
 			}
 			composePath := filepath.Join(configDir, name)
-			if err := os.WriteFile(composePath, []byte("services:\n  app:\n    image: alpine:3.20\n"), 0o644); err != nil {
+			if err := os.WriteFile(composePath, []byte("services:\n  app:\n    image: alpine:3.23\n"), 0o644); err != nil {
 				t.Fatal(err)
 			}
 			configPath := filepath.Join(configDir, "devcontainer.json")
@@ -381,7 +381,7 @@ func TestResolveWritesFeatureLockFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(configDir, "devcontainer.json"), []byte(`{
-		"image": "alpine:3.20",
+		"image": "alpine:3.23",
 		"workspaceFolder": "/workspace",
 		"features": {"./feature-a": {"version": "1.2.3"}}
 	}`), 0o644); err != nil {
@@ -419,7 +419,7 @@ func TestResolveReadOnlyDoesNotPersistFeatureFiles(t *testing.T) {
 	}
 	configPath := filepath.Join(configDir, "devcontainer.json")
 	if err := os.WriteFile(configPath, []byte(`{
-		"image": "alpine:3.20",
+		"image": "alpine:3.23",
 		"workspaceFolder": "/workspace",
 		"features": {"./feature-a": true}
 	}`), 0o644); err != nil {
@@ -456,7 +456,7 @@ func TestResolveReadOnlyFailsForUncachedRemoteFeatures(t *testing.T) {
 	}
 	configPath := filepath.Join(configDir, "devcontainer.json")
 	if err := os.WriteFile(configPath, []byte(`{
-		"image": "alpine:3.20",
+		"image": "alpine:3.23",
 		"workspaceFolder": "/workspace",
 		"features": {"`+server.URL+`/feature.tgz": true}
 	}`), 0o644); err != nil {
@@ -480,7 +480,7 @@ func TestResolveSupportsBuildDockerfileAndContextFiles(t *testing.T) {
 	if err := os.MkdirAll(contextDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(configDir, "Containerfile"), []byte("FROM alpine:3.20\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(configDir, "Containerfile"), []byte("FROM alpine:3.23\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(contextDir, "marker.txt"), []byte("ok\n"), 0o644); err != nil {
@@ -516,11 +516,11 @@ func TestResolvePrefersDotDevcontainerConfigOverRootConfig(t *testing.T) {
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(workspace, ".devcontainer.json"), []byte(`{"image":"alpine:3.20","workspaceFolder":"/root-config"}`), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(workspace, ".devcontainer.json"), []byte(`{"image":"alpine:3.23","workspaceFolder":"/root-config"}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	preferredPath := filepath.Join(configDir, "devcontainer.json")
-	if err := os.WriteFile(preferredPath, []byte(`{"image":"alpine:3.20","workspaceFolder":"/preferred-config"}`), 0o644); err != nil {
+	if err := os.WriteFile(preferredPath, []byte(`{"image":"alpine:3.23","workspaceFolder":"/preferred-config"}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -663,7 +663,7 @@ func TestResolveReusesPersistedPlanCacheForRemoteFeatures(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(configDir, "devcontainer.json"), []byte(`{
-		"image": "alpine:3.20",
+		"image": "alpine:3.23",
 		"workspaceFolder": "/workspace",
 		"features": {"`+server.URL+`/feature.tgz": true}
 	}`), 0o644); err != nil {
@@ -710,7 +710,7 @@ func TestResolveInvalidatesPersistedPlanCacheWhenLocalFeatureChanges(t *testing.
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(configDir, "devcontainer.json"), []byte(`{
-		"image": "alpine:3.20",
+		"image": "alpine:3.23",
 		"workspaceFolder": "/workspace",
 		"features": {"./feature-a": true}
 	}`), 0o644); err != nil {
@@ -747,7 +747,7 @@ func TestResolveIgnoresPlanCacheWriteFailures(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(configDir, "devcontainer.json"), []byte(`{
-		"image": "alpine:3.20",
+		"image": "alpine:3.23",
 		"workspaceFolder": "/workspace"
 	}`), 0o644); err != nil {
 		t.Fatal(err)
@@ -796,7 +796,7 @@ func TestResolveWarnsAndContinuesWhenPlanCacheIsCorrupt(t *testing.T) {
 	}
 	configPath := filepath.Join(configDir, "devcontainer.json")
 	if err := os.WriteFile(configPath, []byte(`{
-		"image": "alpine:3.20",
+		"image": "alpine:3.23",
 		"workspaceFolder": "/workspace"
 	}`), 0o644); err != nil {
 		t.Fatal(err)

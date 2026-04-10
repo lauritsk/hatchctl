@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/charmbracelet/bubbles/spinner"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/spinner"
+	"charm.land/lipgloss/v2"
 	"golang.org/x/term"
 )
 
@@ -96,18 +96,18 @@ func NewRenderer(out io.Writer, err io.Writer, jsonOut bool) *Renderer {
 		outTTY:  outTTY,
 		errTTY:  errTTY,
 		styles: styles{
-			title:      lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12")),
-			label:      lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12")),
-			text:       lipgloss.NewStyle().Foreground(lipgloss.Color("15")),
-			muted:      lipgloss.NewStyle().Faint(true).Foreground(lipgloss.Color("8")),
-			progress:   lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("15")),
-			debug:      lipgloss.NewStyle().Faint(true).Foreground(lipgloss.Color("8")),
-			warning:    lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("11")),
-			success:    lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("10")),
-			frame:      lipgloss.NewStyle().Foreground(lipgloss.Color("6")),
-			box:        lipgloss.NewStyle().Border(lipgloss.NormalBorder()).BorderForeground(lipgloss.Color("6")).Padding(0, 1),
-			command:    lipgloss.NewStyle().Foreground(lipgloss.Color("10")),
-			commandBox: lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("12")).Padding(0, 1),
+			title:      lipgloss.NewStyle().Bold(true).Foreground(lipgloss.BrightBlue),
+			label:      lipgloss.NewStyle().Bold(true).Foreground(lipgloss.BrightBlue),
+			text:       lipgloss.NewStyle().Foreground(lipgloss.BrightWhite),
+			muted:      lipgloss.NewStyle().Faint(true).Foreground(lipgloss.BrightBlack),
+			progress:   lipgloss.NewStyle().Bold(true).Foreground(lipgloss.BrightWhite),
+			debug:      lipgloss.NewStyle().Faint(true).Foreground(lipgloss.BrightBlack),
+			warning:    lipgloss.NewStyle().Bold(true).Foreground(lipgloss.BrightYellow),
+			success:    lipgloss.NewStyle().Bold(true).Foreground(lipgloss.BrightGreen),
+			frame:      lipgloss.NewStyle().Foreground(lipgloss.Cyan),
+			box:        lipgloss.NewStyle().Border(lipgloss.NormalBorder()).BorderForeground(lipgloss.Cyan).Padding(0, 1),
+			command:    lipgloss.NewStyle().Foreground(lipgloss.BrightGreen),
+			commandBox: lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.BrightBlue).Padding(0, 1),
 		},
 	}
 	if !jsonOut && errTTY {
