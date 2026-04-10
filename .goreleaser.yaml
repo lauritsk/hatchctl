@@ -34,6 +34,8 @@ archives:
       {{- else }}{{ .Arch }}{{ end }}
       {{- if .Arm }}v{{ .Arm }}{{ end }}
 
+report_sizes: true
+
 changelog:
   sort: asc
   filters:
