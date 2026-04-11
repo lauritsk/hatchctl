@@ -95,10 +95,10 @@ func ResolveDefaults(req ResolveDefaultsRequest) (CommandDefaults, error) {
 	}
 
 	resolved := CommandDefaults{
-		Workspace:      firstConfigured(req.Workspace.Changed, req.Workspace.Value, config.Workspace),
+		Workspace:      resolveHostPathDefault(req.Workspace, loaded.User.Workspace, loaded.Workspace.Workspace, trustedWorkspace),
 		ConfigPath:     firstConfigured(req.ConfigPath.Changed, req.ConfigPath.Value, config.ConfigPath),
-		StateDir:       config.StateDir,
-		CacheDir:       config.CacheDir,
+		StateDir:       resolveHostPathDefault(FlagValue[string]{}, loaded.User.StateDir, loaded.Workspace.StateDir, trustedWorkspace),
+		CacheDir:       resolveHostPathDefault(FlagValue[string]{}, loaded.User.CacheDir, loaded.Workspace.CacheDir, trustedWorkspace),
 		FeatureTimeout: resolvedTimeout,
 		LockfilePolicy: resolveLockfilePolicy(config, req.LockfilePolicy),
 		Dotfiles:       resolveDotfilesDefaults(loaded, req.Dotfiles, trustedWorkspace),
@@ -181,6 +181,17 @@ func resolveOptionalBoolDefault(target *bool, flag *FlagValue[bool], userValue *
 }
 
 func preferredDotfilesValue(userValue string, workspaceValue string, trustedWorkspace bool) string {
+	return preferredWorkspaceValue(userValue, workspaceValue, trustedWorkspace)
+}
+
+func resolveHostPathDefault(flag FlagValue[string], userValue string, workspaceValue string, trustedWorkspace bool) string {
+	if flag.Changed {
+		return flag.Value
+	}
+	return preferredWorkspaceValue(userValue, workspaceValue, trustedWorkspace)
+}
+
+func preferredWorkspaceValue(userValue string, workspaceValue string, trustedWorkspace bool) string {
 	if trustedWorkspace && workspaceValue != "" {
 		return workspaceValue
 	}

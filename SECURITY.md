@@ -26,7 +26,7 @@ Before the first stable release, fixes may be made on `main` without backporting
 Current defaults:
 
 - host-side `initializeCommand` is blocked unless the user explicitly opts in with `--allow-host-lifecycle` or `HATCHCTL_ALLOW_HOST_LIFECYCLE=1`
-- repo-local `.hatchctl/config.toml` values for `bridge`, `ssh`, and `dotfiles` are ignored unless the user explicitly opts in with `--trust-workspace` or `HATCHCTL_TRUST_WORKSPACE=1`
+- repo-local `.hatchctl/config.toml` values for `workspace`, `state_dir`, `cache_dir`, `bridge`, `ssh`, and `dotfiles` are ignored unless the user explicitly opts in with `--trust-workspace` or `HATCHCTL_TRUST_WORKSPACE=1`
 - direct tarball features must use `https`, except loopback `http` sources for local development and tests
 - unsigned remote OCI features are rejected by default
 - the macOS bridge listener binds to loopback only, and forwarded localhost callback ports stay on the original loopback port when available and otherwise fall back to randomized single-use loopback listeners

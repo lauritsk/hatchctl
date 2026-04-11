@@ -106,7 +106,7 @@ Use `--` with `exec` to separate `hatchctl` flags from the command you want to r
 
 Dotfiles are configured outside `devcontainer.json`, matching how editor tooling treats them. Most users only need `--dotfiles <repo>`. Use `--dotfiles-install-command` or `--dotfiles-target-path` only when the repository needs a custom install step or checkout location. Matching `HATCHCTL_DOTFILES_*` environment variables are also supported.
 
-User-level config applies automatically. Workspace-local `.hatchctl/config.toml` can still provide convenience defaults like config paths and timeouts, but host-affecting defaults from that file such as `bridge`, `ssh`, and `dotfiles` only apply when you also pass `--trust-workspace`.
+User-level config applies automatically. Workspace-local `.hatchctl/config.toml` can still provide convenience defaults like config paths and timeouts, but host-affecting defaults from that file such as `workspace`, `state_dir`, `cache_dir`, `bridge`, `ssh`, and `dotfiles` only apply when you also pass `--trust-workspace`.
 
 Image verification signer trust is configurable in `.hatchctl/config.toml` too. When you do not configure signers explicitly, `hatchctl` recommends a safe default for `ghcr.io/<owner>/<repo>` images by trusting GitHub Actions keyless signatures from the same GitHub repository. Override that with explicit signers when you need a narrower or different policy:
 
@@ -139,7 +139,7 @@ Use `--bridge` on macOS when the container needs host-side browser open or local
 
 - `initializeCommand` does not run on the host unless you explicitly opt in with `--allow-host-lifecycle` or `HATCHCTL_ALLOW_HOST_LIFECYCLE=1`
 - repo-controlled Docker settings that expand host access do not run unless you explicitly opt in with `--trust-workspace` or `HATCHCTL_TRUST_WORKSPACE=1`
-- repo-local `.hatchctl/config.toml` values for `bridge`, `ssh`, and `dotfiles` only apply when you explicitly opt in with `--trust-workspace` or `HATCHCTL_TRUST_WORKSPACE=1`
+- repo-local `.hatchctl/config.toml` values for `workspace`, `state_dir`, `cache_dir`, `bridge`, `ssh`, and `dotfiles` only apply when you explicitly opt in with `--trust-workspace` or `HATCHCTL_TRUST_WORKSPACE=1`
 - direct tarball features must use `https`, except loopback `http` sources used for local development and tests
 - unsigned images warn by default and prompt on TTY; pressing Enter selects `N`
 - unsigned remote OCI features fail by default in non-interactive runs and prompt on TTY; pressing Enter selects `N`

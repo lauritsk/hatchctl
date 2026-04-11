@@ -18,6 +18,9 @@ func TestResolveDefaultsIgnoresUntrustedWorkspaceHostSettings(t *testing.T) {
 	if got.ConfigPath != filepath.Join(workspace, "custom", "devcontainer.json") {
 		t.Fatalf("unexpected config path %q", got.ConfigPath)
 	}
+	if got.StateDir != "/user/state" || got.CacheDir != "/user/cache" {
+		t.Fatalf("expected untrusted workspace paths to keep user defaults, got state=%q cache=%q", got.StateDir, got.CacheDir)
+	}
 	if got.BridgeEnabled {
 		t.Fatalf("expected untrusted workspace config to leave bridge disabled, got %#v", got)
 	}
@@ -46,6 +49,9 @@ func TestResolveDefaultsAppliesTrustedWorkspaceHostSettings(t *testing.T) {
 	if !got.BridgeEnabled || !got.SSHAgent {
 		t.Fatalf("expected trusted workspace host settings, got %#v", got)
 	}
+	if got.StateDir != filepath.Join(workspace, "workspace-state") || got.CacheDir != filepath.Join(workspace, "workspace-cache") {
+		t.Fatalf("expected trusted workspace paths, got state=%q cache=%q", got.StateDir, got.CacheDir)
+	}
 	if got.Dotfiles.Repository != "github.com/example/workspace" || got.Dotfiles.InstallCommand != "workspace-install" || got.Dotfiles.TargetPath != "~/workspace-dotfiles" {
 		t.Fatalf("unexpected trusted dotfiles defaults %#v", got.Dotfiles)
 	}
@@ -72,13 +78,41 @@ func writeConfigFixtures(t *testing.T) string {
 	if err := os.MkdirAll(filepath.Join(workspace, ".hatchctl"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(userDir, "config.toml"), []byte("lockfile_policy = \"update\"\nfeature_timeout = \"45s\"\nbridge = false\nssh = false\n[dotfiles]\nrepository = \"github.com/example/user\"\ninstall_command = \"user-install\"\ntarget_path = \"~/user-dotfiles\"\n[[verification.trusted_signers]]\nissuer = \"https://issuer.user.example\"\nsubject = \"user@example.com\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(userDir, "config.toml"), []byte("state_dir = \"/user/state\"\ncache_dir = \"/user/cache\"\nlockfile_policy = \"update\"\nfeature_timeout = \"45s\"\nbridge = false\nssh = false\n[dotfiles]\nrepository = \"github.com/example/user\"\ninstall_command = \"user-install\"\ntarget_path = \"~/user-dotfiles\"\n[[verification.trusted_signers]]\nissuer = \"https://issuer.user.example\"\nsubject = \"user@example.com\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(workspace, ".hatchctl", "config.toml"), []byte("config = \"../custom/devcontainer.json\"\nbridge = true\nssh = true\n[dotfiles]\nrepository = \"github.com/example/workspace\"\ninstall_command = \"workspace-install\"\ntarget_path = \"~/workspace-dotfiles\"\n[[verification.trusted_signers]]\nissuer = \"https://issuer.workspace.example\"\nsubject = \"workspace@example.com\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(workspace, ".hatchctl", "config.toml"), []byte("config = \"../custom/devcontainer.json\"\nstate_dir = \"../workspace-state\"\ncache_dir = \"../workspace-cache\"\nbridge = true\nssh = true\n[dotfiles]\nrepository = \"github.com/example/workspace\"\ninstall_command = \"workspace-install\"\ntarget_path = \"~/workspace-dotfiles\"\n[[verification.trusted_signers]]\nissuer = \"https://issuer.workspace.example\"\nsubject = \"workspace@example.com\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	return workspace
+}
+
+func TestResolveDefaultsIgnoresUntrustedWorkspacePathOverride(t *testing.T) {
+	workspace := t.TempDir()
+	t.Chdir(workspace)
+	if err := os.MkdirAll(filepath.Join(workspace, ".hatchctl"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	wantTrusted := filepath.Join(workspace, "trusted-workspace")
+	if err := os.WriteFile(filepath.Join(workspace, ".hatchctl", "config.toml"), []byte("workspace = \"../trusted-workspace\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := ResolveDefaults(ResolveDefaultsRequest{TrustWorkspace: &FlagValue[bool]{Value: false}})
+	if err != nil {
+		t.Fatalf("resolve defaults: %v", err)
+	}
+	if got.Workspace != "" {
+		t.Fatalf("expected untrusted workspace path override to be ignored, got %q", got.Workspace)
+	}
+
+	got, err = ResolveDefaults(ResolveDefaultsRequest{TrustWorkspace: &FlagValue[bool]{Value: true}})
+	if err != nil {
+		t.Fatalf("resolve defaults with trust: %v", err)
+	}
+	if got.Workspace != wantTrusted {
+		t.Fatalf("expected trusted workspace path %q, got %q", wantTrusted, got.Workspace)
+	}
 }
 
 func resolveDefaultsRequestForTest(workspace string, trustWorkspace bool) ResolveDefaultsRequest {
