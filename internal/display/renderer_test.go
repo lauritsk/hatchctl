@@ -203,3 +203,111 @@ func TestRendererPrintCommandListUsesTTYCommandStyling(t *testing.T) {
 		}
 	}
 }
+
+func TestRendererEventsAndTTYHelpers(t *testing.T) {
+	t.Parallel()
+
+	var nilRenderer *Renderer
+	if nilRenderer.Events() != nil {
+		t.Fatal("expected nil renderer to return nil events sink")
+	}
+	if nilRenderer.TTY() {
+		t.Fatal("expected nil renderer to report non-tty")
+	}
+
+	r := &Renderer{jsonOut: true}
+	if r.Events() != nil {
+		t.Fatal("expected json renderer to suppress events sink")
+	}
+	r.jsonOut = false
+	r.outTTY = true
+	if r.Events() != r {
+		t.Fatal("expected renderer to return itself as sink")
+	}
+	if !r.TTY() {
+		t.Fatal("expected renderer to report tty")
+	}
+}
+
+func TestRendererPrintHelpersForNonTTY(t *testing.T) {
+	t.Parallel()
+
+	var outBuf bytes.Buffer
+	r := NewRenderer(&outBuf, &bytes.Buffer{}, false)
+
+	if err := r.PrintText("hello"); err != nil {
+		t.Fatalf("print text: %v", err)
+	}
+	if err := r.PrintKeyValues([]KeyValue{{Key: "Container", Value: "abc123"}, {Key: "Image", Value: "demo"}}); err != nil {
+		t.Fatalf("print key values: %v", err)
+	}
+	if err := r.PrintJSON(map[string]any{"ok": true, "count": 2}); err != nil {
+		t.Fatalf("print json: %v", err)
+	}
+
+	got := outBuf.String()
+	for _, want := range []string{"hello\n", "Container: abc123\n", "Image: demo\n", "\"ok\": true", "\"count\": 2"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("expected output to contain %q, got %q", want, got)
+		}
+	}
+}
+
+func TestRendererStderrAndCloseHelpers(t *testing.T) {
+	t.Parallel()
+
+	var errBuf bytes.Buffer
+	spinner := &lineSpinner{w: &errBuf, done: make(chan struct{}), running: true, cursorHidden: true, lastSize: 4}
+	r := &Renderer{err: &bytes.Buffer{}, spinner: spinner}
+	if r.Stderr() == nil {
+		t.Fatal("expected stderr writer")
+	}
+	r.Close()
+	if !spinner.stopped {
+		t.Fatal("expected close to stop spinner")
+	}
+	if spinner.cursorHidden {
+		t.Fatal("expected close to restore cursor visibility")
+	}
+
+	if (&Renderer{}).Stderr() != nil {
+		t.Fatal("expected renderer without stderr to return nil")
+	}
+}
+
+func TestRendererNonTTYStyleHelpers(t *testing.T) {
+	t.Parallel()
+
+	r := &Renderer{}
+	if got := r.styleDebug("debug line"); got != "debug line" {
+		t.Fatalf("unexpected debug style %q", got)
+	}
+	if got := r.styleWarning("watch out"); got != "warning: watch out" {
+		t.Fatalf("unexpected warning style %q", got)
+	}
+	if got := r.spinnerProgressMessage("", "Working"); got != "Working" {
+		t.Fatalf("unexpected spinner message %q", got)
+	}
+	if got := r.spinnerProgressMessage("Resolve", "Working"); got != "[Resolve] Working" {
+		t.Fatalf("unexpected phased spinner message %q", got)
+	}
+}
+
+func TestLineSpinnerSetMessageAndWriteLine(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	s := &lineSpinner{w: &buf, done: make(chan struct{})}
+	s.SetMessage("loading")
+	if !s.running || s.message != "loading" {
+		t.Fatalf("expected spinner to start with message, got running=%v message=%q", s.running, s.message)
+	}
+	s.SetMessage("")
+	if s.running {
+		t.Fatal("expected empty message to stop spinner")
+	}
+	s.WriteLine("done")
+	if got := buf.String(); !strings.Contains(got, "done\n") {
+		t.Fatalf("unexpected spinner line output %q", got)
+	}
+}

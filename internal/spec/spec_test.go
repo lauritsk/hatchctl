@@ -1,8 +1,10 @@
 package spec
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -178,6 +180,122 @@ func TestParseMountSpecSupportsAliasesAndOptions(t *testing.T) {
 	}
 	if spec.CreateHostPath == nil || *spec.CreateHostPath {
 		t.Fatalf("expected create-host-path=false, got %#v", spec.CreateHostPath)
+	}
+}
+
+func TestResolveHelpersPreferExpectedConfigValues(t *testing.T) {
+	t.Parallel()
+
+	overrideFalse := false
+	config := Config{
+		DockerFile:      "Dockerfile.root",
+		RemoteUser:      "remote-user",
+		ContainerUser:   "container-user",
+		OverrideCommand: &overrideFalse,
+		Build: &BuildConfig{
+			Dockerfile: "Dockerfile.build",
+			Context:    "docker",
+		},
+	}
+	if got := EffectiveDockerfile(config); got != "Dockerfile.root" {
+		t.Fatalf("unexpected effective dockerfile %q", got)
+	}
+	if got := EffectiveContext(config); got != "docker" {
+		t.Fatalf("unexpected effective context %q", got)
+	}
+	if got := RemoteExecUser(config); got != "remote-user" {
+		t.Fatalf("unexpected remote exec user %q", got)
+	}
+	if got := ContainerCommand(config); got != nil {
+		t.Fatalf("expected overrideCommand=false to disable command, got %#v", got)
+	}
+
+	config = Config{Build: &BuildConfig{Dockerfile: "Dockerfile.build"}, ContainerUser: "container-user"}
+	if got := EffectiveDockerfile(config); got != "Dockerfile.build" {
+		t.Fatalf("unexpected build dockerfile %q", got)
+	}
+	if got := EffectiveContext(config); got != "." {
+		t.Fatalf("unexpected default context %q", got)
+	}
+	if got := RemoteExecUser(config); got != "container-user" {
+		t.Fatalf("unexpected fallback remote user %q", got)
+	}
+	if got := ContainerCommand(config); !reflect.DeepEqual(got, []string{"/bin/sh", "-lc", KeepAliveCommand()}) {
+		t.Fatalf("unexpected container command %#v", got)
+	}
+	if got := KeepAliveCommand(); got != "exec sleep infinity" {
+		t.Fatalf("unexpected keepalive command %q", got)
+	}
+	if got := ShellQuote("it's $HOME"); got != "'it'\\''s $HOME'" {
+		t.Fatalf("unexpected shell quote %q", got)
+	}
+}
+
+func TestNormalizeAndMergeForwardPorts(t *testing.T) {
+	t.Parallel()
+
+	ports, err := NormalizeForwardPorts([]any{3000.0, " localhost:3000 ", "service:9000", 8080.0, "service:9000"})
+	if err != nil {
+		t.Fatalf("normalize forward ports: %v", err)
+	}
+	if got := []string(ports); !reflect.DeepEqual(got, []string{"localhost:3000", "service:9000", "localhost:8080"}) {
+		t.Fatalf("unexpected normalized ports %#v", got)
+	}
+	merged := MergeForwardPorts(ForwardPorts{"localhost:3000", ""}, ForwardPorts{"service:9000", "localhost:3000"}, nil)
+	if got := []string(merged); !reflect.DeepEqual(got, []string{"localhost:3000", "service:9000"}) {
+		t.Fatalf("unexpected merged forward ports %#v", got)
+	}
+	if merged := MergeForwardPorts(nil); merged != nil {
+		t.Fatalf("expected empty merge to return nil, got %#v", merged)
+	}
+}
+
+func TestNormalizeForwardPortsRejectsInvalidValues(t *testing.T) {
+	t.Parallel()
+
+	for _, raw := range []struct {
+		name  string
+		value []any
+		want  string
+	}{
+		{name: "empty-string", value: []any{"   "}, want: "cannot be empty"},
+		{name: "fractional-number", value: []any{1.5}, want: "expected an integer"},
+		{name: "invalid-type", value: []any{true}, want: "invalid forward port value"},
+	} {
+		t.Run(raw.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := NormalizeForwardPorts(raw.value)
+			if err == nil || !strings.Contains(err.Error(), raw.want) {
+				t.Fatalf("expected %q error, got %v", raw.want, err)
+			}
+		})
+	}
+}
+
+func TestForwardPortsJSONRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	encoded, err := json.Marshal(ForwardPorts{"localhost:3000", "service:9000"})
+	if err != nil {
+		t.Fatalf("marshal forward ports: %v", err)
+	}
+	if string(encoded) != `[3000,"service:9000"]` {
+		t.Fatalf("unexpected forward ports json %s", encoded)
+	}
+	var decoded ForwardPorts
+	if err := json.Unmarshal([]byte(`[3000,"service:9000",3000]`), &decoded); err != nil {
+		t.Fatalf("unmarshal forward ports: %v", err)
+	}
+	if got := []string(decoded); !reflect.DeepEqual(got, []string{"localhost:3000", "service:9000"}) {
+		t.Fatalf("unexpected decoded ports %#v", got)
+	}
+
+	encoded, err = json.Marshal(ForwardPorts(nil))
+	if err != nil {
+		t.Fatalf("marshal nil forward ports: %v", err)
+	}
+	if string(encoded) != `null` {
+		t.Fatalf("unexpected nil ports json %s", encoded)
 	}
 }
 
