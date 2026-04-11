@@ -24,16 +24,16 @@
       "matchManagers": [
         "gomod"
       ],
-      "matchPackagePrefixes": [
-        "github.com/coreos/go-oidc/",
-        "github.com/docker/cli",
-        "github.com/google/go-containerregistry",
-        "github.com/sigstore/",
-        "golang.org/x/crypto",
-        "golang.org/x/oauth2"
-      ],
       "automerge": false,
-      "platformAutomerge": false
+      "platformAutomerge": false,
+      "matchPackageNames": [
+        "github.com/coreos/go-oidc/{/,}**",
+        "github.com/docker/cli{/,}**",
+        "github.com/google/go-containerregistry{/,}**",
+        "github.com/sigstore/{/,}**",
+        "golang.org/x/crypto{/,}**",
+        "golang.org/x/oauth2{/,}**"
+      ]
     }
   ],
   "vulnerabilityAlerts": {
