@@ -257,8 +257,16 @@ func TestBridgeHostServiceForwardsSingleUseExactPortWhenAvailable(t *testing.T) 
 
 	session := &Session{ID: "session", StatusPath: filepath.Join(t.TempDir(), "bridge-status.json")}
 	service := newBridgeHostService(session, "container", func(string) error { return nil })
+	reserved, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	forwardPort := reserved.Addr().(*net.TCPAddr).Port
+	if err := reserved.Close(); err != nil {
+		t.Fatal(err)
+	}
 	service.connectPort = func(_ string, port int, stdin io.Reader, stdout io.Writer) error {
-		if port != 8080 {
+		if port != forwardPort {
 			t.Fatalf("unexpected port %d", port)
 		}
 		payload, err := io.ReadAll(stdin)
@@ -269,15 +277,15 @@ func TestBridgeHostServiceForwardsSingleUseExactPortWhenAvailable(t *testing.T) 
 		return err
 	}
 
-	hostPort, exact, err := service.ensureForward(8080)
+	hostPort, exact, err := service.ensureForward(forwardPort)
 	if err != nil {
 		t.Fatalf("ensure forward: %v", err)
 	}
 	if !exact {
 		t.Fatal("expected exact bridge host port")
 	}
-	if hostPort != 8080 {
-		t.Fatalf("expected exact host port 8080, got %d", hostPort)
+	if hostPort != forwardPort {
+		t.Fatalf("expected exact host port %d, got %d", forwardPort, hostPort)
 	}
 
 	conn, err := net.Dial("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(hostPort)))
@@ -301,7 +309,7 @@ func TestBridgeHostServiceForwardsSingleUseExactPortWhenAvailable(t *testing.T) 
 	deadline := time.Now().Add(2 * time.Second)
 	for {
 		service.mu.Lock()
-		_, ok := service.forwarded[8080]
+		_, ok := service.forwarded[forwardPort]
 		service.mu.Unlock()
 		if !ok {
 			break
