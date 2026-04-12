@@ -13,6 +13,7 @@ import (
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	"github.com/lauritsk/hatchctl/internal/docker"
 	"github.com/lauritsk/hatchctl/internal/reconcile"
+	"github.com/lauritsk/hatchctl/internal/spec"
 )
 
 var dockerAvailabilityForIntegration struct {
@@ -78,7 +79,7 @@ func TestBuildPersistsMetadataLabel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("inspect image: %v", err)
 	}
-	entries, err := devcontainer.MetadataFromLabel(inspect.Config.Labels[devcontainer.ImageMetadataLabel])
+	entries, err := spec.MetadataFromLabel(inspect.Config.Labels[devcontainer.ImageMetadataLabel])
 	if err != nil {
 		t.Fatalf("parse metadata label: %v", err)
 	}

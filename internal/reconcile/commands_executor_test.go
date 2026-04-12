@@ -17,6 +17,7 @@ import (
 	workspaceplan "github.com/lauritsk/hatchctl/internal/plan"
 	"github.com/lauritsk/hatchctl/internal/policy"
 	"github.com/lauritsk/hatchctl/internal/security"
+	"github.com/lauritsk/hatchctl/internal/spec"
 	storefs "github.com/lauritsk/hatchctl/internal/store/fs"
 )
 
@@ -138,11 +139,11 @@ func TestUpUsesEnrichedResolvedMetadataForDotfilesTargetPath(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(featureDir, "install.sh"), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
 		t.Fatalf("write feature install script: %v", err)
 	}
-	sourceMetadataLabel, err := devcontainer.MetadataLabelValue([]devcontainer.MetadataEntry{{RemoteUser: "vscode", UpdateRemoteUserUID: &falseValue}})
+	sourceMetadataLabel, err := spec.MetadataLabelValue([]devcontainer.MetadataEntry{{RemoteUser: "vscode", UpdateRemoteUserUID: &falseValue}})
 	if err != nil {
 		t.Fatalf("metadata label: %v", err)
 	}
-	managedMetadataLabel, err := devcontainer.MetadataLabelValue([]devcontainer.MetadataEntry{{ID: "mise"}})
+	managedMetadataLabel, err := spec.MetadataLabelValue([]devcontainer.MetadataEntry{{ID: "mise"}})
 	if err != nil {
 		t.Fatalf("managed metadata label: %v", err)
 	}
@@ -233,7 +234,7 @@ func TestUpUsesEnrichedResolvedMetadataForDotfilesTargetPath(t *testing.T) {
 					UpdateRemoteUserUID: &falseValue,
 				},
 				Features:        []devcontainer.ResolvedFeature{{Path: featureDir, Metadata: devcontainer.MetadataEntry{ID: "mise"}}},
-				Merged:          devcontainer.MergeMetadata(devcontainer.Config{Image: "mcr.microsoft.com/devcontainers/base:ubuntu", WorkspaceFolder: "/workspaces/demo", UpdateRemoteUserUID: &falseValue}, []devcontainer.MetadataEntry{{ID: "mise"}}),
+				Merged:          spec.MergeMetadata(devcontainer.Config{Image: "mcr.microsoft.com/devcontainers/base:ubuntu", WorkspaceFolder: "/workspaces/demo", UpdateRemoteUserUID: &falseValue}, []devcontainer.MetadataEntry{{ID: "mise"}}),
 				StateDir:        stateDir,
 				CacheDir:        cacheDir,
 				WorkspaceMount:  "type=bind,source=/workspace,target=/workspaces/demo",
@@ -286,7 +287,7 @@ func TestUpRecreateReinstallsDotfilesForNewContainer(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(featureDir, "install.sh"), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
 		t.Fatalf("write feature install script: %v", err)
 	}
-	if err := devcontainer.WriteState(stateDir, devcontainer.State{
+	if err := storefs.WriteWorkspaceState(stateDir, devcontainer.State{
 		ContainerID:    "container-old",
 		ContainerKey:   "old-key",
 		LifecycleReady: true,
@@ -296,11 +297,11 @@ func TestUpRecreateReinstallsDotfilesForNewContainer(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("write prior state: %v", err)
 	}
-	sourceMetadataLabel, err := devcontainer.MetadataLabelValue([]devcontainer.MetadataEntry{{RemoteUser: "vscode", UpdateRemoteUserUID: &falseValue}})
+	sourceMetadataLabel, err := spec.MetadataLabelValue([]devcontainer.MetadataEntry{{RemoteUser: "vscode", UpdateRemoteUserUID: &falseValue}})
 	if err != nil {
 		t.Fatalf("source metadata label: %v", err)
 	}
-	managedMetadataLabel, err := devcontainer.MetadataLabelValue([]devcontainer.MetadataEntry{{ID: "mise"}})
+	managedMetadataLabel, err := spec.MetadataLabelValue([]devcontainer.MetadataEntry{{ID: "mise"}})
 	if err != nil {
 		t.Fatalf("managed metadata label: %v", err)
 	}
@@ -386,7 +387,7 @@ func TestUpRecreateReinstallsDotfilesForNewContainer(t *testing.T) {
 					UpdateRemoteUserUID: &falseValue,
 				},
 				Features:        []devcontainer.ResolvedFeature{{Path: featureDir, Metadata: devcontainer.MetadataEntry{ID: "mise"}}},
-				Merged:          devcontainer.MergeMetadata(devcontainer.Config{Image: "mcr.microsoft.com/devcontainers/base:ubuntu", WorkspaceFolder: "/workspaces/demo", UpdateRemoteUserUID: &falseValue}, []devcontainer.MetadataEntry{{ID: "mise"}}),
+				Merged:          spec.MergeMetadata(devcontainer.Config{Image: "mcr.microsoft.com/devcontainers/base:ubuntu", WorkspaceFolder: "/workspaces/demo", UpdateRemoteUserUID: &falseValue}, []devcontainer.MetadataEntry{{ID: "mise"}}),
 				StateDir:        stateDir,
 				CacheDir:        cacheDir,
 				WorkspaceMount:  "type=bind,source=/workspace,target=/workspaces/demo",
@@ -426,14 +427,14 @@ func TestExecMergesConfiguredImageMetadataWhenContainerLabelIsIncomplete(t *test
 	stateDir := t.TempDir()
 	cacheDir := t.TempDir()
 	configDir := t.TempDir()
-	if err := devcontainer.WriteState(stateDir, devcontainer.State{ContainerID: "container-123"}); err != nil {
+	if err := storefs.WriteWorkspaceState(stateDir, devcontainer.State{ContainerID: "container-123"}); err != nil {
 		t.Fatalf("write state: %v", err)
 	}
-	containerMetadataLabel, err := devcontainer.MetadataLabelValue([]devcontainer.MetadataEntry{{ID: "mise"}})
+	containerMetadataLabel, err := spec.MetadataLabelValue([]devcontainer.MetadataEntry{{ID: "mise"}})
 	if err != nil {
 		t.Fatalf("container metadata label: %v", err)
 	}
-	sourceMetadataLabel, err := devcontainer.MetadataLabelValue([]devcontainer.MetadataEntry{{RemoteUser: "vscode"}})
+	sourceMetadataLabel, err := spec.MetadataLabelValue([]devcontainer.MetadataEntry{{RemoteUser: "vscode"}})
 	if err != nil {
 		t.Fatalf("metadata label: %v", err)
 	}
@@ -486,7 +487,7 @@ func TestExecMergesConfiguredImageMetadataWhenContainerLabelIsIncomplete(t *test
 					Image:           "mcr.microsoft.com/devcontainers/base:ubuntu",
 					WorkspaceFolder: "/workspaces/demo",
 				},
-				Merged:          devcontainer.MergeMetadata(devcontainer.Config{Image: "mcr.microsoft.com/devcontainers/base:ubuntu", WorkspaceFolder: "/workspaces/demo"}, nil),
+				Merged:          spec.MergeMetadata(devcontainer.Config{Image: "mcr.microsoft.com/devcontainers/base:ubuntu", WorkspaceFolder: "/workspaces/demo"}, nil),
 				StateDir:        stateDir,
 				CacheDir:        cacheDir,
 				RemoteWorkspace: "/workspaces/demo",
@@ -600,7 +601,7 @@ func TestMaterializeReadOnlyUsesPersistedTrustedRefs(t *testing.T) {
 
 	stateDir := t.TempDir()
 	ref := "ghcr.io/example/feature@sha256:def456"
-	if err := devcontainer.WriteState(stateDir, devcontainer.State{TrustedRefs: []string{ref}}); err != nil {
+	if err := storefs.WriteWorkspaceState(stateDir, devcontainer.State{TrustedRefs: []string{ref}}); err != nil {
 		t.Fatalf("write state: %v", err)
 	}
 	prompted := false
@@ -665,7 +666,7 @@ func TestBuildPersistsTrustedRefsToWorkspaceState(t *testing.T) {
 	if _, err := executor.Build(context.Background(), workspaceplan.WorkspacePlan{LockProtected: workspaceplan.LockProtectedArtifacts{StateDir: stateDir}}, BuildOptions{}); err != nil {
 		t.Fatalf("build: %v", err)
 	}
-	state, err := devcontainer.ReadState(stateDir)
+	state, err := storefs.ReadWorkspaceState(stateDir)
 	if err != nil {
 		t.Fatalf("read state: %v", err)
 	}
@@ -680,7 +681,7 @@ func TestReadConfigReportsBridgeAndDotfilesState(t *testing.T) {
 	stateDir := t.TempDir()
 	cacheDir := t.TempDir()
 	configDir := t.TempDir()
-	if err := devcontainer.WriteState(stateDir, devcontainer.State{
+	if err := storefs.WriteWorkspaceState(stateDir, devcontainer.State{
 		ContainerID:     "container-123",
 		ContainerKey:    "container-key",
 		BridgeEnabled:   true,
@@ -753,7 +754,7 @@ func TestReadConfigReportsBridgeAndDotfilesState(t *testing.T) {
 				ConfigPath:      filepath.Join(configDir, "devcontainer.json"),
 				ConfigDir:       configDir,
 				Config:          devcontainer.Config{Image: "mcr.microsoft.com/devcontainers/base:ubuntu", WorkspaceFolder: "/workspaces/demo"},
-				Merged:          devcontainer.MergeMetadata(devcontainer.Config{Image: "mcr.microsoft.com/devcontainers/base:ubuntu", WorkspaceFolder: "/workspaces/demo"}, nil),
+				Merged:          spec.MergeMetadata(devcontainer.Config{Image: "mcr.microsoft.com/devcontainers/base:ubuntu", WorkspaceFolder: "/workspaces/demo"}, nil),
 				StateDir:        stateDir,
 				CacheDir:        cacheDir,
 				WorkspaceMount:  "type=bind,source=/workspace,target=/workspaces/demo",
@@ -799,7 +800,7 @@ func TestRunLifecycleCreatePersistsLifecycleState(t *testing.T) {
 	stateDir := t.TempDir()
 	cacheDir := t.TempDir()
 	configDir := t.TempDir()
-	if err := devcontainer.WriteState(stateDir, devcontainer.State{ContainerID: "container-123", ContainerKey: "container-key"}); err != nil {
+	if err := storefs.WriteWorkspaceState(stateDir, devcontainer.State{ContainerID: "container-123", ContainerKey: "container-key"}); err != nil {
 		t.Fatalf("write state: %v", err)
 	}
 
@@ -833,7 +834,7 @@ func TestRunLifecycleCreatePersistsLifecycleState(t *testing.T) {
 				ConfigPath:      filepath.Join(configDir, "devcontainer.json"),
 				ConfigDir:       configDir,
 				Config:          devcontainer.Config{Image: "mcr.microsoft.com/devcontainers/base:ubuntu", WorkspaceFolder: "/workspaces/demo"},
-				Merged:          devcontainer.MergeMetadata(devcontainer.Config{Image: "mcr.microsoft.com/devcontainers/base:ubuntu", WorkspaceFolder: "/workspaces/demo"}, nil),
+				Merged:          spec.MergeMetadata(devcontainer.Config{Image: "mcr.microsoft.com/devcontainers/base:ubuntu", WorkspaceFolder: "/workspaces/demo"}, nil),
 				StateDir:        stateDir,
 				CacheDir:        cacheDir,
 				RemoteWorkspace: "/workspaces/demo",
@@ -857,7 +858,7 @@ func TestRunLifecycleCreatePersistsLifecycleState(t *testing.T) {
 		t.Fatalf("unexpected lifecycle result %#v", result)
 	}
 
-	state, err := devcontainer.ReadState(stateDir)
+	state, err := storefs.ReadWorkspaceState(stateDir)
 	if err != nil {
 		t.Fatalf("read state: %v", err)
 	}
@@ -914,7 +915,7 @@ func TestBridgeDoctorReportsPersistedBridgeState(t *testing.T) {
 				ConfigPath:      filepath.Join(configDir, "devcontainer.json"),
 				ConfigDir:       configDir,
 				Config:          devcontainer.Config{Image: "mcr.microsoft.com/devcontainers/base:ubuntu", WorkspaceFolder: "/workspaces/demo"},
-				Merged:          devcontainer.MergeMetadata(devcontainer.Config{Image: "mcr.microsoft.com/devcontainers/base:ubuntu", WorkspaceFolder: "/workspaces/demo"}, nil),
+				Merged:          spec.MergeMetadata(devcontainer.Config{Image: "mcr.microsoft.com/devcontainers/base:ubuntu", WorkspaceFolder: "/workspaces/demo"}, nil),
 				StateDir:        stateDir,
 				CacheDir:        cacheDir,
 				RemoteWorkspace: "/workspaces/demo",

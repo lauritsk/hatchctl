@@ -15,6 +15,7 @@ import (
 	"github.com/lauritsk/hatchctl/internal/engine/dockercli"
 	workspaceplan "github.com/lauritsk/hatchctl/internal/plan"
 	"github.com/lauritsk/hatchctl/internal/policy"
+	"github.com/lauritsk/hatchctl/internal/spec"
 	storefs "github.com/lauritsk/hatchctl/internal/store/fs"
 )
 
@@ -309,7 +310,7 @@ func (e *Executor) enrichExecResolvedConfig(ctx context.Context, session *Sessio
 		return nil
 	}
 	if inspect := session.ContainerInspect(); inspect != nil {
-		metadata, err := devcontainer.MetadataFromLabel(inspect.Config.Labels[devcontainer.ImageMetadataLabel])
+		metadata, err := spec.MetadataFromLabel(inspect.Config.Labels[devcontainer.ImageMetadataLabel])
 		if err != nil {
 			return err
 		}
@@ -318,7 +319,7 @@ func (e *Executor) enrichExecResolvedConfig(ctx context.Context, session *Sessio
 			if err != nil {
 				return err
 			}
-			resolved.Merged = devcontainer.MergeMetadata(devcontainer.Config{}, metadata)
+			resolved.Merged = spec.MergeMetadata(devcontainer.Config{}, metadata)
 			resolved.Merged.Config = resolved.Config
 			return nil
 		}
@@ -351,7 +352,7 @@ func (e *Executor) ReadConfig(ctx context.Context, workspacePlan workspaceplan.W
 		if !docker.IsNotFound(err) {
 			return ReadConfigResult{}, err
 		}
-		resolved.Merged = devcontainer.MergeMetadata(resolved.Config, featureMetadata(resolved.Features))
+		resolved.Merged = spec.MergeMetadata(resolved.Config, featureMetadata(resolved.Features))
 	}
 	if workspacePlan.Capabilities.SSHAgent.Enabled {
 		if resolved.Merged, err = injectSSHAgent(resolved.Merged); err != nil {

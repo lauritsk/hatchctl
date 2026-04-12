@@ -199,7 +199,7 @@ func (e *Executor) readManagedContainerState(ctx context.Context, prepared prepa
 	if inspect == nil {
 		return nil, fmt.Errorf("read managed container state for %s: container metadata is unavailable", prepared.containerID)
 	}
-	metadata, err := devcontainer.MetadataFromLabel(inspect.Config.Labels[devcontainer.ImageMetadataLabel])
+	metadata, err := spec.MetadataFromLabel(inspect.Config.Labels[devcontainer.ImageMetadataLabel])
 	if err != nil {
 		return nil, err
 	}
@@ -207,7 +207,7 @@ func (e *Executor) readManagedContainerState(ctx context.Context, prepared prepa
 	if err != nil {
 		return nil, err
 	}
-	merged := devcontainer.MergeMetadata(prepared.resolved.Config, metadata)
+	merged := spec.MergeMetadata(prepared.resolved.Config, metadata)
 	effectiveUser := firstNonEmpty(merged.RemoteUser, merged.ContainerUser, inspect.Config.User)
 	return &ManagedContainer{
 		ID:            inspect.ID,
@@ -280,7 +280,7 @@ func (e *Executor) createContainer(ctx context.Context, resolved devcontainer.Re
 
 func (e *Executor) createManagedContainer(ctx context.Context, resolved devcontainer.ResolvedConfig, image string, containerKey string, bridgeEnabled bool, sshAgent bool) (string, error) {
 	stateMount := fmt.Sprintf("type=bind,source=%s,target=%s", resolved.StateDir, "/var/run/hatchctl")
-	metadataLabel, err := devcontainer.MetadataLabelValue(resolved.Merged.Metadata)
+	metadataLabel, err := spec.MetadataLabelValue(resolved.Merged.Metadata)
 	if err != nil {
 		return "", err
 	}
@@ -364,7 +364,7 @@ func renderComposeOverride(resolved devcontainer.ResolvedConfig, image string, c
 	if resolved.Merged.ContainerEnv["SSH_AUTH_SOCK"] == capssh.ContainerSocketPath {
 		labels[devcontainer.SSHAgentLabel] = "true"
 	}
-	if metadataLabel, err := devcontainer.MetadataLabelValue(resolved.Merged.Metadata); err == nil && metadataLabel != "" {
+	if metadataLabel, err := spec.MetadataLabelValue(resolved.Merged.Metadata); err == nil && metadataLabel != "" {
 		labels[devcontainer.ImageMetadataLabel] = metadataLabel
 	}
 	if containerKey != "" {

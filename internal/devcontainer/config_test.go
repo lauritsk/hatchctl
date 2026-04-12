@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/lauritsk/hatchctl/internal/featurefetch"
+	"github.com/lauritsk/hatchctl/internal/spec"
 	storefs "github.com/lauritsk/hatchctl/internal/store/fs"
 )
 
@@ -32,7 +33,7 @@ func TestLoadSupportsJSONC(t *testing.T) {
 	}`
 	writeTestFile(t, configPath, contents)
 
-	config, err := Load(configPath)
+	config, err := spec.Load(configPath)
 	if err != nil {
 		t.Fatalf("load config: %v", err)
 	}
@@ -61,7 +62,7 @@ func TestLoadWrapsJSONCParseErrorsWithContext(t *testing.T) {
 	}`
 	writeTestFile(t, configPath, contents)
 
-	_, err := Load(configPath)
+	_, err := spec.Load(configPath)
 	if err == nil {
 		t.Fatal("expected load error")
 	}
@@ -126,7 +127,7 @@ func TestMergeMetadataMatchesExpectedPrecedence(t *testing.T) {
 
 	falseValue := false
 	trueValue := true
-	merged := MergeMetadata(Config{
+	merged := spec.MergeMetadata(Config{
 		RemoteUser:    "config-remote",
 		ContainerUser: "config-container",
 		ForwardPorts:  ForwardPorts{"localhost:3000", "service:9000"},
@@ -197,7 +198,7 @@ func TestMergeMetadataMatchesExpectedPrecedence(t *testing.T) {
 func TestMetadataFromLabelSupportsSingleAndArray(t *testing.T) {
 	t.Parallel()
 
-	entries, err := MetadataFromLabel(`[ {"remoteUser":"vscode"}, {"remoteUser":"dev"} ]`)
+	entries, err := spec.MetadataFromLabel(`[ {"remoteUser":"vscode"}, {"remoteUser":"dev"} ]`)
 	if err != nil {
 		t.Fatalf("parse array metadata: %v", err)
 	}
@@ -205,7 +206,7 @@ func TestMetadataFromLabelSupportsSingleAndArray(t *testing.T) {
 		t.Fatalf("unexpected metadata entries %#v", entries)
 	}
 
-	entries, err = MetadataFromLabel(`{"remoteEnv":{"A":"B"}}`)
+	entries, err = spec.MetadataFromLabel(`{"remoteEnv":{"A":"B"}}`)
 	if err != nil {
 		t.Fatalf("parse single metadata: %v", err)
 	}
@@ -217,7 +218,7 @@ func TestMetadataFromLabelSupportsSingleAndArray(t *testing.T) {
 func TestMetadataLabelValueUsesObjectForSingleEntryAndArrayForMultiple(t *testing.T) {
 	t.Parallel()
 
-	single, err := MetadataLabelValue([]MetadataEntry{{RemoteUser: "root"}})
+	single, err := spec.MetadataLabelValue([]MetadataEntry{{RemoteUser: "root"}})
 	if err != nil {
 		t.Fatalf("marshal single metadata: %v", err)
 	}
@@ -225,7 +226,7 @@ func TestMetadataLabelValueUsesObjectForSingleEntryAndArrayForMultiple(t *testin
 		t.Fatalf("unexpected single metadata label %q", single)
 	}
 
-	multi, err := MetadataLabelValue([]MetadataEntry{{RemoteUser: "root"}, {RemoteUser: "vscode"}})
+	multi, err := spec.MetadataLabelValue([]MetadataEntry{{RemoteUser: "root"}, {RemoteUser: "vscode"}})
 	if err != nil {
 		t.Fatalf("marshal multiple metadata entries: %v", err)
 	}
@@ -245,7 +246,7 @@ func TestLoadNormalizesForwardPorts(t *testing.T) {
 	}`
 	writeTestFile(t, configPath, contents)
 
-	config, err := Load(configPath)
+	config, err := spec.Load(configPath)
 	if err != nil {
 		t.Fatalf("load config: %v", err)
 	}
@@ -320,7 +321,7 @@ func TestResolveSupportsContainerfile(t *testing.T) {
 	if resolved.SourceKind != "dockerfile" {
 		t.Fatalf("unexpected source kind %q", resolved.SourceKind)
 	}
-	if got := EffectiveDockerfile(resolved.Config); got != "Containerfile" {
+	if got := spec.EffectiveDockerfile(resolved.Config); got != "Containerfile" {
 		t.Fatalf("unexpected effective dockerfile %q", got)
 	}
 }
@@ -500,10 +501,10 @@ func TestResolveSupportsBuildDockerfileAndContextFiles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolve build config: %v", err)
 	}
-	if got := EffectiveDockerfile(resolved.Config); got != "Containerfile" {
+	if got := spec.EffectiveDockerfile(resolved.Config); got != "Containerfile" {
 		t.Fatalf("unexpected build dockerfile %q", got)
 	}
-	if got := EffectiveContext(resolved.Config); got != "../container-context" {
+	if got := spec.EffectiveContext(resolved.Config); got != "../container-context" {
 		t.Fatalf("unexpected build context %q", got)
 	}
 }
@@ -576,10 +577,10 @@ func TestResolveFixtureBuildContainerfileContext(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolve dockerfile fixture: %v", err)
 	}
-	if got := EffectiveDockerfile(resolved.Config); got != "Containerfile" {
+	if got := spec.EffectiveDockerfile(resolved.Config); got != "Containerfile" {
 		t.Fatalf("unexpected fixture dockerfile %q", got)
 	}
-	if got := EffectiveContext(resolved.Config); got != "../container-context" {
+	if got := spec.EffectiveContext(resolved.Config); got != "../container-context" {
 		t.Fatalf("unexpected fixture context %q", got)
 	}
 }

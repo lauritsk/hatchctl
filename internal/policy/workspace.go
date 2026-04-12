@@ -110,11 +110,11 @@ func riskyBuildSettings(workspaceSpec spec.WorkspaceSpec) string {
 	if workspaceSpec.Config.Build != nil && len(workspaceSpec.Config.Build.Options) > 0 {
 		return fmt.Sprintf("docker build options requested (%s)", strings.Join(workspaceSpec.Config.Build.Options, ", "))
 	}
-	dockerfilePath := resolveConfigRelativePath(workspaceSpec.ConfigDir, devcontainer.EffectiveDockerfile(workspaceSpec.Config))
+	dockerfilePath := resolveConfigRelativePath(workspaceSpec.ConfigDir, spec.EffectiveDockerfile(workspaceSpec.Config))
 	if outsideWorkspace(workspaceSpec.WorkspaceFolder, dockerfilePath) {
 		return fmt.Sprintf("dockerfile path resolves outside the workspace (%s)", dockerfilePath)
 	}
-	contextPath := resolveConfigRelativePath(workspaceSpec.ConfigDir, devcontainer.EffectiveContext(workspaceSpec.Config))
+	contextPath := resolveConfigRelativePath(workspaceSpec.ConfigDir, spec.EffectiveContext(workspaceSpec.Config))
 	if outsideWorkspace(workspaceSpec.WorkspaceFolder, contextPath) {
 		return fmt.Sprintf("build context resolves outside the workspace (%s)", contextPath)
 	}

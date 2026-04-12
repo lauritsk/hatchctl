@@ -4,13 +4,15 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/lauritsk/hatchctl/internal/spec"
 )
 
 func TestResolveConfigPathSuggestsLocations(t *testing.T) {
 	t.Parallel()
 
 	workspace := t.TempDir()
-	_, err := resolveConfigPath(workspace, "")
+	_, err := spec.ResolveConfigPath(workspace, "")
 	if err == nil {
 		t.Fatal("expected missing config error")
 	}

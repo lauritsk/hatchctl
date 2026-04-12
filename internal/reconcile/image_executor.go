@@ -124,12 +124,12 @@ func (e *Executor) EnrichMergedConfig(ctx context.Context, resolved *devcontaine
 	inspect, err := e.engine.InspectImage(ctx, dockercli.InspectImageRequest{Reference: image})
 	if err != nil {
 		if resolved.SourceKind == "compose" || isManagedImage(resolved, image) {
-			resolved.Merged = devcontainer.MergeMetadata(resolved.Config, featureMetadata(resolved.Features))
+			resolved.Merged = spec.MergeMetadata(resolved.Config, featureMetadata(resolved.Features))
 			return nil
 		}
 		return err
 	}
-	metadata, err := devcontainer.MetadataFromLabel(inspect.Config.Labels[devcontainer.ImageMetadataLabel])
+	metadata, err := spec.MetadataFromLabel(inspect.Config.Labels[devcontainer.ImageMetadataLabel])
 	if err != nil {
 		return err
 	}
@@ -138,11 +138,11 @@ func (e *Executor) EnrichMergedConfig(ctx context.Context, resolved *devcontaine
 		if err != nil {
 			return err
 		}
-		resolved.Merged = devcontainer.MergeMetadata(devcontainer.Config{}, metadata)
+		resolved.Merged = spec.MergeMetadata(devcontainer.Config{}, metadata)
 		resolved.Merged.Config = resolved.Config
 		return nil
 	}
-	resolved.Merged = devcontainer.MergeMetadata(resolved.Config, metadata)
+	resolved.Merged = spec.MergeMetadata(resolved.Config, metadata)
 	return nil
 }
 
@@ -197,7 +197,7 @@ func (e *Executor) imageMetadata(ctx context.Context, image string) ([]devcontai
 	if err != nil {
 		return nil, err
 	}
-	return devcontainer.MetadataFromLabel(inspect.Config.Labels[devcontainer.ImageMetadataLabel])
+	return spec.MetadataFromLabel(inspect.Config.Labels[devcontainer.ImageMetadataLabel])
 }
 
 func (e *Executor) mergeSourceImageMetadata(ctx context.Context, resolved devcontainer.ResolvedConfig, runtimeImage string, metadata []devcontainer.MetadataEntry) ([]devcontainer.MetadataEntry, error) {
@@ -219,7 +219,7 @@ func isManagedImage(resolved *devcontainer.ResolvedConfig, image string) bool {
 }
 
 func writeFeatureBuildContext(buildDir string, baseImage string, features []devcontainer.ResolvedFeature, containerUser string, remoteUser string, metadata []devcontainer.MetadataEntry, imageKey string) error {
-	metadataLabel, err := devcontainer.MetadataLabelValue(metadata)
+	metadataLabel, err := spec.MetadataLabelValue(metadata)
 	if err != nil {
 		return err
 	}
@@ -285,14 +285,14 @@ func dockerfileQuotedValue(value string) string {
 func (e *Executor) buildDockerfileImage(ctx context.Context, resolved devcontainer.ResolvedConfig, imageName string, imageKey string, events ui.Sink) error {
 	dockerfile := resolved.ConfigDir
 	contextDir := resolved.ConfigDir
-	if rel := devcontainer.EffectiveDockerfile(resolved.Config); rel != "" {
+	if rel := spec.EffectiveDockerfile(resolved.Config); rel != "" {
 		dockerfile = filepath.Join(resolved.ConfigDir, rel)
 	}
-	if rel := devcontainer.EffectiveContext(resolved.Config); rel != "" {
+	if rel := spec.EffectiveContext(resolved.Config); rel != "" {
 		contextDir = filepath.Join(resolved.ConfigDir, rel)
 	}
 	labels := map[string]string{}
-	metadataLabel, err := devcontainer.MetadataLabelValue(resolved.Merged.Metadata)
+	metadataLabel, err := spec.MetadataLabelValue(resolved.Merged.Metadata)
 	if err != nil {
 		return err
 	}

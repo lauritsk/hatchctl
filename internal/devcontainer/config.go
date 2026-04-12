@@ -198,7 +198,7 @@ func buildResolvedConfig(workspaceSpec WorkspaceSpec, stateDir string, cacheDir 
 		ConfigDir:       workspaceSpec.ConfigDir,
 		Config:          workspaceSpec.Config,
 		Features:        features,
-		Merged:          MergeMetadata(workspaceSpec.Config, metadata),
+		Merged:          spec.MergeMetadata(workspaceSpec.Config, metadata),
 		StateDir:        stateDir,
 		CacheDir:        cacheDir,
 		WorkspaceMount:  workspaceSpec.WorkspaceMount,
@@ -231,24 +231,4 @@ func workspaceOutputDirs(workspace string, configPath string, opts ResolveOption
 		cacheRoot = opts.CacheBaseDir
 	}
 	return storefs.WorkspaceScopedDir(stateRoot, workspace, configPath), storefs.WorkspaceScopedDir(cacheRoot, workspace, configPath), nil
-}
-
-func Load(configPath string) (Config, error) {
-	return spec.Load(configPath)
-}
-
-func resolveWorkspace(workspaceArg string) (string, error) {
-	return spec.ResolveWorkspacePath(workspaceArg)
-}
-
-func resolveConfigPath(workspace string, configArg string) (string, error) {
-	return spec.ResolveConfigPath(workspace, configArg)
-}
-
-func EffectiveDockerfile(config Config) string {
-	return spec.EffectiveDockerfile(config)
-}
-
-func EffectiveContext(config Config) string {
-	return spec.EffectiveContext(config)
 }

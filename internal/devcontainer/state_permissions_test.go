@@ -4,13 +4,15 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	storefs "github.com/lauritsk/hatchctl/internal/store/fs"
 )
 
 func TestWriteStateUsesOwnerOnlyPermissions(t *testing.T) {
 	t.Parallel()
 
 	stateDir := filepath.Join(t.TempDir(), "state")
-	if err := WriteState(stateDir, State{ContainerID: "container-123"}); err != nil {
+	if err := storefs.WriteWorkspaceState(stateDir, State{ContainerID: "container-123"}); err != nil {
 		t.Fatalf("write state: %v", err)
 	}
 	assertMode(t, stateDir, 0o700)

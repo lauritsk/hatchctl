@@ -46,7 +46,7 @@ func TestObserveManagedContainerCombinesControlAndEngineState(t *testing.T) {
 
 	stateDir := t.TempDir()
 	cacheDir := t.TempDir()
-	if err := devcontainer.WriteState(stateDir, devcontainer.State{ContainerID: "missing", LifecycleReady: true, BridgeEnabled: true, BridgeSessionID: "bridge-1"}); err != nil {
+	if err := storefs.WriteWorkspaceState(stateDir, devcontainer.State{ContainerID: "missing", LifecycleReady: true, BridgeEnabled: true, BridgeSessionID: "bridge-1"}); err != nil {
 		t.Fatal(err)
 	}
 	lock, err := storefs.AcquireWorkspaceLock(context.Background(), stateDir, "up")

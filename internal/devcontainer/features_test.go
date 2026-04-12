@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/lauritsk/hatchctl/internal/security"
+	"github.com/lauritsk/hatchctl/internal/spec"
 )
 
 var featureResolveOpts = FeatureResolveOptions{AllowNetwork: true, WriteLockFile: true}
@@ -73,7 +74,7 @@ func TestResolveFeaturesOrdersDependenciesAndInstallsAfter(t *testing.T) {
 	if got := strings.Join(featureIDs(features), ","); got != "alpha,beta,gamma" {
 		t.Fatalf("unexpected feature order %q", got)
 	}
-	merged := MergeMetadata(Config{}, featureMetadataForTest(features))
+	merged := spec.MergeMetadata(Config{}, featureMetadataForTest(features))
 	if got := strings.Join(merged.Mounts, ","); got != "type=volume,source=beta,target=/workspace-tools" {
 		t.Fatalf("unexpected merged mounts %q", got)
 	}

@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
+	storefs "github.com/lauritsk/hatchctl/internal/store/fs"
 )
 
 func TestStateTrackerPersistsLifecycleBridgeAndDotfilesState(t *testing.T) {
@@ -23,7 +24,7 @@ func TestStateTrackerPersistsLifecycleBridgeAndDotfilesState(t *testing.T) {
 		t.Fatalf("persist state: %v", err)
 	}
 
-	state, err := devcontainer.ReadState(stateDir)
+	state, err := storefs.ReadWorkspaceState(stateDir)
 	if err != nil {
 		t.Fatalf("read state: %v", err)
 	}

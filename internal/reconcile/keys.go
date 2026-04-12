@@ -32,12 +32,12 @@ func ManagedImageKey(resolved devcontainer.ResolvedConfig, targetImage string) (
 		}
 	}
 	if resolved.SourceKind != "compose" {
-		dockerfile := filepath.Join(resolved.ConfigDir, devcontainer.EffectiveDockerfile(resolved.Config))
+		dockerfile := filepath.Join(resolved.ConfigDir, spec.EffectiveDockerfile(resolved.Config))
 		writeKeyValue(h, "dockerfile", filepath.Clean(dockerfile))
 		if err := hashFile(h, dockerfile); err != nil && !os.IsNotExist(err) {
 			return "", err
 		}
-		contextDir := filepath.Join(resolved.ConfigDir, devcontainer.EffectiveContext(resolved.Config))
+		contextDir := filepath.Join(resolved.ConfigDir, spec.EffectiveContext(resolved.Config))
 		writeKeyValue(h, "context-dir", filepath.Clean(contextDir))
 		if err := hashDir(h, contextDir); err != nil && !os.IsNotExist(err) {
 			return "", err
