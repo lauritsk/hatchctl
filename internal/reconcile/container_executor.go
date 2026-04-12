@@ -315,14 +315,36 @@ func (e *Executor) readComposeConfig(ctx context.Context, resolved *devcontainer
 	if err != nil {
 		return composeConfig{}, err
 	}
+	output = sanitizeComposeJSONOutput(output)
 	var config composeConfig
 	if err := json.Unmarshal([]byte(output), &config); err != nil {
-		return composeConfig{}, err
+		return composeConfig{}, fmt.Errorf("parse docker compose config json: %w (output=%q)", err, truncateForError(output, 200))
 	}
 	if config.Name != "" {
 		resolved.ComposeProject = config.Name
 	}
 	return config, nil
+}
+
+func sanitizeComposeJSONOutput(output string) string {
+	output = strings.TrimSpace(output)
+	if strings.HasPrefix(output, "{") {
+		return output
+	}
+	if start := strings.Index(output, "{"); start >= 0 {
+		return strings.TrimSpace(output[start:])
+	}
+	return output
+}
+
+func truncateForError(value string, limit int) string {
+	if len(value) <= limit {
+		return value
+	}
+	if limit <= 3 {
+		return value[:limit]
+	}
+	return value[:limit-3] + "..."
 }
 
 func (e *Executor) findComposeContainer(ctx context.Context, resolved devcontainer.ResolvedConfig) (string, error) {

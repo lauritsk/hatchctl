@@ -27,7 +27,15 @@ const containerHelperBin = "/var/run/hatchctl/bridge/bin/hatchctl"
 
 const bridgeStartupTimeout = 5 * time.Second
 
-type containerConnectRunner func(string, int, io.Reader, io.Writer) error
+const (
+	bridgeOpenTimeout    = 30 * time.Second
+	bridgeConnectTimeout = 30 * time.Second
+	bridgeControlTimeout = 2 * time.Second
+)
+
+type bridgeOpenFunc func(context.Context, string) error
+
+type containerConnectRunner func(context.Context, string, int, io.Reader, io.Writer) error
 
 type statusFile struct {
 	SessionID   string          `json:"sessionId"`
@@ -68,9 +76,10 @@ type bridgeResponse struct {
 type bridgeHostService struct {
 	session     *Session
 	containerID string
-	openURL     func(string) error
+	openURL     bridgeOpenFunc
 	forwardURL  func(int) (int, bool, error)
 	connectPort containerConnectRunner
+	stop        func() error
 	mu          sync.Mutex
 	forwarded   map[int]forwardedPort
 }
@@ -146,7 +155,8 @@ func Serve(ctx context.Context, stateDir string, containerID string) error {
 		<-ctx.Done()
 		_ = tcpListener.Close()
 	}()
-	service := newBridgeHostServiceWithConnector(session, containerID, defaultOpen, defaultBridgeRuntimeDeps.containerConnect)
+	service := newBridgeHostServiceWithConnector(session, containerID, defaultOpenContext, defaultBridgeRuntimeDeps.containerConnect)
+	service.stop = func() error { return tcpListener.Close() }
 	return service.serveListener(ctx, tcpListener)
 }
 
@@ -165,10 +175,12 @@ func (s *bridgeHostService) serveListener(ctx context.Context, listener net.List
 }
 
 func newBridgeHostService(session *Session, containerID string, opener func(string) error) *bridgeHostService {
-	return newBridgeHostServiceWithConnector(session, containerID, opener, defaultBridgeRuntimeDeps.containerConnect)
+	return newBridgeHostServiceWithConnector(session, containerID, func(_ context.Context, target string) error {
+		return opener(target)
+	}, defaultBridgeRuntimeDeps.containerConnect)
 }
 
-func newBridgeHostServiceWithConnector(session *Session, containerID string, opener func(string) error, connector containerConnectRunner) *bridgeHostService {
+func newBridgeHostServiceWithConnector(session *Session, containerID string, opener bridgeOpenFunc, connector containerConnectRunner) *bridgeHostService {
 	service := &bridgeHostService{
 		session:     session,
 		containerID: containerID,
@@ -209,13 +221,27 @@ func (s *bridgeHostService) handleConn(conn net.Conn) {
 			_ = writeBridgeResponse(conn, bridgeResponse{Error: err.Error()})
 			return
 		}
-		if err := s.openURL(rewritten); err != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), bridgeOpenTimeout)
+		defer cancel()
+		if err := s.openURL(ctx, rewritten); err != nil {
 			_ = writeStatus(s.session, s.containerID, "open failed", err.Error(), s.forwardSnapshot(), 0, false)
 			_ = writeBridgeResponse(conn, bridgeResponse{Error: err.Error()})
 			return
 		}
 		_ = writeStatus(s.session, s.containerID, "open forwarded", "", s.forwardSnapshot(), 0, false)
 		_ = writeBridgeResponse(conn, bridgeResponse{OK: true})
+	case "stop":
+		if s.session.Token != "" && request.Token != s.session.Token {
+			_ = writeBridgeResponse(conn, bridgeResponse{Error: "unauthorized"})
+			return
+		}
+		_ = writeStatus(s.session, s.containerID, "stopping", "", s.forwardSnapshot(), 0, false)
+		_ = writeBridgeResponse(conn, bridgeResponse{OK: true})
+		if s.stop != nil {
+			go func() {
+				_ = s.stop()
+			}()
+		}
 	default:
 		_ = writeBridgeResponse(conn, bridgeResponse{Error: "unknown request"})
 	}
@@ -342,7 +368,9 @@ func (s *bridgeHostService) clearForward(port int, hostPort int) {
 
 func (s *bridgeHostService) handleForwardConn(port int, conn net.Conn) {
 	defer conn.Close()
-	if err := s.connectPort(s.containerID, port, conn, conn); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), bridgeConnectTimeout)
+	defer cancel()
+	if err := s.connectPort(ctx, s.containerID, port, conn, conn); err != nil {
 		_ = writeStatus(s.session, s.containerID, "forward failed", err.Error(), s.forwardSnapshot(), port, false)
 		return
 	}
@@ -385,13 +413,24 @@ func forwardEvent(containerPort int, hostPort int) string {
 }
 
 func defaultOpen(target string) error {
+	return defaultOpenContext(context.Background(), target)
+}
+
+func defaultOpenContext(ctx context.Context, target string) error {
 	if openCommand := os.Getenv("HATCHCTL_BRIDGE_OPEN_COMMAND"); openCommand != "" {
-		return defaultBridgeRuntimeDeps.hostCommand.Run(context.Background(), command.Command{Binary: "/bin/sh", Args: []string{"-lc", openCommand}, Env: command.AppendEnv(os.Environ(), "HATCHCTL_BRIDGE_URL="+target)})
+		return defaultBridgeRuntimeDeps.hostCommand.Run(ctx, command.Command{Binary: "/bin/sh", Args: []string{"-lc", openCommand}, Env: command.AppendEnv(os.Environ(), "HATCHCTL_BRIDGE_URL="+target)})
 	}
-	return defaultBridgeRuntimeDeps.hostCommand.Run(context.Background(), command.Command{Binary: "open", Args: []string{target}})
+	return defaultBridgeRuntimeDeps.hostCommand.Run(ctx, command.Command{Binary: "open", Args: []string{target}})
 }
 
 func stopExisting(session *Session) error {
+	if stopped, err := requestBridgeStop(session, bridgeControlTimeout); err == nil && stopped {
+		pid, pidErr := storefs.ReadBridgePID(session.PIDPath)
+		if pidErr == nil && pid > 0 && pid != os.Getpid() {
+			return waitForPIDStop(pid, 3*time.Second)
+		}
+		return nil
+	}
 	pid, err := storefs.ReadBridgePID(session.PIDPath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -404,6 +443,12 @@ func stopExisting(session *Session) error {
 	}
 	if pid == os.Getpid() {
 		return nil
+	}
+	if !isPIDRunning(pid) {
+		return nil
+	}
+	if !canForceStopBridge(session, pid) {
+		return fmt.Errorf("refusing to signal unexpected bridge process %d", pid)
 	}
 	process, err := os.FindProcess(pid)
 	if err != nil {
@@ -459,22 +504,31 @@ func isPIDRunning(pid int) bool {
 }
 
 func waitForBridgeTCP(port int, timeout time.Duration) error {
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	return waitForBridgeTCPContext(ctx, port)
+}
+
+func waitForBridgeTCPContext(ctx context.Context, port int) error {
+	for {
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("timed out waiting for bridge tcp listener on port %d", port)
+		}
 		conn, err := net.DialTimeout("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)), 200*time.Millisecond)
 		if err == nil {
 			_ = conn.Close()
 			return nil
 		}
-		time.Sleep(100 * time.Millisecond)
+		if err := sleepWithContextBridge(ctx, 100*time.Millisecond); err != nil {
+			return fmt.Errorf("timed out waiting for bridge tcp listener on port %d", port)
+		}
 	}
-	return fmt.Errorf("timed out waiting for bridge tcp listener on port %d", port)
 }
 
 func containerConnectWithDocker(client *docker.Client) containerConnectRunner {
-	return func(containerID string, port int, stdin io.Reader, stdout io.Writer) error {
+	return func(ctx context.Context, containerID string, port int, stdin io.Reader, stdout io.Writer) error {
 		var stderr strings.Builder
-		err := client.Run(context.Background(), docker.RunOptions{Args: []string{"exec", "-i", containerID, containerHelperBin, "bridge", "helper", "connect", "--port", strconv.Itoa(port)}, Stdin: stdin, Stdout: stdout, Stderr: &stderr})
+		err := client.Run(ctx, docker.RunOptions{Args: []string{"exec", "-i", containerID, containerHelperBin, "bridge", "helper", "connect", "--port", strconv.Itoa(port)}, Stdin: stdin, Stdout: stdout, Stderr: &stderr})
 		if err != nil {
 			message := strings.TrimSpace(stderr.String())
 			if message == "" {
@@ -488,6 +542,83 @@ func containerConnectWithDocker(client *docker.Client) containerConnectRunner {
 
 func listenBridgeTCP(port int) (net.Listener, error) {
 	return net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)))
+}
+
+func requestBridgeStop(session *Session, timeout time.Duration) (bool, error) {
+	response, err := requestBridgeControl(session, bridgeRequest{Kind: "stop", Token: sessionToken(session)}, timeout)
+	if err != nil {
+		return false, err
+	}
+	if response.Error != "" {
+		return false, errors.New(response.Error)
+	}
+	return response.OK, nil
+}
+
+func requestBridgeControl(session *Session, request bridgeRequest, timeout time.Duration) (bridgeResponse, error) {
+	if session == nil || session.Port == 0 {
+		return bridgeResponse{}, nil
+	}
+	conn, err := net.DialTimeout("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(session.Port)), timeout)
+	if err != nil {
+		return bridgeResponse{}, err
+	}
+	defer conn.Close()
+	_ = conn.SetDeadline(time.Now().Add(timeout))
+	if err := writeBridgeRequest(conn, request); err != nil {
+		return bridgeResponse{}, err
+	}
+	return readBridgeResponse(conn)
+}
+
+func canForceStopBridge(session *Session, pid int) bool {
+	if session == nil || session.StatusPath == "" || session.ID == "" || pid <= 0 {
+		return false
+	}
+	data, err := storefs.ReadBridgeStatus(session.StatusPath)
+	if err != nil {
+		return false
+	}
+	var status statusFile
+	if err := json.Unmarshal(data, &status); err != nil {
+		return false
+	}
+	return status.SessionID == session.ID && status.PID == pid
+}
+
+func waitForPIDStop(pid int, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if !isPIDRunning(pid) {
+			return nil
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if !isPIDRunning(pid) {
+		return nil
+	}
+	return fmt.Errorf("bridge process %d did not stop", pid)
+}
+
+func sleepWithContextBridge(ctx context.Context, delay time.Duration) error {
+	if delay <= 0 {
+		return ctx.Err()
+	}
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
+
+func sessionToken(session *Session) string {
+	if session == nil {
+		return ""
+	}
+	return session.Token
 }
 
 func stopStartedProcess(proc *os.Process) error {

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestAcquireWorkspaceLockWritesAndClearsCoordination(t *testing.T) {
@@ -109,5 +110,74 @@ func TestAcquireWorkspaceLockRecoversInvalidCoordination(t *testing.T) {
 	}
 	if record.ActiveOwner == nil || record.ActiveOwner.Command != "build" {
 		t.Fatalf("unexpected new owner %#v", record.ActiveOwner)
+	}
+}
+
+func TestActiveWorkspaceOwnerClearsExpiredOwner(t *testing.T) {
+	t.Parallel()
+
+	stateDir := t.TempDir()
+	record := CoordinationRecord{
+		Version: coordinationVersion,
+		ActiveOwner: &ActiveOwner{
+			OwnerID:        "expired",
+			Command:        "up",
+			PID:            999999,
+			Hostname:       "remote-host",
+			StartedAt:      time.Now().UTC().Add(-2 * leaseDuration),
+			UpdatedAt:      time.Now().UTC().Add(-2 * leaseDuration),
+			LeaseExpiresAt: time.Now().UTC().Add(-time.Second),
+		},
+	}
+	if err := writeCoordination(stateDir, record); err != nil {
+		t.Fatalf("write coordination: %v", err)
+	}
+
+	owner, err := activeWorkspaceOwner(stateDir)
+	if err != nil {
+		t.Fatalf("active owner: %v", err)
+	}
+	if owner != nil {
+		t.Fatalf("expected expired owner to be cleared, got %#v", owner)
+	}
+	record, err = ReadCoordination(stateDir)
+	if err != nil {
+		t.Fatalf("read repaired coordination: %v", err)
+	}
+	if record.ActiveOwner != nil {
+		t.Fatalf("expected repaired coordination to clear owner, got %#v", record.ActiveOwner)
+	}
+}
+
+func TestActiveWorkspaceOwnerKeepsLiveSameHostOwner(t *testing.T) {
+	t.Parallel()
+
+	hostname, err := os.Hostname()
+	if err != nil {
+		t.Fatalf("hostname: %v", err)
+	}
+	stateDir := t.TempDir()
+	record := CoordinationRecord{
+		Version: coordinationVersion,
+		ActiveOwner: &ActiveOwner{
+			OwnerID:        "live",
+			Command:        "build",
+			PID:            os.Getpid(),
+			Hostname:       hostname,
+			StartedAt:      time.Now().UTC().Add(-time.Minute),
+			UpdatedAt:      time.Now().UTC().Add(-time.Minute),
+			LeaseExpiresAt: time.Now().UTC().Add(-time.Second),
+		},
+	}
+	if err := writeCoordination(stateDir, record); err != nil {
+		t.Fatalf("write coordination: %v", err)
+	}
+
+	owner, err := activeWorkspaceOwner(stateDir)
+	if err != nil {
+		t.Fatalf("active owner: %v", err)
+	}
+	if owner == nil || owner.OwnerID != "live" {
+		t.Fatalf("expected live owner to remain visible, got %#v", owner)
 	}
 }

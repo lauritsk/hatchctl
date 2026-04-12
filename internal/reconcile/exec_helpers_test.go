@@ -141,6 +141,34 @@ func TestExecRemoteEnvPreservesExplicitHomeAndDockerExecRequest(t *testing.T) {
 	}
 }
 
+func TestExecFallsBackWhenPasswdEntryMissing(t *testing.T) {
+	t.Parallel()
+
+	executor := &Executor{engine: &fakeExecutorEngine{execOutputFunc: func(_ context.Context, req dockercli.ExecRequest) (string, error) {
+		return "root:x:0:0:root:/root:/bin/sh\n", nil
+	}}}
+	observed := ObservedState{
+		Resolved:  devcontainer.ResolvedConfig{RemoteWorkspace: "/workspaces/demo", Merged: spec.MergedConfig{RemoteEnv: map[string]string{"REMOTE": "1"}}},
+		Target:    RuntimeTarget{PrimaryContainer: "container-123"},
+		Container: &docker.ContainerInspect{Config: docker.InspectConfig{Env: []string{"HOME=/fallback-home"}}},
+	}
+
+	command, err := executor.execCommand(context.Background(), observed, "vscode", nil)
+	if err != nil {
+		t.Fatalf("exec command fallback: %v", err)
+	}
+	if !reflect.DeepEqual(command, []string{"/bin/sh"}) {
+		t.Fatalf("unexpected shell fallback %#v", command)
+	}
+	env, err := executor.execRemoteEnv(context.Background(), observed, "vscode", nil)
+	if err != nil {
+		t.Fatalf("exec env fallback: %v", err)
+	}
+	if !reflect.DeepEqual(env, map[string]string{"REMOTE": "1", "HOME": "/fallback-home"}) {
+		t.Fatalf("unexpected env fallback %#v", env)
+	}
+}
+
 func TestExecArgsAndEffectiveRemoteUserHelpers(t *testing.T) {
 	t.Parallel()
 

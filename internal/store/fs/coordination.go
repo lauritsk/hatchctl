@@ -57,6 +57,7 @@ type WorkspaceLock struct {
 	released bool
 	cancel   context.CancelFunc
 	done     chan struct{}
+	renewErr error
 }
 
 func AcquireWorkspaceLock(ctx context.Context, stateDir string, command string) (*WorkspaceLock, error) {
@@ -181,7 +182,7 @@ func (l *WorkspaceLock) Release() error {
 	if err := l.lockFile.Close(); err != nil {
 		return err
 	}
-	return nil
+	return errors.Join(nil, l.err())
 }
 
 func (l *WorkspaceLock) renew(ctx context.Context) {
@@ -194,14 +195,22 @@ func (l *WorkspaceLock) renew(ctx context.Context) {
 			return
 		case <-ticker.C:
 			record, err := readCoordination(l.stateDir)
-			if err != nil || record.ActiveOwner == nil || record.ActiveOwner.OwnerID != l.owner.OwnerID {
-				continue
+			if err != nil {
+				l.setErr(err)
+				return
+			}
+			if record.ActiveOwner == nil || record.ActiveOwner.OwnerID != l.owner.OwnerID {
+				l.setErr(fmt.Errorf("workspace coordination ownership changed while lock held"))
+				return
 			}
 			now := time.Now().UTC()
 			record.ActiveOwner.UpdatedAt = now
 			record.ActiveOwner.LeaseExpiresAt = now.Add(leaseDuration)
 			record.Version = coordinationVersion
-			_ = writeCoordination(l.stateDir, record)
+			if err := writeCoordination(l.stateDir, record); err != nil {
+				l.setErr(err)
+				return
+			}
 		}
 	}
 }
@@ -241,7 +250,33 @@ func activeWorkspaceOwner(stateDir string) (*ActiveOwner, error) {
 	if err != nil {
 		return nil, err
 	}
-	return record.ActiveOwner, nil
+	owner, changed := normalizedActiveOwner(record.ActiveOwner)
+	if !changed {
+		return owner, nil
+	}
+	record.ActiveOwner = owner
+	record.Version = coordinationVersion
+	if err := writeCoordination(stateDir, record); err != nil {
+		return nil, err
+	}
+	return owner, nil
+}
+
+func (l *WorkspaceLock) setErr(err error) {
+	if err == nil {
+		return
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.renewErr == nil {
+		l.renewErr = err
+	}
+}
+
+func (l *WorkspaceLock) err() error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.renewErr
 }
 
 func openWorkspaceLockFile(path string) (*os.File, error) {
@@ -283,4 +318,22 @@ func processRunning(pid int) bool {
 	}
 	err := syscall.Kill(pid, 0)
 	return err == nil || errors.Is(err, syscall.EPERM)
+}
+
+func normalizedActiveOwner(owner *ActiveOwner) (*ActiveOwner, bool) {
+	if owner == nil {
+		return nil, false
+	}
+	now := time.Now().UTC()
+	hostname, err := os.Hostname()
+	if err == nil && sameHost(owner.Hostname, hostname) && processRunning(owner.PID) {
+		return owner, false
+	}
+	if leaseExpired(owner, now) {
+		return nil, true
+	}
+	if err == nil && sameHost(owner.Hostname, hostname) && !processRunning(owner.PID) {
+		return nil, true
+	}
+	return owner, false
 }

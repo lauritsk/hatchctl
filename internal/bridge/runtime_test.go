@@ -161,6 +161,37 @@ func TestBridgeHostServiceRewritesEmbeddedLocalhostCallbackURL(t *testing.T) {
 	}
 }
 
+func TestBridgeHostServiceHandlesAuthenticatedStopRequest(t *testing.T) {
+	t.Parallel()
+
+	stopped := make(chan struct{}, 1)
+	session := &Session{ID: "session", Token: "secret", StatusPath: filepath.Join(t.TempDir(), "bridge-status.json")}
+	service := newBridgeHostService(session, "container", func(string) error { return nil })
+	service.stop = func() error {
+		stopped <- struct{}{}
+		return nil
+	}
+	client, server := net.Pipe()
+	defer client.Close()
+	go service.handleConn(server)
+
+	if err := writeBridgeRequest(client, bridgeRequest{Kind: "stop", Token: "secret"}); err != nil {
+		t.Fatalf("write stop request: %v", err)
+	}
+	response, err := readBridgeResponse(client)
+	if err != nil {
+		t.Fatalf("read stop response: %v", err)
+	}
+	if !response.OK {
+		t.Fatalf("unexpected stop response %#v", response)
+	}
+	select {
+	case <-stopped:
+	case <-time.After(time.Second):
+		t.Fatal("expected stop callback to run")
+	}
+}
+
 func TestHelperConnectCopiesTraffic(t *testing.T) {
 	t.Parallel()
 
@@ -213,7 +244,7 @@ func TestBridgeHostServiceConnectsToContainerPort(t *testing.T) {
 	t.Parallel()
 	session := &Session{ID: "session", StatusPath: filepath.Join(t.TempDir(), "bridge-status.json")}
 	service := newBridgeHostService(session, "container", func(string) error { return nil })
-	service.connectPort = func(containerID string, port int, stdin io.Reader, stdout io.Writer) error {
+	service.connectPort = func(_ context.Context, containerID string, port int, stdin io.Reader, stdout io.Writer) error {
 		if containerID != "container" {
 			t.Fatalf("unexpected container id %q", containerID)
 		}
@@ -254,7 +285,7 @@ func TestBridgeHostServiceReportsForwardError(t *testing.T) {
 	t.Parallel()
 	session := &Session{ID: "session", StatusPath: filepath.Join(t.TempDir(), "bridge-status.json")}
 	service := newBridgeHostService(session, "container", func(string) error { return nil })
-	service.connectPort = func(string, int, io.Reader, io.Writer) error {
+	service.connectPort = func(context.Context, string, int, io.Reader, io.Writer) error {
 		return fmt.Errorf("connect failed")
 	}
 	client, server := net.Pipe()
@@ -292,7 +323,7 @@ func TestBridgeHostServiceForwardsSingleUseExactPortWhenAvailable(t *testing.T) 
 	if err := reserved.Close(); err != nil {
 		t.Fatal(err)
 	}
-	service.connectPort = func(_ string, port int, stdin io.Reader, stdout io.Writer) error {
+	service.connectPort = func(_ context.Context, _ string, port int, stdin io.Reader, stdout io.Writer) error {
 		if port != forwardPort {
 			t.Fatalf("unexpected port %d", port)
 		}
@@ -849,11 +880,15 @@ func TestStopExistingTerminatesPIDFromFile(t *testing.T) {
 	})
 
 	pidPath := filepath.Join(t.TempDir(), "bridge.pid")
+	statusPath := filepath.Join(t.TempDir(), "bridge-status.json")
 	if err := os.WriteFile(pidPath, []byte(strconv.Itoa(cmd.Process.Pid)), 0o600); err != nil {
 		t.Fatalf("write pid file: %v", err)
 	}
+	if err := os.WriteFile(statusPath, []byte(fmt.Sprintf(`{"sessionId":"session","pid":%d}`, cmd.Process.Pid)), 0o600); err != nil {
+		t.Fatalf("write status file: %v", err)
+	}
 
-	if err := stopExisting(&Session{PIDPath: pidPath}); err != nil {
+	if err := stopExisting(&Session{ID: "session", PIDPath: pidPath, StatusPath: statusPath}); err != nil {
 		t.Fatalf("stop existing process: %v", err)
 	}
 
@@ -870,6 +905,34 @@ func TestStopExistingTerminatesPIDFromFile(t *testing.T) {
 		t.Fatalf("expected pid %d to stop after SIGTERM", cmd.Process.Pid)
 	}
 	cmd.Process = nil
+}
+
+func TestStopExistingRefusesUnexpectedPIDWithoutBridgeStatus(t *testing.T) {
+	t.Parallel()
+
+	cmd := exec.Command("sleep", "10")
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start sleep process: %v", err)
+	}
+	t.Cleanup(func() {
+		if cmd.Process != nil {
+			_ = cmd.Process.Kill()
+			_, _ = cmd.Process.Wait()
+		}
+	})
+
+	pidPath := filepath.Join(t.TempDir(), "bridge.pid")
+	if err := os.WriteFile(pidPath, []byte(strconv.Itoa(cmd.Process.Pid)), 0o600); err != nil {
+		t.Fatalf("write pid file: %v", err)
+	}
+
+	err := stopExisting(&Session{ID: "session", PIDPath: pidPath})
+	if err == nil || !strings.Contains(err.Error(), "refusing to signal unexpected bridge process") {
+		t.Fatalf("expected refusal for unexpected process, got %v", err)
+	}
+	if !isPIDRunning(cmd.Process.Pid) {
+		t.Fatalf("expected pid %d to still be running", cmd.Process.Pid)
+	}
 }
 
 func TestStopExistingIgnoresCurrentProcessAndMissingPIDFile(t *testing.T) {

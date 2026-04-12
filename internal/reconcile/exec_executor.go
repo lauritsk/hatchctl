@@ -81,29 +81,35 @@ func (e *Executor) execRemoteEnv(ctx context.Context, observed ObservedState, us
 }
 
 func (e *Executor) resolveExecShell(ctx context.Context, observed ObservedState, user string) (string, error) {
-	entry, err := e.lookupExecUserEntry(ctx, observed, user)
+	entry, found, err := e.lookupExecUserEntry(ctx, observed, user)
 	if err != nil {
 		return "", err
+	}
+	if !found || entry.Shell == "" {
+		return "/bin/sh", nil
 	}
 	return entry.Shell, nil
 }
 
 func (e *Executor) resolveExecHome(ctx context.Context, observed ObservedState, user string) (string, error) {
-	entry, err := e.lookupExecUserEntry(ctx, observed, user)
+	entry, found, err := e.lookupExecUserEntry(ctx, observed, user)
 	if err != nil {
 		return "", err
+	}
+	if !found || entry.Home == "" {
+		return fallbackExecHome(observed, user), nil
 	}
 	return entry.Home, nil
 }
 
-func (e *Executor) lookupExecUserEntry(ctx context.Context, observed ObservedState, user string) (passwdEntry, error) {
+func (e *Executor) lookupExecUserEntry(ctx context.Context, observed ObservedState, user string) (passwdEntry, bool, error) {
 	containerID := observed.Target.PrimaryContainer
 	passwd, err := e.engine.ExecOutput(ctx, dockercli.ExecRequest{ContainerID: containerID, User: user, Command: []string{"cat", passwdFilePath}})
 	if err != nil {
-		return passwdEntry{}, fmt.Errorf("resolve passwd entry for container user %q: %w", firstNonEmpty(user, "default"), err)
+		return passwdEntry{}, false, fmt.Errorf("resolve passwd entry for container user %q: %w", firstNonEmpty(user, "default"), err)
 	}
-	entry, _ := passwdEntryFromPasswd(passwd, user)
-	return entry, nil
+	entry, found := passwdEntryFromPasswd(passwd, user)
+	return entry, found, nil
 }
 
 type passwdEntry struct {
@@ -141,6 +147,25 @@ func passwdLookup(user string) (string, string) {
 		return "", name
 	}
 	return name, ""
+}
+
+func fallbackExecHome(observed ObservedState, user string) string {
+	if observed.Container != nil {
+		for _, entry := range observed.Container.Config.Env {
+			key, value, ok := strings.Cut(entry, "=")
+			if ok && key == "HOME" && value != "" {
+				return value
+			}
+		}
+	}
+	name, uid := passwdLookup(user)
+	if uid == "0" || name == "root" {
+		return "/root"
+	}
+	if name != "" && !isNumericUser(name) {
+		return "/home/" + name
+	}
+	return ""
 }
 
 func execArgs(req dockercli.ExecRequest) []string {

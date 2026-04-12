@@ -326,6 +326,56 @@ func TestResolveSourceRepairsBrokenCachedTarballDirectory(t *testing.T) {
 	}
 }
 
+func TestPopulateFeatureCacheSkipsSecondPopulateAfterFirstPublish(t *testing.T) {
+	t.Parallel()
+
+	baseDir := t.TempDir()
+	featureDir := filepath.Join(baseDir, "sha256-test")
+	started := make(chan struct{})
+	finish := make(chan struct{})
+	firstErr := make(chan error, 1)
+	go func() {
+		firstErr <- populateFeatureCache(baseDir, featureDir, func(tempDir string) error {
+			close(started)
+			<-finish
+			if err := os.WriteFile(filepath.Join(tempDir, "devcontainer-feature.json"), []byte(`{"id":"winner"}`), 0o644); err != nil {
+				return err
+			}
+			return os.WriteFile(filepath.Join(tempDir, "winner.txt"), []byte("winner"), 0o644)
+		})
+	}()
+	<-started
+
+	secondRan := false
+	secondDone := make(chan error, 1)
+	go func() {
+		secondDone <- populateFeatureCache(baseDir, featureDir, func(tempDir string) error {
+			secondRan = true
+			if err := os.WriteFile(filepath.Join(tempDir, "devcontainer-feature.json"), []byte(`{"id":"loser"}`), 0o644); err != nil {
+				return err
+			}
+			return os.WriteFile(filepath.Join(tempDir, "loser.txt"), []byte("loser"), 0o644)
+		})
+	}()
+	close(finish)
+
+	if err := <-firstErr; err != nil {
+		t.Fatalf("first populate: %v", err)
+	}
+	if err := <-secondDone; err != nil {
+		t.Fatalf("second populate: %v", err)
+	}
+	if secondRan {
+		t.Fatal("expected second populate to reuse published cache")
+	}
+	if _, err := os.Stat(filepath.Join(featureDir, "winner.txt")); err != nil {
+		t.Fatalf("expected first publish to remain intact: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(featureDir, "loser.txt")); !os.IsNotExist(err) {
+		t.Fatalf("expected second populate not to overwrite cache, got %v", err)
+	}
+}
+
 func TestResolveSourceUsesCachedGitHubReleaseWhenNetworkDisabled(t *testing.T) {
 	t.Parallel()
 

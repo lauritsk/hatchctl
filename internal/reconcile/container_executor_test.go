@@ -92,6 +92,26 @@ func TestReadComposeConfigUpdatesResolvedProject(t *testing.T) {
 	}
 }
 
+func TestReadComposeConfigStripsLeadingNoise(t *testing.T) {
+	t.Parallel()
+
+	executor := NewExecutorWithIO(nil, nil, nil, nil)
+	executor.engine = &fakeExecutorEngine{
+		composeConfigFunc: func(_ context.Context, req dockercli.ComposeConfigRequest) (string, error) {
+			return "warning: plugin emitted noise\n{\"name\":\"resolved-project\"}", nil
+		},
+	}
+	resolved := devcontainer.ResolvedConfig{ConfigDir: "/workspace/.devcontainer", ComposeFiles: []string{"compose.yml"}}
+
+	config, err := executor.readComposeConfig(context.Background(), &resolved)
+	if err != nil {
+		t.Fatalf("read compose config with noise: %v", err)
+	}
+	if config.Name != "resolved-project" || resolved.ComposeProject != "resolved-project" {
+		t.Fatalf("unexpected compose config %#v resolved=%#v", config, resolved)
+	}
+}
+
 func TestRenderComposeOverrideIncludesDerivedSettings(t *testing.T) {
 	t.Parallel()
 

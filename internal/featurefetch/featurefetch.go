@@ -16,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/lauritsk/hatchctl/internal/security"
@@ -233,6 +234,11 @@ func populateFeatureCache(baseDir string, featureDir string, populate func(strin
 	if err := os.MkdirAll(baseDir, 0o755); err != nil {
 		return err
 	}
+	unlock, err := lockFeatureCache(baseDir)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	if ok, err := hasFeatureManifest(featureDir); err != nil {
 		return err
 	} else if ok {
@@ -272,6 +278,22 @@ func populateFeatureCache(baseDir string, featureDir string, populate func(strin
 	}
 	keepTemp = true
 	return nil
+}
+
+func lockFeatureCache(baseDir string) (func(), error) {
+	lockPath := filepath.Join(baseDir, ".cache.lock")
+	file, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return nil, err
+	}
+	if err := syscall.Flock(int(file.Fd()), syscall.LOCK_EX); err != nil {
+		_ = file.Close()
+		return nil, err
+	}
+	return func() {
+		_ = syscall.Flock(int(file.Fd()), syscall.LOCK_UN)
+		_ = file.Close()
+	}, nil
 }
 
 func hasFeatureManifest(featureDir string) (bool, error) {

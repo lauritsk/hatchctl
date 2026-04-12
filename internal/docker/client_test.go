@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/lauritsk/hatchctl/internal/command"
 )
@@ -155,6 +156,36 @@ func TestShouldCombineStreams(t *testing.T) {
 				t.Fatalf("shouldCombineStreams(%v) = %t want %t", tc.args, got, tc.want)
 			}
 		})
+	}
+}
+
+func TestRunReturnsPromptlyWhenContextCanceledDuringRetryBackoff(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	attempts := 0
+	client := &Client{Binary: "docker", runner: stubCommandRunner{
+		run: func(_ context.Context, cmd command.Command) error {
+			attempts++
+			if attempts == 1 {
+				cancel()
+			}
+			exitErr := exec.Command("sh", "-lc", "exit 255").Run()
+			return exitErr
+		},
+	}}
+
+	started := time.Now()
+	err := client.Run(ctx, RunOptions{Args: []string{"ps"}})
+	var dockerErr *Error
+	if !errors.As(err, &dockerErr) {
+		t.Fatalf("expected docker error, got %v", err)
+	}
+	if attempts != 1 {
+		t.Fatalf("expected retry loop to stop after cancellation, got %d attempts", attempts)
+	}
+	if elapsed := time.Since(started); elapsed > 500*time.Millisecond {
+		t.Fatalf("expected cancellation-aware retry backoff, took %v", elapsed)
 	}
 }
 

@@ -83,7 +83,9 @@ func (c *Client) Run(ctx context.Context, opts RunOptions) error {
 			if !retryableExit255(err) || attempt == maxAttempts || ctx.Err() != nil {
 				return &Error{Args: append([]string(nil), opts.Args...), Stderr: combined.String(), Err: err}
 			}
-			time.Sleep(time.Duration(attempt) * time.Second)
+			if err := sleepWithContext(ctx, time.Duration(attempt)*time.Second); err != nil {
+				return &Error{Args: append([]string(nil), opts.Args...), Stderr: combined.String(), Err: err}
+			}
 			continue
 		}
 		stderr := opts.Stderr
@@ -98,9 +100,25 @@ func (c *Client) Run(ctx context.Context, opts RunOptions) error {
 		if !retryableExit255(err) || attempt == maxAttempts || ctx.Err() != nil {
 			return &Error{Args: append([]string(nil), opts.Args...), Stderr: stderrBuffer.String(), Err: err}
 		}
-		time.Sleep(time.Duration(attempt) * time.Second)
+		if err := sleepWithContext(ctx, time.Duration(attempt)*time.Second); err != nil {
+			return &Error{Args: append([]string(nil), opts.Args...), Stderr: stderrBuffer.String(), Err: err}
+		}
 	}
 	return nil
+}
+
+func sleepWithContext(ctx context.Context, delay time.Duration) error {
+	if delay <= 0 {
+		return ctx.Err()
+	}
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 func retryableExit255(err error) bool {
