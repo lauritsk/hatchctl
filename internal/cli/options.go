@@ -13,6 +13,13 @@ type globalOptions struct {
 	Debug   bool
 }
 
+func (o *globalOptions) app() appcore.GlobalOptions {
+	if o == nil {
+		return appcore.GlobalOptions{}
+	}
+	return appcore.GlobalOptions{Verbose: o.Verbose, Debug: o.Debug}
+}
+
 func addWorkspaceFlags(cmd *cobra.Command, workspace *string, configPath *string) {
 	cmd.Flags().StringVar(workspace, "workspace", "", "workspace folder (defaults to current directory)")
 	cmd.Flags().StringVar(configPath, "config", "", "path to devcontainer.json")

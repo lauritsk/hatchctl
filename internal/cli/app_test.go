@@ -17,63 +17,12 @@ import (
 	"github.com/lauritsk/hatchctl/internal/reconcile"
 )
 
-type stubService struct {
-	up           func(context.Context, appcore.UpRequest) (appcore.UpResult, error)
-	build        func(context.Context, appcore.BuildRequest) (appcore.BuildResult, error)
-	exec         func(context.Context, appcore.ExecRequest) (int, error)
-	readConfig   func(context.Context, appcore.ReadConfigRequest) (appcore.ReadConfigResult, error)
-	runLifecycle func(context.Context, appcore.RunLifecycleRequest) (appcore.RunLifecycleResult, error)
-	bridgeDoctor func(context.Context, appcore.BridgeDoctorRequest) (bridge.Report, error)
-}
-
-func (s stubService) Up(ctx context.Context, opts appcore.UpRequest) (appcore.UpResult, error) {
-	if s.up != nil {
-		return s.up(ctx, opts)
-	}
-	return appcore.UpResult{}, nil
-}
-
-func (s stubService) Build(ctx context.Context, opts appcore.BuildRequest) (appcore.BuildResult, error) {
-	if s.build != nil {
-		return s.build(ctx, opts)
-	}
-	return appcore.BuildResult{}, nil
-}
-
-func (s stubService) Exec(ctx context.Context, opts appcore.ExecRequest) (int, error) {
-	if s.exec != nil {
-		return s.exec(ctx, opts)
-	}
-	return 0, nil
-}
-
-func (s stubService) ReadConfig(ctx context.Context, opts appcore.ReadConfigRequest) (appcore.ReadConfigResult, error) {
-	if s.readConfig != nil {
-		return s.readConfig(ctx, opts)
-	}
-	return appcore.ReadConfigResult{}, nil
-}
-
-func (s stubService) RunLifecycle(ctx context.Context, opts appcore.RunLifecycleRequest) (appcore.RunLifecycleResult, error) {
-	if s.runLifecycle != nil {
-		return s.runLifecycle(ctx, opts)
-	}
-	return appcore.RunLifecycleResult{}, nil
-}
-
-func (s stubService) BridgeDoctor(ctx context.Context, opts appcore.BridgeDoctorRequest) (bridge.Report, error) {
-	if s.bridgeDoctor != nil {
-		return s.bridgeDoctor(ctx, opts)
-	}
-	return bridge.Report{}, nil
-}
-
 func TestParseGlobalOptionsStripsLeadingVerboseFlags(t *testing.T) {
 	var got appcore.UpRequest
-	h := newAppHarness(t, stubService{up: func(_ context.Context, opts appcore.UpRequest) (appcore.UpResult, error) {
+	h := newAppHarness(t, stubUp(func(_ context.Context, opts appcore.UpRequest) (appcore.UpResult, error) {
 		got = opts
 		return appcore.UpResult{}, nil
-	}})
+	}))
 
 	if err := h.run("--verbose", "--debug", "up", "--workspace", "/tmp/demo"); err != nil {
 		t.Fatalf("run app: %v", err)
@@ -91,10 +40,10 @@ func TestParseGlobalOptionsStripsLeadingVerboseFlags(t *testing.T) {
 
 func TestRunUpPassesFeatureTimeoutFlag(t *testing.T) {
 	var got appcore.UpRequest
-	h := newAppHarness(t, stubService{up: func(_ context.Context, opts appcore.UpRequest) (appcore.UpResult, error) {
+	h := newAppHarness(t, stubUp(func(_ context.Context, opts appcore.UpRequest) (appcore.UpResult, error) {
 		got = opts
 		return appcore.UpResult{}, nil
-	}})
+	}))
 
 	if err := h.run("up", "--feature-timeout", "45s"); err != nil {
 		t.Fatalf("run app: %v", err)
@@ -106,10 +55,10 @@ func TestRunUpPassesFeatureTimeoutFlag(t *testing.T) {
 
 func TestRunUpPassesDotfilesFlags(t *testing.T) {
 	var got appcore.UpRequest
-	h := newAppHarness(t, stubService{up: func(_ context.Context, opts appcore.UpRequest) (appcore.UpResult, error) {
+	h := newAppHarness(t, stubUp(func(_ context.Context, opts appcore.UpRequest) (appcore.UpResult, error) {
 		got = opts
 		return appcore.UpResult{}, nil
-	}})
+	}))
 
 	if err := h.run("up", "--dotfiles", "github.com/lauritsk/dotfiles", "--dotfiles-install-command", "install", "--dotfiles-target-path", "~/dotfiles"); err != nil {
 		t.Fatalf("run app: %v", err)
@@ -121,10 +70,10 @@ func TestRunUpPassesDotfilesFlags(t *testing.T) {
 
 func TestRunUpAcceptsExplicitDotfilesRepositoryFlag(t *testing.T) {
 	var got appcore.UpRequest
-	h := newAppHarness(t, stubService{up: func(_ context.Context, opts appcore.UpRequest) (appcore.UpResult, error) {
+	h := newAppHarness(t, stubUp(func(_ context.Context, opts appcore.UpRequest) (appcore.UpResult, error) {
 		got = opts
 		return appcore.UpResult{}, nil
-	}})
+	}))
 
 	if err := h.run("up", "--dotfiles-repository", "github.com/lauritsk/dotfiles"); err != nil {
 		t.Fatalf("run app: %v", err)
@@ -145,7 +94,7 @@ func TestRunBuildRejectsDotfilesFlags(t *testing.T) {
 
 func TestRunUpUsesGlobalDebugForProgressAndPlan(t *testing.T) {
 	called := false
-	h := newAppHarness(t, stubService{up: func(_ context.Context, opts appcore.UpRequest) (appcore.UpResult, error) {
+	h := newAppHarness(t, stubUp(func(_ context.Context, opts appcore.UpRequest) (appcore.UpResult, error) {
 		called = true
 		if opts.Global.Verbose || !opts.Global.Debug {
 			t.Fatalf("expected verbose+debug options, got %#v", opts)
@@ -156,7 +105,7 @@ func TestRunUpUsesGlobalDebugForProgressAndPlan(t *testing.T) {
 		opts.IO.Events.Emit(ui.Event{Kind: ui.EventProgress, Message: "Resolving development container"})
 		opts.IO.Events.Emit(ui.Event{Kind: ui.EventDebug, Message: "plan source=image config=/tmp/devcontainer.json workspace=/workspace state=/tmp/state target-image=hatchctl-demo"})
 		return appcore.UpResult{ContainerID: "abc123", Image: "hatchctl-demo", RemoteWorkspaceFolder: "/workspace", StateDir: "/tmp/state"}, nil
-	}})
+	}))
 
 	if err := h.run("--debug", "up"); err != nil {
 		t.Fatalf("run app: %v", err)
@@ -169,9 +118,9 @@ func TestRunUpUsesGlobalDebugForProgressAndPlan(t *testing.T) {
 }
 
 func TestRunUpPrintsSuggestedExecCommands(t *testing.T) {
-	h := newAppHarness(t, stubService{up: func(_ context.Context, _ appcore.UpRequest) (appcore.UpResult, error) {
+	h := newAppHarness(t, stubUp(func(_ context.Context, _ appcore.UpRequest) (appcore.UpResult, error) {
 		return appcore.UpResult{ContainerID: "abc123", Image: "hatchctl-demo", RemoteWorkspaceFolder: "/workspace", StateDir: "/tmp/state"}, nil
-	}})
+	}))
 
 	if err := h.run("up", "--workspace", "../my project", "--config", "dev/container.json", "--feature-timeout", "45s", "--lockfile-policy", "frozen"); err != nil {
 		t.Fatalf("run app: %v", err)
@@ -188,12 +137,12 @@ func TestRunUpPrintsSuggestedExecCommands(t *testing.T) {
 }
 
 func TestRunUpWithSSHPrintsSuggestedExecCommandsWithSSH(t *testing.T) {
-	h := newAppHarness(t, stubService{up: func(_ context.Context, opts appcore.UpRequest) (appcore.UpResult, error) {
+	h := newAppHarness(t, stubUp(func(_ context.Context, opts appcore.UpRequest) (appcore.UpResult, error) {
 		if !opts.Defaults.SSHAgent {
 			t.Fatal("expected ssh-agent passthrough to be enabled")
 		}
 		return appcore.UpResult{ContainerID: "abc123", Image: "hatchctl-demo", RemoteWorkspaceFolder: "/workspace", StateDir: "/tmp/state"}, nil
-	}})
+	}))
 
 	if err := h.run("up", "--ssh"); err != nil {
 		t.Fatalf("run app: %v", err)
@@ -204,12 +153,12 @@ func TestRunUpWithSSHPrintsSuggestedExecCommandsWithSSH(t *testing.T) {
 }
 
 func TestRunUpJSONDisablesProgressOutput(t *testing.T) {
-	h := newAppHarness(t, stubService{up: func(_ context.Context, opts appcore.UpRequest) (appcore.UpResult, error) {
+	h := newAppHarness(t, stubUp(func(_ context.Context, opts appcore.UpRequest) (appcore.UpResult, error) {
 		if opts.IO.Events != nil {
 			t.Fatal("expected no event sink for json output")
 		}
 		return appcore.UpResult{ContainerID: "abc123", Image: "hatchctl-demo", RemoteWorkspaceFolder: "/workspace", StateDir: "/tmp/state"}, nil
-	}})
+	}))
 
 	if err := h.run("--verbose", "up", "--json"); err != nil {
 		t.Fatalf("run app: %v", err)
@@ -224,13 +173,13 @@ func TestRunUpJSONDisablesProgressOutput(t *testing.T) {
 
 func TestRunExecAllowsMissingCommand(t *testing.T) {
 	called := false
-	h := newAppHarness(t, stubService{exec: func(_ context.Context, opts appcore.ExecRequest) (int, error) {
+	h := newAppHarness(t, stubExec(func(_ context.Context, opts appcore.ExecRequest) (int, error) {
 		called = true
 		if len(opts.Args) != 0 {
 			t.Fatalf("expected no exec args, got %#v", opts.Args)
 		}
 		return 0, nil
-	}})
+	}))
 
 	if err := h.run("exec"); err != nil {
 		t.Fatalf("run app: %v", err)
@@ -241,11 +190,7 @@ func TestRunExecAllowsMissingCommand(t *testing.T) {
 }
 
 func TestRunExecJSONRequiresCommand(t *testing.T) {
-	isolateConfigHome(t)
-
-	var out bytes.Buffer
-	var errOut bytes.Buffer
-	app := NewWithService(&out, &errOut, appcore.NewWithExecutorWithoutMutationLock(&reconcile.Executor{}))
+	app, _, _ := newBufferedApp(t, appcore.NewWithExecutorWithoutMutationLock(&reconcile.Executor{}))
 
 	err := app.Run(context.Background(), []string{"exec", "--json"})
 	if err == nil || !strings.Contains(err.Error(), "missing command for exec --json") || !strings.Contains(err.Error(), "hatchctl exec --json -- <command>") {
@@ -254,11 +199,7 @@ func TestRunExecJSONRequiresCommand(t *testing.T) {
 }
 
 func TestExecHelpExplainsShellAndSeparator(t *testing.T) {
-	isolateConfigHome(t)
-
-	var out bytes.Buffer
-	var errOut bytes.Buffer
-	app := NewWithService(&out, &errOut, appcore.NewWithExecutorWithoutMutationLock(&reconcile.Executor{}))
+	app, out, errOut := newBufferedApp(t, appcore.NewWithExecutorWithoutMutationLock(&reconcile.Executor{}))
 
 	if err := app.Run(context.Background(), []string{"exec", "--help"}); err != nil {
 		t.Fatalf("run app: %v", err)
@@ -276,17 +217,13 @@ func TestExecHelpExplainsShellAndSeparator(t *testing.T) {
 }
 
 func TestRunExecJSONCapturesOutputAndEnv(t *testing.T) {
-	isolateConfigHome(t)
-
-	var out bytes.Buffer
-	var errOut bytes.Buffer
 	var got appcore.ExecRequest
-	app := NewWithService(&out, &errOut, stubService{exec: func(_ context.Context, opts appcore.ExecRequest) (int, error) {
+	app, out, errOut := newBufferedApp(t, stubExec(func(_ context.Context, opts appcore.ExecRequest) (int, error) {
 		got = opts
 		_, _ = opts.IO.Stdout.Write([]byte("command output\n"))
 		_, _ = opts.IO.Stderr.Write([]byte("warning output\n"))
 		return 0, nil
-	}})
+	}))
 
 	err := app.Run(context.Background(), []string{"exec", "--json", "--env", "A=1", "--env", "EMPTY", "--env", "PAIR=a=b", "--", "sh", "-lc", "echo hi"})
 	if err != nil {
@@ -316,16 +253,12 @@ func TestRunExecJSONCapturesOutputAndEnv(t *testing.T) {
 }
 
 func TestRunExecPassesSSHFlag(t *testing.T) {
-	isolateConfigHome(t)
-
-	var out bytes.Buffer
-	var errOut bytes.Buffer
-	app := NewWithService(&out, &errOut, stubService{exec: func(_ context.Context, opts appcore.ExecRequest) (int, error) {
+	app, _, _ := newBufferedApp(t, stubExec(func(_ context.Context, opts appcore.ExecRequest) (int, error) {
 		if !opts.Defaults.SSHAgent {
 			t.Fatal("expected ssh-agent passthrough flag")
 		}
 		return 0, nil
-	}})
+	}))
 
 	if err := app.Run(context.Background(), []string{"exec", "--ssh", "--", "pwd"}); err != nil {
 		t.Fatalf("run app: %v", err)
@@ -333,11 +266,7 @@ func TestRunExecPassesSSHFlag(t *testing.T) {
 }
 
 func TestRunBuildJSONKeepsStdoutClean(t *testing.T) {
-	isolateConfigHome(t)
-
-	var out bytes.Buffer
-	var errOut bytes.Buffer
-	app := NewWithService(&out, &errOut, stubService{build: func(_ context.Context, opts appcore.BuildRequest) (appcore.BuildResult, error) {
+	app, out, errOut := newBufferedApp(t, stubBuild(func(_ context.Context, opts appcore.BuildRequest) (appcore.BuildResult, error) {
 		if opts.IO.Stdout == nil || opts.IO.Stderr == nil {
 			t.Fatalf("expected managed build writers, got stdout=%v stderr=%v", opts.IO.Stdout, opts.IO.Stderr)
 		}
@@ -348,7 +277,7 @@ func TestRunBuildJSONKeepsStdoutClean(t *testing.T) {
 			t.Fatalf("write build stderr: %v", err)
 		}
 		return appcore.BuildResult{Image: "hatchctl-demo"}, nil
-	}})
+	}))
 
 	if err := app.Run(context.Background(), []string{"build", "--json"}); err != nil {
 		t.Fatalf("run app: %v", err)
@@ -365,13 +294,9 @@ func TestRunBuildJSONKeepsStdoutClean(t *testing.T) {
 }
 
 func TestRunExecReturnsExitErrorForNonZeroCode(t *testing.T) {
-	isolateConfigHome(t)
-
-	var out bytes.Buffer
-	var errOut bytes.Buffer
-	app := NewWithService(&out, &errOut, stubService{exec: func(_ context.Context, _ appcore.ExecRequest) (int, error) {
+	app, _, _ := newBufferedApp(t, stubExec(func(_ context.Context, _ appcore.ExecRequest) (int, error) {
 		return 7, nil
-	}})
+	}))
 
 	err := app.Run(context.Background(), []string{"exec", "--", "false"})
 	var exitErr appcore.ExitError
@@ -442,18 +367,14 @@ func TestShouldUseRawExecStreamsRejectsNonTerminalFiles(t *testing.T) {
 }
 
 func TestRunConfigUsesFrozenLockfilePolicy(t *testing.T) {
-	isolateConfigHome(t)
-
-	var out bytes.Buffer
-	var errOut bytes.Buffer
 	called := false
-	app := NewWithService(&out, &errOut, stubService{readConfig: func(_ context.Context, opts appcore.ReadConfigRequest) (appcore.ReadConfigResult, error) {
+	app, out, _ := newBufferedApp(t, stubReadConfig(func(_ context.Context, opts appcore.ReadConfigRequest) (appcore.ReadConfigResult, error) {
 		called = true
 		if opts.Defaults.LockfilePolicy != string(devcontainer.FeatureLockfilePolicyFrozen) {
 			t.Fatalf("unexpected lockfile policy %q", opts.Defaults.LockfilePolicy)
 		}
 		return appcore.ReadConfigResult{ConfigPath: "/tmp/devcontainer.json", WorkspaceFolder: "/workspace", WorkspaceMount: "type=bind", SourceKind: "image", Dotfiles: &appcore.DotfilesStatus{Configured: true, Applied: false, NeedsInstall: true, Repository: "https://github.com/lauritsk/dotfiles.git", TargetPath: "$HOME/.dotfiles"}}, nil
-	}})
+	}))
 
 	if err := app.Run(context.Background(), []string{"config"}); err != nil {
 		t.Fatalf("run app: %v", err)
@@ -467,16 +388,12 @@ func TestRunConfigUsesFrozenLockfilePolicy(t *testing.T) {
 }
 
 func TestRunConfigPassesSSHFlag(t *testing.T) {
-	isolateConfigHome(t)
-
-	var out bytes.Buffer
-	var errOut bytes.Buffer
-	app := NewWithService(&out, &errOut, stubService{readConfig: func(_ context.Context, opts appcore.ReadConfigRequest) (appcore.ReadConfigResult, error) {
+	app, _, _ := newBufferedApp(t, stubReadConfig(func(_ context.Context, opts appcore.ReadConfigRequest) (appcore.ReadConfigResult, error) {
 		if !opts.Defaults.SSHAgent {
 			t.Fatal("expected ssh-agent passthrough flag")
 		}
 		return appcore.ReadConfigResult{ConfigPath: "/tmp/devcontainer.json", WorkspaceFolder: "/workspace", WorkspaceMount: "type=bind", SourceKind: "image"}, nil
-	}})
+	}))
 
 	if err := app.Run(context.Background(), []string{"config", "--ssh"}); err != nil {
 		t.Fatalf("run app: %v", err)
@@ -484,16 +401,12 @@ func TestRunConfigPassesSSHFlag(t *testing.T) {
 }
 
 func TestRunLifecyclePassesPhase(t *testing.T) {
-	isolateConfigHome(t)
-
-	var out bytes.Buffer
-	var errOut bytes.Buffer
-	app := NewWithService(&out, &errOut, stubService{runLifecycle: func(_ context.Context, opts appcore.RunLifecycleRequest) (appcore.RunLifecycleResult, error) {
+	app, out, _ := newBufferedApp(t, stubRunLifecycle(func(_ context.Context, opts appcore.RunLifecycleRequest) (appcore.RunLifecycleResult, error) {
 		if opts.Phase != "attach" {
 			t.Fatalf("unexpected phase %q", opts.Phase)
 		}
 		return appcore.RunLifecycleResult{ContainerID: "abc123", Phase: opts.Phase}, nil
-	}})
+	}))
 
 	if err := app.Run(context.Background(), []string{"run", "--phase", "attach"}); err != nil {
 		t.Fatalf("run app: %v", err)
@@ -502,16 +415,12 @@ func TestRunLifecyclePassesPhase(t *testing.T) {
 }
 
 func TestLifecycleAliasPassesPhase(t *testing.T) {
-	isolateConfigHome(t)
-
-	var out bytes.Buffer
-	var errOut bytes.Buffer
-	app := NewWithService(&out, &errOut, stubService{runLifecycle: func(_ context.Context, opts appcore.RunLifecycleRequest) (appcore.RunLifecycleResult, error) {
+	app, out, _ := newBufferedApp(t, stubRunLifecycle(func(_ context.Context, opts appcore.RunLifecycleRequest) (appcore.RunLifecycleResult, error) {
 		if opts.Phase != "start" {
 			t.Fatalf("unexpected phase %q", opts.Phase)
 		}
 		return appcore.RunLifecycleResult{ContainerID: "abc123", Phase: opts.Phase}, nil
-	}})
+	}))
 
 	if err := app.Run(context.Background(), []string{"lifecycle", "--phase", "start"}); err != nil {
 		t.Fatalf("run app: %v", err)
@@ -520,11 +429,7 @@ func TestLifecycleAliasPassesPhase(t *testing.T) {
 }
 
 func TestRunLifecycleRejectsInvalidPhase(t *testing.T) {
-	isolateConfigHome(t)
-
-	var out bytes.Buffer
-	var errOut bytes.Buffer
-	app := NewWithService(&out, &errOut, appcore.NewWithExecutorWithoutMutationLock(&reconcile.Executor{}))
+	app, _, _ := newBufferedApp(t, appcore.NewWithExecutorWithoutMutationLock(&reconcile.Executor{}))
 
 	err := app.Run(context.Background(), []string{"run", "--phase", "bogus"})
 	if err == nil || !strings.Contains(err.Error(), `invalid lifecycle phase "bogus"`) {
@@ -533,18 +438,14 @@ func TestRunLifecycleRejectsInvalidPhase(t *testing.T) {
 }
 
 func TestRunBridgeDoctorUsesFrozenLockfilePolicy(t *testing.T) {
-	isolateConfigHome(t)
-
-	var out bytes.Buffer
-	var errOut bytes.Buffer
 	called := false
-	app := NewWithService(&out, &errOut, stubService{bridgeDoctor: func(_ context.Context, opts appcore.BridgeDoctorRequest) (bridge.Report, error) {
+	app, out, _ := newBufferedApp(t, stubBridgeDoctor(func(_ context.Context, opts appcore.BridgeDoctorRequest) (bridge.Report, error) {
 		called = true
 		if opts.Defaults.LockfilePolicy != string(devcontainer.FeatureLockfilePolicyFrozen) {
 			t.Fatalf("unexpected lockfile policy %q", opts.Defaults.LockfilePolicy)
 		}
 		return bridge.Report{ID: "session", Enabled: true, Status: "running"}, nil
-	}})
+	}))
 
 	if err := app.Run(context.Background(), []string{"bridge", "doctor"}); err != nil {
 		t.Fatalf("run app: %v", err)
@@ -558,11 +459,7 @@ func TestRunBridgeDoctorUsesFrozenLockfilePolicy(t *testing.T) {
 }
 
 func TestBridgeHelpHidesInternalServeCommand(t *testing.T) {
-	isolateConfigHome(t)
-
-	var out bytes.Buffer
-	var errOut bytes.Buffer
-	app := NewWithService(&out, &errOut, appcore.NewWithExecutorWithoutMutationLock(&reconcile.Executor{}))
+	app, out, errOut := newBufferedApp(t, appcore.NewWithExecutorWithoutMutationLock(&reconcile.Executor{}))
 
 	if err := app.Run(context.Background(), []string{"bridge", "--help"}); err != nil {
 		t.Fatalf("run app: %v", err)
@@ -580,11 +477,7 @@ func TestBridgeHelpHidesInternalServeCommand(t *testing.T) {
 }
 
 func TestRunBridgeServeRequiresFlags(t *testing.T) {
-	isolateConfigHome(t)
-
-	var out bytes.Buffer
-	var errOut bytes.Buffer
-	app := NewWithService(&out, &errOut, stubService{})
+	app, _, _ := newBufferedApp(t, stubService{})
 
 	err := app.Run(context.Background(), []string{"bridge", "serve"})
 	if err == nil || !strings.Contains(err.Error(), "missing required flags") || !strings.Contains(err.Error(), "--state-dir") || !strings.Contains(err.Error(), "--container-id") {
@@ -593,9 +486,6 @@ func TestRunBridgeServeRequiresFlags(t *testing.T) {
 }
 
 func TestRunUpLoadsWorkspaceConfigTomlDefaults(t *testing.T) {
-	isolateConfigHome(t)
-	var out bytes.Buffer
-	var errOut bytes.Buffer
 	workspace := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(workspace, ".hatchctl"), 0o755); err != nil {
 		t.Fatal(err)
@@ -604,10 +494,10 @@ func TestRunUpLoadsWorkspaceConfigTomlDefaults(t *testing.T) {
 		t.Fatal(err)
 	}
 	var got appcore.UpRequest
-	app := NewWithService(&out, &errOut, stubService{up: func(_ context.Context, opts appcore.UpRequest) (appcore.UpResult, error) {
+	app, _, _ := newBufferedApp(t, stubUp(func(_ context.Context, opts appcore.UpRequest) (appcore.UpResult, error) {
 		got = opts
 		return appcore.UpResult{}, nil
-	}})
+	}))
 
 	if err := app.Run(context.Background(), []string{"up", "--workspace", workspace}); err != nil {
 		t.Fatalf("run app: %v", err)
@@ -627,9 +517,6 @@ func TestRunUpLoadsWorkspaceConfigTomlDefaults(t *testing.T) {
 }
 
 func TestRunUpAppliesTrustedWorkspaceConfigTomlHostDefaults(t *testing.T) {
-	isolateConfigHome(t)
-	var out bytes.Buffer
-	var errOut bytes.Buffer
 	workspace := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(workspace, ".hatchctl"), 0o755); err != nil {
 		t.Fatal(err)
@@ -638,10 +525,10 @@ func TestRunUpAppliesTrustedWorkspaceConfigTomlHostDefaults(t *testing.T) {
 		t.Fatal(err)
 	}
 	var got appcore.UpRequest
-	app := NewWithService(&out, &errOut, stubService{up: func(_ context.Context, opts appcore.UpRequest) (appcore.UpResult, error) {
+	app, _, _ := newBufferedApp(t, stubUp(func(_ context.Context, opts appcore.UpRequest) (appcore.UpResult, error) {
 		got = opts
 		return appcore.UpResult{}, nil
-	}})
+	}))
 
 	if err := app.Run(context.Background(), []string{"up", "--workspace", workspace, "--trust-workspace"}); err != nil {
 		t.Fatalf("run app: %v", err)
@@ -652,11 +539,7 @@ func TestRunUpAppliesTrustedWorkspaceConfigTomlHostDefaults(t *testing.T) {
 }
 
 func TestRunRejectsInvalidLockfilePolicy(t *testing.T) {
-	isolateConfigHome(t)
-
-	var out bytes.Buffer
-	var errOut bytes.Buffer
-	app := NewWithService(&out, &errOut, appcore.NewWithExecutorWithoutMutationLock(&reconcile.Executor{}))
+	app, _, _ := newBufferedApp(t, appcore.NewWithExecutorWithoutMutationLock(&reconcile.Executor{}))
 
 	err := app.Run(context.Background(), []string{"up", "--lockfile-policy", "bogus"})
 	if err == nil || !strings.Contains(err.Error(), `invalid lockfile policy "bogus"`) || !strings.Contains(err.Error(), "expected auto, frozen, or update") {

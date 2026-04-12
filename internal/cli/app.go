@@ -36,6 +36,13 @@ type service interface {
 	BridgeDoctor(context.Context, appcore.BridgeDoctorRequest) (bridge.Report, error)
 }
 
+type preparedCommand struct {
+	renderer *ui.Renderer
+	defaults appcore.CommandDefaults
+	global   appcore.GlobalOptions
+	io       appcore.CommandIO
+}
+
 func New(out io.Writer, err io.Writer) *App {
 	return &App{out: out, err: err, service: appcore.NewDefault()}
 }
@@ -124,39 +131,34 @@ func (a *App) newUpCommand(global *globalOptions) *cobra.Command {
 			"hatchctl up --json",
 		}, "\n"),
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			renderer := a.newRenderer(jsonOut)
-			defer renderer.Close()
-			defaults, err := appcore.ResolveDefaults(resolveDefaultsRequest(cmd, workspace, configPath, featureTimeout, lockfilePolicy, &bridgeEnabled, &trustWorkspace, &sshAgent, dotfiles))
+			command, err := a.prepareCommand(cmd, global, jsonOut, workspace, configPath, featureTimeout, lockfilePolicy, &bridgeEnabled, &trustWorkspace, &sshAgent, dotfiles)
 			if err != nil {
 				return err
 			}
+			defer command.Close()
 			result, err := a.service.Up(cmd.Context(), appcore.UpRequest{
-				Defaults:           defaults,
+				Defaults:           command.defaults,
 				AllowHostLifecycle: allowHostLifecycle,
 				Recreate:           recreate,
-				Global:             appcore.GlobalOptions{Verbose: global.Verbose, Debug: global.Debug},
-				IO: appcore.CommandIO{
-					Events: renderer.Events(),
-					Stdout: renderer.Stdout(),
-					Stderr: renderer.Stderr(),
-				},
+				Global:             command.global,
+				IO:                 command.io,
 			})
 			if err != nil {
 				return err
 			}
 			if jsonOut {
-				return renderer.PrintJSON(result)
+				return command.renderer.PrintJSON(result)
 			}
-			if renderer.TTY() {
-				if err := renderer.PrintSummary("Devcontainer Ready", upResultFields(result)); err != nil {
+			if command.renderer.TTY() {
+				if err := command.renderer.PrintSummary("Devcontainer Ready", upResultFields(result)); err != nil {
 					return err
 				}
-				return renderer.PrintCommandList("Next", upSuggestedCommands(defaults.Workspace, defaults.ConfigPath, defaults.FeatureTimeout, defaults.LockfilePolicy, defaults.SSHAgent))
+				return command.renderer.PrintCommandList("Next", upSuggestedCommands(command.defaults.Workspace, command.defaults.ConfigPath, command.defaults.FeatureTimeout, command.defaults.LockfilePolicy, command.defaults.SSHAgent))
 			}
-			if err := renderer.PrintKeyValues(upResultFields(result)); err != nil {
+			if err := command.renderer.PrintKeyValues(upResultFields(result)); err != nil {
 				return err
 			}
-			return renderer.PrintText("\nNext:\n  " + strings.Join(upSuggestedCommands(defaults.Workspace, defaults.ConfigPath, defaults.FeatureTimeout, defaults.LockfilePolicy, defaults.SSHAgent), "\n  "))
+			return command.renderer.PrintText("\nNext:\n  " + strings.Join(upSuggestedCommands(command.defaults.Workspace, command.defaults.ConfigPath, command.defaults.FeatureTimeout, command.defaults.LockfilePolicy, command.defaults.SSHAgent), "\n  "))
 		},
 	}
 	addWorkspaceFlags(cmd, &workspace, &configPath)
@@ -193,31 +195,26 @@ func (a *App) newBuildCommand(global *globalOptions) *cobra.Command {
 			"hatchctl build --json",
 		}, "\n"),
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			renderer := a.newRenderer(jsonOut)
-			defer renderer.Close()
-			defaults, err := appcore.ResolveDefaults(resolveDefaultsRequest(cmd, workspace, configPath, featureTimeout, lockfilePolicy, nil, &trustWorkspace, nil, appcore.DotfilesOptions{}))
+			command, err := a.prepareCommand(cmd, global, jsonOut, workspace, configPath, featureTimeout, lockfilePolicy, nil, &trustWorkspace, nil, appcore.DotfilesOptions{})
 			if err != nil {
 				return err
 			}
+			defer command.Close()
 			result, err := a.service.Build(cmd.Context(), appcore.BuildRequest{
-				Defaults: defaults,
-				Global:   appcore.GlobalOptions{Verbose: global.Verbose, Debug: global.Debug},
-				IO: appcore.CommandIO{
-					Events: renderer.Events(),
-					Stdout: renderer.Stdout(),
-					Stderr: renderer.Stderr(),
-				},
+				Defaults: command.defaults,
+				Global:   command.global,
+				IO:       command.io,
 			})
 			if err != nil {
 				return err
 			}
 			if jsonOut {
-				return renderer.PrintJSON(result)
+				return command.renderer.PrintJSON(result)
 			}
-			if renderer.TTY() {
-				return renderer.PrintSummary("Image Ready", []ui.KeyValue{{Key: "Image", Value: result.Image}})
+			if command.renderer.TTY() {
+				return command.renderer.PrintSummary("Image Ready", []ui.KeyValue{{Key: "Image", Value: result.Image}})
 			}
-			return renderer.PrintText(fmt.Sprintf("Devcontainer image ready: %s", result.Image))
+			return command.renderer.PrintText(fmt.Sprintf("Devcontainer image ready: %s", result.Image))
 		},
 	}
 	addWorkspaceFlags(cmd, &workspace, &configPath)
@@ -263,38 +260,36 @@ func (a *App) newExecCommand(global *globalOptions) *cobra.Command {
 			if jsonOut && len(args) == 0 {
 				return errors.New("missing command for exec --json; use 'hatchctl exec --json -- <command>'")
 			}
-			renderer := a.newRenderer(jsonOut)
-			defer renderer.Close()
-			defaults, err := appcore.ResolveDefaults(resolveDefaultsRequest(cmd, workspace, configPath, featureTimeout, lockfilePolicy, nil, &trustWorkspace, &sshAgent, appcore.DotfilesOptions{}))
+			command, err := a.prepareCommand(cmd, global, jsonOut, workspace, configPath, featureTimeout, lockfilePolicy, nil, &trustWorkspace, &sshAgent, appcore.DotfilesOptions{})
 			if err != nil {
 				return err
 			}
-			stdout, stderr := execWriters(renderer, false)
+			defer command.Close()
+			stdout, stderr := execWriters(command.renderer, false)
 			var stdoutBuffer strings.Builder
 			var stderrBuffer strings.Builder
 			if jsonOut {
 				stdout = &stdoutBuffer
 				stderr = &stderrBuffer
 			} else if shouldUseRawExecStreams(os.Stdin, os.Stdout) {
-				stdout, stderr = execWriters(renderer, true)
+				stdout, stderr = execWriters(command.renderer, true)
 			}
+			execIO := command.io
+			execIO.Stdin = os.Stdin
+			execIO.Stdout = stdout
+			execIO.Stderr = stderr
 			code, err := a.service.Exec(cmd.Context(), appcore.ExecRequest{
-				Defaults:  defaults,
+				Defaults:  command.defaults,
 				Args:      args,
 				RemoteEnv: multiValueMap(remoteEnv),
-				Global:    appcore.GlobalOptions{Verbose: global.Verbose, Debug: global.Debug},
-				IO: appcore.CommandIO{
-					Stdin:  os.Stdin,
-					Stdout: stdout,
-					Stderr: stderr,
-					Events: renderer.Events(),
-				},
+				Global:    command.global,
+				IO:        execIO,
 			})
 			if err != nil {
 				return err
 			}
 			if jsonOut {
-				if err := renderer.PrintJSON(map[string]any{
+				if err := command.renderer.PrintJSON(map[string]any{
 					"exitCode": code,
 					"stdout":   stdoutBuffer.String(),
 					"stderr":   stderrBuffer.String(),
@@ -359,31 +354,26 @@ func (a *App) newConfigCommand(global *globalOptions) *cobra.Command {
 			"hatchctl config --json",
 		}, "\n"),
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			renderer := a.newRenderer(jsonOut)
-			defer renderer.Close()
-			defaults, err := appcore.ResolveDefaults(resolveDefaultsRequest(cmd, workspace, configPath, featureTimeout, lockfilePolicy, nil, &trustWorkspace, &sshAgent, dotfiles))
+			command, err := a.prepareCommand(cmd, global, jsonOut, workspace, configPath, featureTimeout, lockfilePolicy, nil, &trustWorkspace, &sshAgent, dotfiles)
 			if err != nil {
 				return err
 			}
+			defer command.Close()
 			result, err := a.service.ReadConfig(cmd.Context(), appcore.ReadConfigRequest{
-				Defaults: defaults,
-				Global:   appcore.GlobalOptions{Verbose: global.Verbose, Debug: global.Debug},
-				IO: appcore.CommandIO{
-					Events: renderer.Events(),
-					Stdout: renderer.Stdout(),
-					Stderr: renderer.Stderr(),
-				},
+				Defaults: command.defaults,
+				Global:   command.global,
+				IO:       command.io,
 			})
 			if err != nil {
 				return err
 			}
 			if jsonOut {
-				return renderer.PrintJSON(result)
+				return command.renderer.PrintJSON(result)
 			}
-			if renderer.TTY() {
-				return renderer.PrintSummary("Configuration", configResultFields(result))
+			if command.renderer.TTY() {
+				return command.renderer.PrintSummary("Configuration", configResultFields(result))
 			}
-			return renderer.PrintKeyValues(configResultFields(result))
+			return command.renderer.PrintKeyValues(configResultFields(result))
 		},
 	}
 	addWorkspaceFlags(cmd, &workspace, &configPath)
@@ -421,30 +411,25 @@ func (a *App) newRunCommand(global *globalOptions) *cobra.Command {
 			"hatchctl run --json --phase create",
 		}, "\n"),
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			renderer := a.newRenderer(jsonOut)
-			defer renderer.Close()
-			defaults, err := appcore.ResolveDefaults(resolveDefaultsRequest(cmd, workspace, configPath, featureTimeout, lockfilePolicy, nil, &trustWorkspace, nil, dotfiles))
+			command, err := a.prepareCommand(cmd, global, jsonOut, workspace, configPath, featureTimeout, lockfilePolicy, nil, &trustWorkspace, nil, dotfiles)
 			if err != nil {
 				return err
 			}
+			defer command.Close()
 			result, err := a.service.RunLifecycle(cmd.Context(), appcore.RunLifecycleRequest{
-				Defaults:           defaults,
+				Defaults:           command.defaults,
 				AllowHostLifecycle: allowHostLifecycle,
 				Phase:              phase,
-				Global:             appcore.GlobalOptions{Verbose: global.Verbose, Debug: global.Debug},
-				IO: appcore.CommandIO{
-					Events: renderer.Events(),
-					Stdout: renderer.Stdout(),
-					Stderr: renderer.Stderr(),
-				},
+				Global:             command.global,
+				IO:                 command.io,
 			})
 			if err != nil {
 				return err
 			}
 			if jsonOut {
-				return renderer.PrintJSON(result)
+				return command.renderer.PrintJSON(result)
 			}
-			return renderer.PrintText(fmt.Sprintf("Lifecycle phase %q completed for container %s.", result.Phase, result.ContainerID))
+			return command.renderer.PrintText(fmt.Sprintf("Lifecycle phase %q completed for container %s.", result.Phase, result.ContainerID))
 		},
 	}
 	addWorkspaceFlags(cmd, &workspace, &configPath)
@@ -518,28 +503,23 @@ func (a *App) newBridgeDoctorCommand(global *globalOptions) *cobra.Command {
 			"hatchctl bridge doctor --json",
 		}, "\n"),
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			renderer := a.newRenderer(jsonOut)
-			defer renderer.Close()
-			defaults, err := appcore.ResolveDefaults(resolveDefaultsRequest(cmd, workspace, configPath, featureTimeout, lockfilePolicy, nil, nil, nil, appcore.DotfilesOptions{}))
+			command, err := a.prepareCommand(cmd, global, jsonOut, workspace, configPath, featureTimeout, lockfilePolicy, nil, nil, nil, appcore.DotfilesOptions{})
 			if err != nil {
 				return err
 			}
+			defer command.Close()
 			report, err := a.service.BridgeDoctor(cmd.Context(), appcore.BridgeDoctorRequest{
-				Defaults: defaults,
-				Global:   appcore.GlobalOptions{Verbose: global.Verbose, Debug: global.Debug},
-				IO: appcore.CommandIO{
-					Events: renderer.Events(),
-					Stdout: renderer.Stdout(),
-					Stderr: renderer.Stderr(),
-				},
+				Defaults: command.defaults,
+				Global:   command.global,
+				IO:       command.io,
 			})
 			if err != nil {
 				return err
 			}
 			if jsonOut {
-				return renderer.PrintJSON(report)
+				return command.renderer.PrintJSON(report)
 			}
-			return renderer.PrintKeyValues([]ui.KeyValue{
+			return command.renderer.PrintKeyValues([]ui.KeyValue{
 				{Key: "Bridge session", Value: report.ID},
 				{Key: "Bridge enabled", Value: fmt.Sprintf("%t", report.Enabled)},
 				{Key: "Current status", Value: report.Status},
@@ -586,6 +566,31 @@ func newVersionCommand(out io.Writer) *cobra.Command {
 
 func (a *App) newRenderer(jsonOut bool) *ui.Renderer {
 	return ui.NewRenderer(a.out, a.err, jsonOut)
+}
+
+func (a *App) resolveDefaults(cmd *cobra.Command, workspace string, configPath string, featureTimeout time.Duration, lockfilePolicy string, bridgeEnabled *bool, trustWorkspace *bool, sshAgent *bool, dotfiles appcore.DotfilesOptions) (appcore.CommandDefaults, error) {
+	return appcore.ResolveDefaults(resolveDefaultsRequest(cmd, workspace, configPath, featureTimeout, lockfilePolicy, bridgeEnabled, trustWorkspace, sshAgent, dotfiles))
+}
+
+func (a *App) newCommandIO(renderer *ui.Renderer) appcore.CommandIO {
+	return appcore.CommandIO{Events: renderer.Events(), Stdout: renderer.Stdout(), Stderr: renderer.Stderr()}
+}
+
+func (a *App) prepareCommand(cmd *cobra.Command, global *globalOptions, jsonOut bool, workspace string, configPath string, featureTimeout time.Duration, lockfilePolicy string, bridgeEnabled *bool, trustWorkspace *bool, sshAgent *bool, dotfiles appcore.DotfilesOptions) (*preparedCommand, error) {
+	renderer := a.newRenderer(jsonOut)
+	defaults, err := a.resolveDefaults(cmd, workspace, configPath, featureTimeout, lockfilePolicy, bridgeEnabled, trustWorkspace, sshAgent, dotfiles)
+	if err != nil {
+		renderer.Close()
+		return nil, err
+	}
+	return &preparedCommand{renderer: renderer, defaults: defaults, global: global.app(), io: a.newCommandIO(renderer)}, nil
+}
+
+func (c *preparedCommand) Close() {
+	if c == nil || c.renderer == nil {
+		return
+	}
+	c.renderer.Close()
 }
 
 func multiValueMap(values []string) map[string]string {

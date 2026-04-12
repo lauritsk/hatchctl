@@ -74,6 +74,15 @@ type BridgeDoctorRequest struct {
 	IO       CommandIO
 }
 
+type workspacePlanOptions struct {
+	ReadOnly           bool
+	BridgeEnabled      bool
+	SSHAgent           bool
+	Dotfiles           DotfilesOptions
+	TrustWorkspace     bool
+	AllowHostLifecycle bool
+}
+
 type (
 	UpResult           = reconcile.UpResult
 	BuildResult        = reconcile.BuildResult
@@ -101,63 +110,66 @@ func NewDefault() *Service {
 }
 
 func (s *Service) Up(ctx context.Context, req UpRequest) (UpResult, error) {
-	s.executor.SetTrustedSigners(req.Defaults.TrustedSigners)
-	policy, err := devcontainer.ParseFeatureLockfilePolicy(req.Defaults.LockfilePolicy)
+	buildPlan, err := s.workspacePlanBuilder(req.Defaults, workspacePlanOptions{
+		BridgeEnabled:      req.Defaults.BridgeEnabled,
+		SSHAgent:           req.Defaults.SSHAgent,
+		Dotfiles:           req.Defaults.Dotfiles,
+		TrustWorkspace:     req.Defaults.TrustWorkspace,
+		AllowHostLifecycle: req.AllowHostLifecycle,
+	})
 	if err != nil {
 		return UpResult{}, err
 	}
 	return withMutationLock(s, ctx, "up", func() (workspaceplan.WorkspacePlan, error) {
-		return s.maybeBuildWorkspacePlan(req.Defaults, policy, false, req.Defaults.BridgeEnabled, req.Defaults.SSHAgent, req.Defaults.Dotfiles, req.Defaults.TrustWorkspace, req.AllowHostLifecycle)
+		return buildPlan()
 	}, func(workspacePlan workspaceplan.WorkspacePlan) (UpResult, error) {
-		return s.executor.Up(ctx, workspacePlan, reconcile.UpOptions{Recreate: req.Recreate, Debug: req.Global.Debug, IO: reconcile.CommandStreams{Stdin: req.IO.Stdin, Stdout: req.IO.Stdout, Stderr: req.IO.Stderr, Events: req.IO.Events}})
+		return s.executor.Up(ctx, workspacePlan, reconcile.UpOptions{Recreate: req.Recreate, Debug: req.Global.Debug, IO: commandStreams(req.IO)})
 	})
 }
 
 func (s *Service) Build(ctx context.Context, req BuildRequest) (BuildResult, error) {
-	s.executor.SetTrustedSigners(req.Defaults.TrustedSigners)
-	policy, err := devcontainer.ParseFeatureLockfilePolicy(req.Defaults.LockfilePolicy)
+	buildPlan, err := s.workspacePlanBuilder(req.Defaults, workspacePlanOptions{
+		TrustWorkspace: req.Defaults.TrustWorkspace,
+	})
 	if err != nil {
 		return BuildResult{}, err
 	}
 	return withMutationLock(s, ctx, "build", func() (workspaceplan.WorkspacePlan, error) {
-		return s.maybeBuildWorkspacePlan(req.Defaults, policy, false, false, false, DotfilesOptions{}, req.Defaults.TrustWorkspace, false)
+		return buildPlan()
 	}, func(workspacePlan workspaceplan.WorkspacePlan) (BuildResult, error) {
-		return s.executor.Build(ctx, workspacePlan, reconcile.BuildOptions{Debug: req.Global.Debug, IO: reconcile.CommandStreams{Stdin: req.IO.Stdin, Stdout: req.IO.Stdout, Stderr: req.IO.Stderr, Events: req.IO.Events}})
+		return s.executor.Build(ctx, workspacePlan, reconcile.BuildOptions{Debug: req.Global.Debug, IO: commandStreams(req.IO)})
 	})
 }
 
 func (s *Service) Exec(ctx context.Context, req ExecRequest) (int, error) {
-	s.executor.SetTrustedSigners(req.Defaults.TrustedSigners)
-	policy, err := devcontainer.ParseFeatureLockfilePolicy(req.Defaults.LockfilePolicy)
+	buildPlan, err := s.workspacePlanBuilder(req.Defaults, workspacePlanOptions{ReadOnly: true, SSHAgent: req.Defaults.SSHAgent})
 	if err != nil {
 		return 0, err
 	}
-	workspacePlan, err := s.maybeBuildWorkspacePlan(req.Defaults, policy, true, false, req.Defaults.SSHAgent, DotfilesOptions{}, false, false)
+	workspacePlan, err := buildPlan()
 	if err != nil {
 		return 0, err
 	}
 	if err := ensureNoActiveMutation(workspacePlan.LockProtected.StateDir); err != nil {
 		return 0, err
 	}
-	return s.executor.Exec(ctx, workspacePlan, reconcile.ExecOptions{Args: req.Args, RemoteEnv: req.RemoteEnv, Debug: req.Global.Debug, IO: reconcile.CommandStreams{Stdin: req.IO.Stdin, Stdout: req.IO.Stdout, Stderr: req.IO.Stderr, Events: req.IO.Events}})
+	return s.executor.Exec(ctx, workspacePlan, reconcile.ExecOptions{Args: req.Args, RemoteEnv: req.RemoteEnv, Debug: req.Global.Debug, IO: commandStreams(req.IO)})
 }
 
 func (s *Service) ReadConfig(ctx context.Context, req ReadConfigRequest) (ReadConfigResult, error) {
-	s.executor.SetTrustedSigners(req.Defaults.TrustedSigners)
-	policy, err := devcontainer.ParseFeatureLockfilePolicy(req.Defaults.LockfilePolicy)
+	buildPlan, err := s.workspacePlanBuilder(req.Defaults, workspacePlanOptions{ReadOnly: true, SSHAgent: req.Defaults.SSHAgent, Dotfiles: req.Defaults.Dotfiles})
 	if err != nil {
 		return ReadConfigResult{}, err
 	}
-	workspacePlan, err := s.maybeBuildWorkspacePlan(req.Defaults, policy, true, false, req.Defaults.SSHAgent, req.Defaults.Dotfiles, false, false)
+	workspacePlan, err := buildPlan()
 	if err != nil {
 		return ReadConfigResult{}, err
 	}
-	return s.executor.ReadConfig(ctx, workspacePlan, reconcile.ReadConfigOptions{Debug: req.Global.Debug, IO: reconcile.CommandStreams{Stdin: req.IO.Stdin, Stdout: req.IO.Stdout, Stderr: req.IO.Stderr, Events: req.IO.Events}})
+	return s.executor.ReadConfig(ctx, workspacePlan, reconcile.ReadConfigOptions{Debug: req.Global.Debug, IO: commandStreams(req.IO)})
 }
 
 func (s *Service) RunLifecycle(ctx context.Context, req RunLifecycleRequest) (RunLifecycleResult, error) {
-	s.executor.SetTrustedSigners(req.Defaults.TrustedSigners)
-	policy, err := devcontainer.ParseFeatureLockfilePolicy(req.Defaults.LockfilePolicy)
+	buildPlan, err := s.workspacePlanBuilder(req.Defaults, workspacePlanOptions{ReadOnly: true, Dotfiles: req.Defaults.Dotfiles, AllowHostLifecycle: req.AllowHostLifecycle})
 	if err != nil {
 		return RunLifecycleResult{}, err
 	}
@@ -167,23 +179,22 @@ func (s *Service) RunLifecycle(ctx context.Context, req RunLifecycleRequest) (Ru
 	}
 	req.Phase = phase
 	return withMutationLock(s, ctx, "run", func() (workspaceplan.WorkspacePlan, error) {
-		return s.maybeBuildWorkspacePlan(req.Defaults, policy, true, false, false, req.Defaults.Dotfiles, false, req.AllowHostLifecycle)
+		return buildPlan()
 	}, func(workspacePlan workspaceplan.WorkspacePlan) (RunLifecycleResult, error) {
-		return s.executor.RunLifecycle(ctx, workspacePlan, reconcile.RunLifecycleOptions{Phase: req.Phase, Debug: req.Global.Debug, IO: reconcile.CommandStreams{Stdin: req.IO.Stdin, Stdout: req.IO.Stdout, Stderr: req.IO.Stderr, Events: req.IO.Events}})
+		return s.executor.RunLifecycle(ctx, workspacePlan, reconcile.RunLifecycleOptions{Phase: req.Phase, Debug: req.Global.Debug, IO: commandStreams(req.IO)})
 	})
 }
 
 func (s *Service) BridgeDoctor(ctx context.Context, req BridgeDoctorRequest) (bridge.Report, error) {
-	s.executor.SetTrustedSigners(req.Defaults.TrustedSigners)
-	policy, err := devcontainer.ParseFeatureLockfilePolicy(req.Defaults.LockfilePolicy)
+	buildPlan, err := s.workspacePlanBuilder(req.Defaults, workspacePlanOptions{ReadOnly: true})
 	if err != nil {
 		return bridge.Report{}, err
 	}
-	workspacePlan, err := s.maybeBuildWorkspacePlan(req.Defaults, policy, true, false, false, DotfilesOptions{}, false, false)
+	workspacePlan, err := buildPlan()
 	if err != nil {
 		return bridge.Report{}, err
 	}
-	return s.executor.BridgeDoctor(ctx, workspacePlan, reconcile.BridgeDoctorOptions{Debug: req.Global.Debug, IO: reconcile.CommandStreams{Stdin: req.IO.Stdin, Stdout: req.IO.Stdout, Stderr: req.IO.Stderr, Events: req.IO.Events}})
+	return s.executor.BridgeDoctor(ctx, workspacePlan, reconcile.BridgeDoctorOptions{Debug: req.Global.Debug, IO: commandStreams(req.IO)})
 }
 
 func buildWorkspacePlan(defaults CommandDefaults, lockfilePolicy devcontainer.FeatureLockfilePolicy, readOnly bool, bridgeEnabled bool, sshAgent bool, dotfiles DotfilesOptions, trustWorkspace bool, allowHostLifecycle bool) (workspaceplan.WorkspacePlan, error) {
@@ -208,6 +219,21 @@ func (s *Service) maybeBuildWorkspacePlan(defaults CommandDefaults, lockfilePoli
 		return workspaceplan.WorkspacePlan{}, nil
 	}
 	return buildWorkspacePlan(defaults, lockfilePolicy, readOnly, bridgeEnabled, sshAgent, dotfiles, trustWorkspace, allowHostLifecycle)
+}
+
+func (s *Service) workspacePlanBuilder(defaults CommandDefaults, opts workspacePlanOptions) (func() (workspaceplan.WorkspacePlan, error), error) {
+	s.executor.SetTrustedSigners(defaults.TrustedSigners)
+	policy, err := devcontainer.ParseFeatureLockfilePolicy(defaults.LockfilePolicy)
+	if err != nil {
+		return nil, err
+	}
+	return func() (workspaceplan.WorkspacePlan, error) {
+		return s.maybeBuildWorkspacePlan(defaults, policy, opts.ReadOnly, opts.BridgeEnabled, opts.SSHAgent, opts.Dotfiles, opts.TrustWorkspace, opts.AllowHostLifecycle)
+	}, nil
+}
+
+func commandStreams(io CommandIO) reconcile.CommandStreams {
+	return reconcile.CommandStreams{Stdin: io.Stdin, Stdout: io.Stdout, Stderr: io.Stderr, Events: io.Events}
 }
 
 func withMutationLock[T any](s *Service, ctx context.Context, command string, buildPlan func() (workspaceplan.WorkspacePlan, error), run func(workspaceplan.WorkspacePlan) (T, error)) (T, error) {
