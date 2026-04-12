@@ -2,6 +2,22 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## [v0.6.16](https://github.com/lauritsk/hatchctl/compare/1c5c8be56e971febada613036ba11a44eaf0d190..v0.6.16) - 2026-04-12
+#### Bug Fixes
+- Harden workspace locking and feature resolution - ([3469db4](https://github.com/lauritsk/hatchctl/commit/3469db41daeb402d96d295092b69bcc019b6a52d)) - Karl Hans Laurits
+#### Documentation
+- Refresh README and agent guidance - ([6a62c3d](https://github.com/lauritsk/hatchctl/commit/6a62c3dee97bf1d75e4edd7079e11419e301b017)) - Karl Hans Laurits
+- Clarify CLI docs and trust defaults - ([8e07a16](https://github.com/lauritsk/hatchctl/commit/8e07a165b639238d7fd85a98e4932e22530c1dff)) - Karl Hans Laurits
+#### Refactoring
+- (**featurefetch**) Split OCI registry fetch helpers - ([386bb8e](https://github.com/lauritsk/hatchctl/commit/386bb8e20204f0cef0494f374f68e3a6e5aebdfd)) - Karl Hans Laurits
+- (**featurefetch**) Split feature source parsing helpers - ([094dfcb](https://github.com/lauritsk/hatchctl/commit/094dfcb9925852e78f3a0619723feaa80da566b6)) - Karl Hans Laurits
+- (**reconcile**) Reduce reconcile test fixture duplication - ([be2ad53](https://github.com/lauritsk/hatchctl/commit/be2ad5311f1651ec21cc8007b6903bfc78f930d5)) - Karl Hans Laurits
+- (**reconcile**) Avoid duplicate bridge inspection in config - ([29f497d](https://github.com/lauritsk/hatchctl/commit/29f497d69b8d8663dbba987d947449bbb72032e2)) - Karl Hans Laurits
+- Simplify CLI wiring and workspace prep - ([fc88843](https://github.com/lauritsk/hatchctl/commit/fc88843ec6cb7558209a7a1a43295043a9d79c64)) - Karl Hans Laurits
+- Simplify internal helpers - ([1c5c8be](https://github.com/lauritsk/hatchctl/commit/1c5c8be56e971febada613036ba11a44eaf0d190)) - Karl Hans Laurits
+
+- - -
+
 ## [v0.6.15](https://github.com/lauritsk/hatchctl/compare/ed52a3587b118bd2a2026c54a11fb2c94ef74f48..v0.6.15) - 2026-04-12
 #### Bug Fixes
 - Avoid flaky docker client test runner - ([b908d09](https://github.com/lauritsk/hatchctl/commit/b908d097ab492966e2ad20491f499b7fc8900284)) - Karl Hans Laurits
