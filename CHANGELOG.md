@@ -2,6 +2,26 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## [v0.6.15](https://github.com/lauritsk/hatchctl/compare/ed52a3587b118bd2a2026c54a11fb2c94ef74f48..v0.6.15) - 2026-04-12
+#### Bug Fixes
+- Avoid flaky docker client test runner - ([b908d09](https://github.com/lauritsk/hatchctl/commit/b908d097ab492966e2ad20491f499b7fc8900284)) - Karl Hans Laurits
+#### Tests
+- Harden bridge listener shutdown check - ([8773a96](https://github.com/lauritsk/hatchctl/commit/8773a96ef7b6ad06768aeca0fb362dbb10958eff)) - Karl Hans Laurits
+- Stabilize bridge runtime port test - ([f21630c](https://github.com/lauritsk/hatchctl/commit/f21630cbd48411ea3af968e65b355a663299fa47)) - Karl Hans Laurits
+#### Refactoring
+- Drop config type aliases - ([a8f6ddc](https://github.com/lauritsk/hatchctl/commit/a8f6ddc889c24ff098de8973d7962c7f2b064cc9)) - Karl Hans Laurits
+- Drop merged metadata aliases - ([e5505fc](https://github.com/lauritsk/hatchctl/commit/e5505fc007f5730d02e0ec0db38d783b5a412f36)) - Karl Hans Laurits
+- Drop lifecycle command aliases - ([8fd0e62](https://github.com/lauritsk/hatchctl/commit/8fd0e626ebbf5313a2595ad3810f0926d2ea679e)) - Karl Hans Laurits
+- Drop devcontainer state aliases - ([d14a168](https://github.com/lauritsk/hatchctl/commit/d14a16836db7172286596dd4aa75fc2d9bafeecd)) - Karl Hans Laurits
+- Trim devcontainer facade helpers - ([c61f7c3](https://github.com/lauritsk/hatchctl/commit/c61f7c34c6508fd1676be9b30dddd8854a23e25e)) - Karl Hans Laurits
+- Reuse planned workspace inputs - ([4f7f043](https://github.com/lauritsk/hatchctl/commit/4f7f0437fb0b6c1bc9eb729e008cb47be2189d4b)) - Karl Hans Laurits
+- Remove thin devcontainer spec wrappers - ([563effc](https://github.com/lauritsk/hatchctl/commit/563effc4bc0f66f8ff8baec236e5aa698838a2af)) - Karl Hans Laurits
+- Reduce duplicated app and CLI setup - ([ed52a35](https://github.com/lauritsk/hatchctl/commit/ed52a3587b118bd2a2026c54a11fb2c94ef74f48)) - Karl Hans Laurits
+#### Miscellaneous Chores
+- (**devcontainer**) Persist mise tool caches across recreates - ([0ec410a](https://github.com/lauritsk/hatchctl/commit/0ec410a413d14e445511933fe27d917c7a15fa76)) - Karl Hans Laurits
+
+- - -
+
 ## [v0.6.14](https://github.com/lauritsk/hatchctl/compare/4ed5d633958225e38951c444ef193e20fbd1d428..v0.6.14) - 2026-04-11
 #### Bug Fixes
 - (**deps**) update module github.com/google/go-containerregistry to v0.21.5 - ([9ac0c77](https://github.com/lauritsk/hatchctl/commit/9ac0c7782730a64cbd2abf113f97d4d9ea9d578e)) - renovate[bot]
