@@ -1,4 +1,8 @@
 {
     "name": "hatchctl",
-    "image": "ghcr.io/lauritsk/devcontainer:0.2.0@sha256:ba053b40ae21b5f3c4f3b9d80967b1639242c1a6a0a07c61794eb4a2e68dd16d"
+    "image": "ghcr.io/lauritsk/devcontainer:0.2.0@sha256:ba053b40ae21b5f3c4f3b9d80967b1639242c1a6a0a07c61794eb4a2e68dd16d",
+    "mounts": [
+        "source=hatchctl-mise-data,target=/home/vscode/.local/share/mise,type=volume",
+        "source=hatchctl-mise-cache,target=/home/vscode/.cache/mise,type=volume"
+    ]
 }
