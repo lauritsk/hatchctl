@@ -2,19 +2,21 @@ package plan
 
 import (
 	"context"
+	"reflect"
 
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	"github.com/lauritsk/hatchctl/internal/security"
 )
 
 type Resolver struct {
-	Resolve         func(context.Context, string, string, devcontainer.ResolveOptions) (devcontainer.ResolvedConfig, error)
-	ResolveReadOnly func(context.Context, string, string, devcontainer.ResolveOptions) (devcontainer.ResolvedConfig, error)
-	Warn            func(string)
+	ResolveWorkspaceSpec func(context.Context, devcontainer.WorkspaceSpec, string, string, devcontainer.ResolveOptions) (devcontainer.ResolvedConfig, error)
+	Resolve              func(context.Context, string, string, devcontainer.ResolveOptions) (devcontainer.ResolvedConfig, error)
+	ResolveReadOnly      func(context.Context, string, string, devcontainer.ResolveOptions) (devcontainer.ResolvedConfig, error)
+	Warn                 func(string)
 }
 
 func NewResolver() *Resolver {
-	return (&Resolver{}).withDefaults()
+	return &Resolver{}
 }
 
 func (r *Resolver) Clone() *Resolver {
@@ -22,13 +24,16 @@ func (r *Resolver) Clone() *Resolver {
 		return NewResolver()
 	}
 	clone := *r
-	return clone.withDefaults()
+	return &clone
 }
 
 func (r *Resolver) Materialize(ctx context.Context, workspacePlan WorkspacePlan, verifyImage func(context.Context, string) security.VerificationResult) (devcontainer.ResolvedConfig, error) {
 	r = r.withDefaults()
 	resolveOpts := workspacePlan.ResolveOptions(verifyImage)
 	resolveOpts.Warn = r.Warn
+	if usesPlannedWorkspaceSpec(r) && workspacePlan.Immutable.Spec.ConfigPath != "" {
+		return r.ResolveWorkspaceSpec(ctx, workspacePlan.Immutable.Spec, workspacePlan.LockProtected.StateDir, workspacePlan.LockProtected.CacheDir, resolveOpts)
+	}
 	if workspacePlan.ReadOnly {
 		return r.ResolveReadOnly(ctx, workspacePlan.Immutable.Workspace, workspacePlan.Immutable.ConfigPath, resolveOpts)
 	}
@@ -36,6 +41,9 @@ func (r *Resolver) Materialize(ctx context.Context, workspacePlan WorkspacePlan,
 }
 
 func (r *Resolver) withDefaults() *Resolver {
+	if r.ResolveWorkspaceSpec == nil {
+		r.ResolveWorkspaceSpec = devcontainer.ResolveWorkspaceSpecWithOptions
+	}
 	if r.Resolve == nil {
 		r.Resolve = devcontainer.ResolveWithOptions
 	}
@@ -43,4 +51,16 @@ func (r *Resolver) withDefaults() *Resolver {
 		r.ResolveReadOnly = devcontainer.ResolveReadOnlyWithOptions
 	}
 	return r
+}
+
+func usesPlannedWorkspaceSpec(r *Resolver) bool {
+	return resolveFuncPointer(r.Resolve) == resolveFuncPointer(devcontainer.ResolveWithOptions) && resolveFuncPointer(r.ResolveReadOnly) == resolveFuncPointer(devcontainer.ResolveReadOnlyWithOptions)
+}
+
+func resolveFuncPointer[T any](fn T) uintptr {
+	value := reflect.ValueOf(fn)
+	if !value.IsValid() || value.IsNil() {
+		return 0
+	}
+	return value.Pointer()
 }

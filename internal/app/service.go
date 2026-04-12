@@ -16,7 +16,6 @@ import (
 
 type Service struct {
 	executor      *reconcile.Executor
-	buildPlans    bool
 	lockMutations bool
 }
 
@@ -97,7 +96,7 @@ func New(executor *reconcile.Executor) *Service {
 }
 
 func NewWithExecutor(executor *reconcile.Executor) *Service {
-	return &Service{executor: executor, buildPlans: true, lockMutations: true}
+	return &Service{executor: executor, lockMutations: true}
 }
 
 func NewWithExecutorWithoutMutationLock(executor *reconcile.Executor) *Service {
@@ -208,17 +207,10 @@ func buildWorkspacePlan(defaults CommandDefaults, lockfilePolicy devcontainer.Fe
 		ReadOnly:           readOnly,
 		BridgeEnabled:      bridgeEnabled,
 		SSHAgent:           sshAgent,
-		Dotfiles:           workspaceplan.DotfilesPreference{Repository: dotfiles.Repository, InstallCommand: dotfiles.InstallCommand, TargetPath: dotfiles.TargetPath},
+		Dotfiles:           dotfiles,
 		TrustWorkspace:     trustWorkspace,
 		AllowHostLifecycle: allowHostLifecycle,
 	})
-}
-
-func (s *Service) maybeBuildWorkspacePlan(defaults CommandDefaults, lockfilePolicy devcontainer.FeatureLockfilePolicy, readOnly bool, bridgeEnabled bool, sshAgent bool, dotfiles DotfilesOptions, trustWorkspace bool, allowHostLifecycle bool) (workspaceplan.WorkspacePlan, error) {
-	if !s.buildPlans {
-		return workspaceplan.WorkspacePlan{}, nil
-	}
-	return buildWorkspacePlan(defaults, lockfilePolicy, readOnly, bridgeEnabled, sshAgent, dotfiles, trustWorkspace, allowHostLifecycle)
 }
 
 func (s *Service) workspacePlanBuilder(defaults CommandDefaults, opts workspacePlanOptions) (func() (workspaceplan.WorkspacePlan, error), error) {
@@ -228,7 +220,7 @@ func (s *Service) workspacePlanBuilder(defaults CommandDefaults, opts workspaceP
 		return nil, err
 	}
 	return func() (workspaceplan.WorkspacePlan, error) {
-		return s.maybeBuildWorkspacePlan(defaults, policy, opts.ReadOnly, opts.BridgeEnabled, opts.SSHAgent, opts.Dotfiles, opts.TrustWorkspace, opts.AllowHostLifecycle)
+		return buildWorkspacePlan(defaults, policy, opts.ReadOnly, opts.BridgeEnabled, opts.SSHAgent, opts.Dotfiles, opts.TrustWorkspace, opts.AllowHostLifecycle)
 	}, nil
 }
 

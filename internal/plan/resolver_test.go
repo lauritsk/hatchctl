@@ -2,11 +2,14 @@ package plan
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 	"time"
 
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
+	"github.com/lauritsk/hatchctl/internal/spec"
 )
 
 func TestResolverMaterializeUsesWritableResolveOptions(t *testing.T) {
@@ -131,5 +134,50 @@ func TestResolverMaterializeForwardsWarningHook(t *testing.T) {
 	_, err := resolver.Materialize(context.Background(), WorkspacePlan{}, nil)
 	if err != nil {
 		t.Fatalf("materialize plan: %v", err)
+	}
+}
+
+func TestResolverMaterializeUsesWorkspacePlanSpecByDefault(t *testing.T) {
+	t.Parallel()
+
+	workspace := t.TempDir()
+	configDir := filepath.Join(workspace, ".devcontainer")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(configDir, "devcontainer.json")
+	if err := os.WriteFile(configPath, []byte(`{"image":"alpine:3.23","workspaceFolder":"/workspaces/demo"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	workspaceSpec, err := spec.ResolveWorkspaceSpec(workspace, configPath)
+	if err != nil {
+		t.Fatalf("resolve workspace spec: %v", err)
+	}
+
+	workspacePlan := WorkspacePlan{
+		Immutable: ImmutableInputs{
+			Workspace:      "/stale-workspace",
+			ConfigPath:     "/stale-workspace/devcontainer.json",
+			FeatureTimeout: 30 * time.Second,
+			Spec:           workspaceSpec,
+		},
+		LockProtected: LockProtectedArtifacts{
+			StateDir:      t.TempDir(),
+			CacheDir:      t.TempDir(),
+			UsesPlanCache: true,
+		},
+		ReadOnly:               true,
+		FeatureMaterialization: FeatureMaterializationReadonly,
+	}
+
+	resolved, err := NewResolver().Materialize(context.Background(), workspacePlan, nil)
+	if err != nil {
+		t.Fatalf("materialize plan: %v", err)
+	}
+	if resolved.ConfigPath != configPath {
+		t.Fatalf("expected materialization to use planned spec config path %q, got %q", configPath, resolved.ConfigPath)
+	}
+	if resolved.WorkspaceFolder != workspace {
+		t.Fatalf("expected materialization to use planned spec workspace %q, got %q", workspace, resolved.WorkspaceFolder)
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/lauritsk/hatchctl/internal/appconfig"
+	"github.com/lauritsk/hatchctl/internal/capability"
 	"github.com/lauritsk/hatchctl/internal/security"
 )
 
@@ -19,11 +20,7 @@ type FlagValue[T any] struct {
 	Changed bool
 }
 
-type DotfilesOptions struct {
-	Repository     string
-	InstallCommand string
-	TargetPath     string
-}
+type DotfilesOptions = capability.Dotfiles
 
 type DotfilesOptionValues struct {
 	Repository     FlagValue[string]
@@ -152,7 +149,7 @@ func resolveDotfilesValue(flag FlagValue[string], userValue string, workspaceVal
 	if flag.Changed {
 		return flag.Value
 	}
-	return preferredDotfilesValue(userValue, workspaceValue, trustedWorkspace)
+	return preferredWorkspaceValue(userValue, workspaceValue, trustedWorkspace)
 }
 
 func resolveTrustedSigners(loaded appconfig.LoadedConfig, trustedWorkspace bool) []security.TrustedSigner {
@@ -178,10 +175,6 @@ func resolveOptionalBoolDefault(target *bool, flag *FlagValue[bool], userValue *
 	if userValue != nil {
 		*target = *userValue
 	}
-}
-
-func preferredDotfilesValue(userValue string, workspaceValue string, trustedWorkspace bool) string {
-	return preferredWorkspaceValue(userValue, workspaceValue, trustedWorkspace)
 }
 
 func resolveHostPathDefault(flag FlagValue[string], userValue string, workspaceValue string, trustedWorkspace bool) string {

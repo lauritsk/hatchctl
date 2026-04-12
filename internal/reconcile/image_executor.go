@@ -438,10 +438,6 @@ func (e *Executor) desiredContainerKey(resolved devcontainer.ResolvedConfig, ima
 	return ContainerKey(resolved, imageIdentity, bridgeEnabled, sshAgent)
 }
 
-func (e *Executor) DesiredLifecycleKey(resolved devcontainer.ResolvedConfig, containerKey string, dotfiles DotfilesConfig) (string, error) {
-	return LifecycleKey(resolved, containerKey, dotfiles)
-}
-
 func (e *Executor) EnsureUpdatedUIDContainer(ctx context.Context, resolved devcontainer.ResolvedConfig, image string, containerID string, events ui.Sink) error {
 	if containerID == "" {
 		return nil

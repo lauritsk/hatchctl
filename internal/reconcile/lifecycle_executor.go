@@ -16,13 +16,8 @@ import (
 	ui "github.com/lauritsk/hatchctl/internal/display"
 	"github.com/lauritsk/hatchctl/internal/docker"
 	"github.com/lauritsk/hatchctl/internal/engine/dockercli"
-	workspaceplan "github.com/lauritsk/hatchctl/internal/plan"
 	"github.com/lauritsk/hatchctl/internal/policy"
 )
-
-func normalizeDotfilesPreference(pref workspaceplan.DotfilesPreference) (capdot.Config, error) {
-	return capdot.Normalize(capdot.Config{Repository: pref.Repository, InstallCommand: pref.InstallCommand, TargetPath: pref.TargetPath})
-}
 
 func injectSSHAgent(merged devcontainer.MergedConfig) (devcontainer.MergedConfig, error) {
 	return capssh.Inject(stdruntime.GOOS, os.Getenv("SSH_AUTH_SOCK"), merged)

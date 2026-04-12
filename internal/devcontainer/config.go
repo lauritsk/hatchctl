@@ -2,6 +2,7 @@ package devcontainer
 
 import (
 	"context"
+	"path/filepath"
 	"time"
 
 	"github.com/lauritsk/hatchctl/internal/security"
@@ -91,11 +92,28 @@ func ResolveReadOnlyWithOptions(ctx context.Context, workspaceArg string, config
 }
 
 func resolve(ctx context.Context, workspaceArg string, configArg string, opts ResolveOptions) (ResolvedConfig, error) {
-	persistence := resolverPersistence{}
 	workspaceSpec, stateDir, cacheDir, err := resolveWorkspaceSpecAndDirs(workspaceArg, configArg, opts)
 	if err != nil {
 		return ResolvedConfig{}, err
 	}
+	return ResolveWorkspaceSpecWithOptions(ctx, workspaceSpec, stateDir, cacheDir, opts)
+}
+
+func ResolveWorkspaceSpecWithOptions(ctx context.Context, workspaceSpec WorkspaceSpec, stateDir string, cacheDir string, opts ResolveOptions) (ResolvedConfig, error) {
+	if opts.LockfilePolicy == "" {
+		opts.LockfilePolicy = FeatureLockfilePolicyAuto
+	}
+	if workspaceSpec.ConfigDir == "" && workspaceSpec.ConfigPath != "" {
+		workspaceSpec.ConfigDir = filepath.Dir(workspaceSpec.ConfigPath)
+	}
+	if stateDir == "" || cacheDir == "" {
+		var err error
+		stateDir, cacheDir, err = workspaceOutputDirs(workspaceSpec.WorkspaceFolder, workspaceSpec.ConfigPath, opts)
+		if err != nil {
+			return ResolvedConfig{}, err
+		}
+	}
+	persistence := resolverPersistence{}
 	cacheKey, err := resolvedPlanCacheKey(workspaceSpec.ConfigPath, workspaceSpec.ConfigDir, workspaceSpec.Config, workspaceSpec.ComposeFiles)
 	if err != nil {
 		return ResolvedConfig{}, err

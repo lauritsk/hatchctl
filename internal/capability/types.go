@@ -21,6 +21,10 @@ type Dotfiles struct {
 	TargetPath     string
 }
 
+func (d Dotfiles) Enabled() bool {
+	return d.Repository != ""
+}
+
 type Bridge struct {
 	Enabled bool
 }

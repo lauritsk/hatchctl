@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/lauritsk/hatchctl/internal/capability"
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	"github.com/lauritsk/hatchctl/internal/docker"
 )
@@ -77,11 +78,7 @@ const (
 	LifecyclePhaseAll    LifecyclePhase = "all"
 )
 
-type DotfilesConfig struct {
-	Repository     string
-	InstallCommand string
-	TargetPath     string
-}
+type DotfilesConfig = capability.Dotfiles
 
 type DesiredLifecycle struct {
 	Key       string

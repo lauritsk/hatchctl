@@ -109,10 +109,6 @@ func (t *StateTracker) CompleteDotfiles(dotfiles DotfilesConfig) {
 	t.setDotfiles(dotfiles, dotfiles.Enabled())
 }
 
-func (d DotfilesConfig) Enabled() bool {
-	return d.Repository != ""
-}
-
 func (t *StateTracker) setDotfiles(dotfiles DotfilesConfig, ready bool) {
 	t.state.DotfilesReady = ready
 	t.state.DotfilesRepo = dotfiles.Repository

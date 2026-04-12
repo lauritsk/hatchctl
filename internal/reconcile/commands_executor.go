@@ -94,7 +94,7 @@ func (e *Executor) Up(ctx context.Context, workspacePlan workspaceplan.Workspace
 }
 
 func (e *Executor) prepareUp(ctx context.Context, workspacePlan workspaceplan.WorkspacePlan, opts UpOptions) (*Session, devcontainer.ResolvedConfig, capdot.Config, *StateTracker, workspaceplan.WorkspacePlan, error) {
-	dotfiles, err := normalizeDotfilesPreference(workspacePlan.Preferences.Dotfiles)
+	dotfiles, err := capdot.Normalize(workspacePlan.Preferences.Dotfiles)
 	if err != nil {
 		return nil, devcontainer.ResolvedConfig{}, capdot.Config{}, nil, workspaceplan.WorkspacePlan{}, err
 	}
@@ -202,13 +202,12 @@ func (e *Executor) startUpBridge(ctx context.Context, tracker *StateTracker, bri
 
 func (e *Executor) runUpLifecycle(ctx context.Context, session *Session, tracker *StateTracker, workspacePlan workspaceplan.WorkspacePlan, dotfiles capdot.Config, containerKey string, created bool, events ui.Sink) error {
 	state := session.State()
-	dotfilesConfig := DotfilesConfig{Repository: dotfiles.Repository, InstallCommand: dotfiles.InstallCommand, TargetPath: dotfiles.TargetPath}
-	lifecycleKey, err := e.DesiredLifecycleKey(session.Resolved(), containerKey, dotfilesConfig)
+	lifecycleKey, err := LifecycleKey(session.Resolved(), containerKey, dotfiles)
 	if err != nil {
 		return err
 	}
 	observed := session.Observed()
-	lifecyclePlan := PlanUpLifecycle(observed, DesiredLifecycle{Key: lifecycleKey, Dotfiles: dotfilesConfig, Created: created})
+	lifecyclePlan := PlanUpLifecycle(observed, DesiredLifecycle{Key: lifecycleKey, Dotfiles: dotfiles, Created: created})
 	tracker.BeginPlannedLifecycle(lifecyclePlan, DotfilesNeedsInstall(state, dotfiles))
 	if err := tracker.Persist(); err != nil {
 		return err
@@ -217,7 +216,7 @@ func (e *Executor) runUpLifecycle(ctx context.Context, session *Session, tracker
 	if err := e.RunLifecyclePlan(ctx, observed, state, dotfiles, workspacePlan.Trust.HostLifecycleAllowed, events, lifecyclePlan); err != nil {
 		return err
 	}
-	tracker.CompletePlannedLifecycle(lifecyclePlan, dotfilesConfig, DotfilesNeedsInstall(state, dotfiles))
+	tracker.CompletePlannedLifecycle(lifecyclePlan, dotfiles, DotfilesNeedsInstall(state, dotfiles))
 	return nil
 }
 
@@ -332,7 +331,7 @@ func (e *Executor) enrichExecResolvedConfig(ctx context.Context, session *Sessio
 
 func (e *Executor) ReadConfig(ctx context.Context, workspacePlan workspaceplan.WorkspacePlan, opts ReadConfigOptions) (ReadConfigResult, error) {
 	executor := e.cloneWithIO(opts.IO.Stdin, opts.IO.Stdout, opts.IO.Stderr)
-	dotfiles, err := normalizeDotfilesPreference(workspacePlan.Preferences.Dotfiles)
+	dotfiles, err := capdot.Normalize(workspacePlan.Preferences.Dotfiles)
 	if err != nil {
 		return ReadConfigResult{}, err
 	}
@@ -410,7 +409,7 @@ func persistTrustedRefs(stateDir string, refs []string) error {
 
 func (e *Executor) RunLifecycle(ctx context.Context, workspacePlan workspaceplan.WorkspacePlan, opts RunLifecycleOptions) (RunLifecycleResult, error) {
 	executor := e.cloneWithIO(opts.IO.Stdin, opts.IO.Stdout, opts.IO.Stderr)
-	dotfiles, err := normalizeDotfilesPreference(workspacePlan.Preferences.Dotfiles)
+	dotfiles, err := capdot.Normalize(workspacePlan.Preferences.Dotfiles)
 	if err != nil {
 		return RunLifecycleResult{}, err
 	}
@@ -427,12 +426,11 @@ func (e *Executor) RunLifecycle(ctx context.Context, workspacePlan workspaceplan
 	state := session.State()
 	observed := session.Observed()
 	phase := opts.Phase
-	lifecycleKey, err := executor.DesiredLifecycleKey(resolved, state.ContainerKey, DotfilesConfig{Repository: dotfiles.Repository, InstallCommand: dotfiles.InstallCommand, TargetPath: dotfiles.TargetPath})
+	lifecycleKey, err := LifecycleKey(resolved, state.ContainerKey, dotfiles)
 	if err != nil {
 		return RunLifecycleResult{}, err
 	}
-	dotfilesConfig := DotfilesConfig{Repository: dotfiles.Repository, InstallCommand: dotfiles.InstallCommand, TargetPath: dotfiles.TargetPath}
-	lifecyclePlan, err := PlanLifecycleCommand(observed, DesiredLifecycle{Key: lifecycleKey, Requested: phase, Dotfiles: dotfilesConfig})
+	lifecyclePlan, err := PlanLifecycleCommand(observed, DesiredLifecycle{Key: lifecycleKey, Requested: phase, Dotfiles: dotfiles})
 	if err != nil {
 		return RunLifecycleResult{}, err
 	}
@@ -448,7 +446,7 @@ func (e *Executor) RunLifecycle(ctx context.Context, workspacePlan workspaceplan
 		return RunLifecycleResult{}, err
 	}
 	if lifecyclePlan.RunCreate {
-		tracker.CompletePlannedLifecycle(lifecyclePlan, dotfilesConfig, DotfilesNeedsInstall(state, dotfiles))
+		tracker.CompletePlannedLifecycle(lifecyclePlan, dotfiles, DotfilesNeedsInstall(state, dotfiles))
 		if err := tracker.Persist(); err != nil {
 			return RunLifecycleResult{}, err
 		}

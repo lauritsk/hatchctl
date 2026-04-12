@@ -20,11 +20,7 @@ const (
 	FeatureMaterializationRefresh  FeatureMaterializationMode = "refresh"
 )
 
-type DotfilesPreference struct {
-	Repository     string
-	InstallCommand string
-	TargetPath     string
-}
+type DotfilesPreference = capability.Dotfiles
 
 type Preferences struct {
 	BridgeEnabled bool

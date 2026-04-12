@@ -6,6 +6,7 @@ import (
 	"path"
 	"strings"
 
+	"github.com/lauritsk/hatchctl/internal/capability"
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
 )
 
@@ -55,11 +56,7 @@ if [ "$found" -eq 0 ]; then
 fi
 `
 
-type Config struct {
-	Repository     string
-	InstallCommand string
-	TargetPath     string
-}
+type Config = capability.Dotfiles
 
 type Status struct {
 	Configured     bool
@@ -68,10 +65,6 @@ type Status struct {
 	Repository     string
 	InstallCommand string
 	TargetPath     string
-}
-
-func (c Config) Enabled() bool {
-	return strings.TrimSpace(c.Repository) != ""
 }
 
 func Normalize(c Config) (Config, error) {
