@@ -61,11 +61,11 @@ type featureOption struct {
 	Default any `json:"default,omitempty"`
 }
 
-func validateFeatureLockfilePolicy(source string, lock FeatureLockEntry, policy FeatureLockfilePolicy) error {
+func validateFeatureLockfilePolicy(configDir string, source string, lock FeatureLockEntry, policy FeatureLockfilePolicy) error {
 	if policy != FeatureLockfilePolicyFrozen {
 		return nil
 	}
-	if !featurefetch.IsRemoteFeatureSource(source) || lock.Integrity != "" {
+	if !featurefetch.IsRemoteFeatureSource(configDir, source) || lock.Integrity != "" {
 		return nil
 	}
 	return fmt.Errorf("feature %q requires a lockfile integrity in frozen lockfile mode", source)

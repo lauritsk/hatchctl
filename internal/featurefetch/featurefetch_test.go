@@ -48,8 +48,17 @@ func TestFetchRegistryBearerTokenRejectsUnexpectedRealmHost(t *testing.T) {
 	t.Parallel()
 
 	_, err := fetchRegistryBearerToken(context.Background(), "https://registry.example/v2/features/tool/manifests/latest", `Bearer realm="https://evil.example/token",service="registry.test"`, 5*time.Second)
-	if err == nil || !strings.Contains(err.Error(), "unexpected host") {
-		t.Fatalf("expected unexpected host error, got %v", err)
+	if err == nil || !strings.Contains(err.Error(), "unexpected origin") {
+		t.Fatalf("expected unexpected origin error, got %v", err)
+	}
+}
+
+func TestFetchRegistryBearerTokenRejectsUnexpectedRealmPort(t *testing.T) {
+	t.Parallel()
+
+	_, err := fetchRegistryBearerToken(context.Background(), "https://registry.example:5000/v2/features/tool/manifests/latest", `Bearer realm="https://registry.example:4444/token",service="registry.test"`, 5*time.Second)
+	if err == nil || !strings.Contains(err.Error(), "unexpected origin") {
+		t.Fatalf("expected unexpected origin error, got %v", err)
 	}
 }
 
@@ -276,6 +285,44 @@ func TestResolveSourceUsesCachedTarballWhenNetworkDisabled(t *testing.T) {
 	}
 	if requests != 0 {
 		t.Fatalf("expected cached tarball resolution without network, got %d requests", requests)
+	}
+}
+
+func TestResolveSourceRepairsBrokenCachedTarballDirectory(t *testing.T) {
+	t.Parallel()
+
+	layer := buildFeatureLayer(t, map[string]string{
+		"devcontainer-feature.json": `{"id":"tarball-tool"}`,
+		"install.sh":                "#!/bin/sh\nexit 0\n",
+	})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/feature.tgz" {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write(layer)
+	}))
+	defer server.Close()
+
+	cacheDir := t.TempDir()
+	source := server.URL + "/feature.tgz"
+	sum := sha256.Sum256(layer)
+	integrity := "sha256:" + hex.EncodeToString(sum[:])
+	key := sha256.Sum256([]byte(source))
+	brokenDir := filepath.Join(cacheDir, hex.EncodeToString(key[:]), SanitizeCacheRef(integrity))
+	if err := os.MkdirAll(brokenDir, 0o755); err != nil {
+		t.Fatalf("mkdir broken cache dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(brokenDir, "partial.txt"), []byte("broken"), 0o644); err != nil {
+		t.Fatalf("write broken cache marker: %v", err)
+	}
+
+	resolved, err := ResolveSource(context.Background(), t.TempDir(), cacheDir, source, storefs.FeatureLockEntry{}, "auto", ResolveOptions{AllowNetwork: true})
+	if err != nil {
+		t.Fatalf("resolve source with broken cache: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(resolved.Path, "devcontainer-feature.json")); err != nil {
+		t.Fatalf("expected repaired cache manifest: %v", err)
 	}
 }
 

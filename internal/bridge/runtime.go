@@ -115,10 +115,11 @@ func Start(session *Session, containerID string) (*Session, error) {
 	if err != nil {
 		return nil, err
 	}
-	_ = proc.Release()
 	if err := waitForBridgeTCP(session.Port, bridgeStartupTimeout); err != nil {
+		_ = stopStartedProcess(proc)
 		return nil, err
 	}
+	_ = proc.Release()
 	session.Status = "running"
 	return session, nil
 }
@@ -301,16 +302,13 @@ func (s *bridgeHostService) ensureForward(port int) (int, bool, error) {
 		s.mu.Unlock()
 		return forward.hostPort, forward.exact, nil
 	}
-	s.mu.Unlock()
-
 	listener, exact, err := listenForwardPort(port)
 	if err != nil {
+		s.mu.Unlock()
 		return 0, false, err
 	}
 	hostPort := listener.Addr().(*net.TCPAddr).Port
 	forward := forwardedPort{server: listener, hostPort: hostPort, exact: exact}
-
-	s.mu.Lock()
 	s.forwarded[port] = forward
 	snapshot := s.forwardSnapshotLocked()
 	s.mu.Unlock()
@@ -411,14 +409,30 @@ func stopExisting(session *Session) error {
 	if err != nil {
 		return nil
 	}
+	waitCh := waitForProcess(process)
 	_ = process.Signal(syscall.SIGTERM)
 	for range 20 {
+		if done, err := pollProcessWait(waitCh); done {
+			return err
+		}
 		if !isPIDRunning(pid) {
 			return nil
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	return nil
+	if err := process.Signal(syscall.SIGKILL); err != nil && !errors.Is(err, os.ErrProcessDone) {
+		return err
+	}
+	for range 10 {
+		if done, err := pollProcessWait(waitCh); done {
+			return err
+		}
+		if !isPIDRunning(pid) {
+			return nil
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	return fmt.Errorf("bridge process %d did not stop", pid)
 }
 
 func Stop(stateDir string) error {
@@ -474,6 +488,50 @@ func containerConnectWithDocker(client *docker.Client) containerConnectRunner {
 
 func listenBridgeTCP(port int) (net.Listener, error) {
 	return net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)))
+}
+
+func stopStartedProcess(proc *os.Process) error {
+	if proc == nil {
+		return nil
+	}
+	if err := proc.Kill(); err != nil && !errors.Is(err, os.ErrProcessDone) {
+		return err
+	}
+	_, err := proc.Wait()
+	if err != nil && !errors.Is(err, os.ErrProcessDone) {
+		return err
+	}
+	return nil
+}
+
+func waitForProcess(proc *os.Process) <-chan error {
+	if proc == nil {
+		return nil
+	}
+	done := make(chan error, 1)
+	go func() {
+		_, err := proc.Wait()
+		done <- err
+	}()
+	return done
+}
+
+func pollProcessWait(waitCh <-chan error) (bool, error) {
+	if waitCh == nil {
+		return false, nil
+	}
+	select {
+	case err := <-waitCh:
+		if err == nil || errors.Is(err, os.ErrProcessDone) {
+			return true, nil
+		}
+		if errors.Is(err, syscall.ECHILD) {
+			return false, nil
+		}
+		return true, err
+	default:
+		return false, nil
+	}
 }
 
 func writeBridgeConfig(session *Session, containerID string) error {

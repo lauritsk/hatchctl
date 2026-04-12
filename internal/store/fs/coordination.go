@@ -50,7 +50,7 @@ func (e *WorkspaceBusyError) Error() string {
 
 type WorkspaceLock struct {
 	stateDir string
-	lockDir  string
+	lockFile *os.File
 	owner    ActiveOwner
 
 	mu       sync.Mutex
@@ -77,51 +77,68 @@ func AcquireWorkspaceLock(ctx context.Context, stateDir string, command string) 
 		UpdatedAt:      now,
 		LeaseExpiresAt: now.Add(leaseDuration),
 	}
-	lockDir := filepath.Join(stateDir, "lock")
-	for {
-		if err := ctx.Err(); err != nil {
-			return nil, err
-		}
-		err := os.Mkdir(lockDir, 0o700)
-		if err == nil {
-			record, readErr := readCoordination(stateDir)
-			if readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
-				_ = os.Remove(lockDir)
-				return nil, readErr
-			}
-			record.Version = coordinationVersion
-			record.Generation++
-			record.ActiveOwner = &owner
-			if err := writeCoordination(stateDir, record); err != nil {
-				_ = os.Remove(lockDir)
-				return nil, err
-			}
-			leaseCtx, cancel := context.WithCancel(context.Background())
-			handle := &WorkspaceLock{stateDir: stateDir, lockDir: lockDir, owner: owner, cancel: cancel, done: make(chan struct{})}
-			go handle.renew(leaseCtx)
-			return handle, nil
-		}
-		if !os.IsExist(err) {
-			return nil, err
-		}
-
-		record, readErr := readCoordination(stateDir)
-		if readErr != nil {
-			return nil, readErr
-		}
-		if record.ActiveOwner != nil && !leaseExpired(record.ActiveOwner, now) {
-			return nil, &WorkspaceBusyError{StateDir: stateDir, Owner: record.ActiveOwner}
-		}
-		if record.ActiveOwner != nil && sameHost(record.ActiveOwner.Hostname, hostname) && processRunning(record.ActiveOwner.PID) {
-			return nil, &WorkspaceBusyError{StateDir: stateDir, Owner: record.ActiveOwner}
-		}
-		if err := os.Remove(lockDir); err != nil && !os.IsNotExist(err) {
-			return nil, err
-		}
-		now = time.Now().UTC()
-		owner.UpdatedAt = now
-		owner.LeaseExpiresAt = now.Add(leaseDuration)
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
+	lockFile, err := openWorkspaceLockFile(filepath.Join(stateDir, "lock"))
+	if err != nil {
+		return nil, err
+	}
+	if err := tryExclusiveLock(lockFile); err != nil {
+		_ = lockFile.Close()
+		if isLockBusy(err) {
+			owner, ownerErr := activeWorkspaceOwner(stateDir)
+			if ownerErr != nil {
+				return nil, &WorkspaceBusyError{StateDir: stateDir}
+			}
+			return nil, &WorkspaceBusyError{StateDir: stateDir, Owner: owner}
+		}
+		return nil, err
+	}
+	record, readErr := readCoordination(stateDir)
+	if readErr != nil {
+		record = CoordinationRecord{Version: coordinationVersion}
+	}
+	record.Version = coordinationVersion
+	record.Generation++
+	record.ActiveOwner = &owner
+	if err := writeCoordination(stateDir, record); err != nil {
+		_ = unlockWorkspaceFile(lockFile)
+		_ = lockFile.Close()
+		return nil, err
+	}
+	leaseCtx, cancel := context.WithCancel(context.Background())
+	handle := &WorkspaceLock{stateDir: stateDir, lockFile: lockFile, owner: owner, cancel: cancel, done: make(chan struct{})}
+	go handle.renew(leaseCtx)
+	return handle, nil
+}
+
+func CheckWorkspaceBusy(stateDir string) error {
+	if _, err := os.Stat(stateDir); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	lockFile, err := openWorkspaceLockFile(filepath.Join(stateDir, "lock"))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	defer lockFile.Close()
+	if err := tryExclusiveLock(lockFile); err != nil {
+		if !isLockBusy(err) {
+			return err
+		}
+		owner, ownerErr := activeWorkspaceOwner(stateDir)
+		if ownerErr != nil {
+			return &WorkspaceBusyError{StateDir: stateDir}
+		}
+		return &WorkspaceBusyError{StateDir: stateDir, Owner: owner}
+	}
+	return unlockWorkspaceFile(lockFile)
 }
 
 func ReadCoordination(stateDir string) (CoordinationRecord, error) {
@@ -145,17 +162,23 @@ func (l *WorkspaceLock) Release() error {
 	}
 
 	record, err := readCoordination(l.stateDir)
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
+	if err != nil {
+		record = CoordinationRecord{Version: coordinationVersion}
 	}
 	if record.ActiveOwner != nil && record.ActiveOwner.OwnerID == l.owner.OwnerID {
 		record.ActiveOwner = nil
 		record.Version = coordinationVersion
 		if err := writeCoordination(l.stateDir, record); err != nil {
+			_ = unlockWorkspaceFile(l.lockFile)
+			_ = l.lockFile.Close()
 			return err
 		}
 	}
-	if err := os.Remove(l.lockDir); err != nil && !os.IsNotExist(err) {
+	if err := unlockWorkspaceFile(l.lockFile); err != nil {
+		_ = l.lockFile.Close()
+		return err
+	}
+	if err := l.lockFile.Close(); err != nil {
 		return err
 	}
 	return nil
@@ -211,6 +234,36 @@ func writeCoordination(stateDir string, record CoordinationRecord) error {
 		return err
 	}
 	return fileutil.WriteFile(filepath.Join(stateDir, "coordination.json"), data, 0o600)
+}
+
+func activeWorkspaceOwner(stateDir string) (*ActiveOwner, error) {
+	record, err := readCoordination(stateDir)
+	if err != nil {
+		return nil, err
+	}
+	return record.ActiveOwner, nil
+}
+
+func openWorkspaceLockFile(path string) (*os.File, error) {
+	return os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
+}
+
+func tryExclusiveLock(file *os.File) error {
+	if file == nil {
+		return fmt.Errorf("workspace lock file is nil")
+	}
+	return syscall.Flock(int(file.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
+}
+
+func unlockWorkspaceFile(file *os.File) error {
+	if file == nil {
+		return nil
+	}
+	return syscall.Flock(int(file.Fd()), syscall.LOCK_UN)
+}
+
+func isLockBusy(err error) bool {
+	return errors.Is(err, syscall.EWOULDBLOCK) || errors.Is(err, syscall.EAGAIN)
 }
 
 func leaseExpired(owner *ActiveOwner, now time.Time) bool {

@@ -39,8 +39,7 @@ func helperConnect(args []string, stdin io.Reader, stdout io.Writer) error {
 		return err
 	}
 	defer conn.Close()
-	copyStreams(conn, stdin, stdout)
-	return nil
+	return copyStreams(conn, stdin, stdout)
 }
 
 func helperOpen(args []string) error {
@@ -77,7 +76,7 @@ func helperOpen(args []string) error {
 	return nil
 }
 
-func copyStreams(target net.Conn, stdin io.Reader, stdout io.Writer) {
+func copyStreams(target net.Conn, stdin io.Reader, stdout io.Writer) error {
 	errCh := make(chan error, 2)
 	go func() {
 		_, err := io.Copy(target, stdin)
@@ -88,9 +87,11 @@ func copyStreams(target net.Conn, stdin io.Reader, stdout io.Writer) {
 		_, err := io.Copy(stdout, target)
 		errCh <- err
 	}()
+	var firstErr error
 	for range 2 {
-		if err := <-errCh; err != nil && !errors.Is(err, net.ErrClosed) {
-			return
+		if err := <-errCh; err != nil && !errors.Is(err, net.ErrClosed) && firstErr == nil {
+			firstErr = err
 		}
 	}
+	return firstErr
 }

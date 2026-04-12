@@ -57,8 +57,8 @@ func TestCoordinationReadAndReleaseHelpers(t *testing.T) {
 	if err := lock.Release(); err != nil {
 		t.Fatalf("release workspace lock idempotently: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(stateDir, "lock")); !os.IsNotExist(err) {
-		t.Fatalf("expected lock dir removal, got %v", err)
+	if err := CheckWorkspaceBusy(stateDir); err != nil {
+		t.Fatalf("expected lock to be clear after release, got %v", err)
 	}
 	coordinationPath := filepath.Join(stateDir, "coordination.json")
 	if err := os.WriteFile(coordinationPath, []byte("{invalid"), 0o600); err != nil {

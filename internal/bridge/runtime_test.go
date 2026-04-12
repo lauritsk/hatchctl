@@ -25,6 +25,14 @@ type fakeBridgeRunner struct {
 	startFunc func(command.StartOptions) (*os.Process, error)
 }
 
+type failingWriter struct {
+	err error
+}
+
+func (w failingWriter) Write([]byte) (int, error) {
+	return 0, w.err
+}
+
 func (f fakeBridgeRunner) Run(ctx context.Context, cmd command.Command) error {
 	if f.runFunc != nil {
 		return f.runFunc(ctx, cmd)
@@ -179,6 +187,25 @@ func TestHelperConnectCopiesTraffic(t *testing.T) {
 	}
 	if got := stdout.String(); got != "echo:hello" {
 		t.Fatalf("unexpected helper output %q", got)
+	}
+}
+
+func TestCopyStreamsReturnsWriteErrors(t *testing.T) {
+	t.Parallel()
+
+	client, server := net.Pipe()
+	defer client.Close()
+	defer server.Close()
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- copyStreams(client, bytes.NewBuffer(nil), failingWriter{err: errors.New("write failed")})
+	}()
+	if _, err := server.Write([]byte("hello")); err != nil {
+		t.Fatalf("write server payload: %v", err)
+	}
+	_ = server.Close()
+	if err := <-errCh; err == nil || !strings.Contains(err.Error(), "write failed") {
+		t.Fatalf("expected stream write error, got %v", err)
 	}
 }
 
@@ -836,7 +863,7 @@ func TestStopExistingTerminatesPIDFromFile(t *testing.T) {
 	}()
 	select {
 	case err := <-waitCh:
-		if err != nil && !strings.Contains(err.Error(), "terminated") {
+		if err != nil && !strings.Contains(err.Error(), "terminated") && !strings.Contains(err.Error(), "no child processes") {
 			t.Fatalf("wait for stopped process: %v", err)
 		}
 	case <-time.After(2 * time.Second):

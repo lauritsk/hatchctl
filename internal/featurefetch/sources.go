@@ -88,11 +88,11 @@ func parseGitHubFeatureReference(source string) (gitHubFeatureReference, error) 
 	return gitHubFeatureReference{owner: parts[0], repo: parts[1], feature: parts[2], tag: version}, nil
 }
 
-func IsRemoteFeatureSource(source string) bool {
+func IsRemoteFeatureSource(configDir string, source string) bool {
 	if strings.HasPrefix(source, "./") || strings.HasPrefix(source, "../") || strings.HasPrefix(source, "/") {
 		return false
 	}
-	parsed, err := parseFeatureSource("", source)
+	parsed, err := parseFeatureSource(configDir, source)
 	if err != nil {
 		return false
 	}

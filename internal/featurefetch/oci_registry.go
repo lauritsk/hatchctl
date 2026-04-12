@@ -163,8 +163,8 @@ func validateRegistryTokenRealm(requestURL string, realm *url.URL) error {
 	if err != nil {
 		return err
 	}
-	if !strings.EqualFold(realm.Hostname(), requestParsed.Hostname()) {
-		return fmt.Errorf("registry auth challenge points to unexpected host %q", realm.Hostname())
+	if !sameOrigin(realm, requestParsed) {
+		return fmt.Errorf("registry auth challenge points to unexpected origin %q", realm.String())
 	}
 	if strings.EqualFold(realm.Scheme, "https") {
 		return nil
@@ -173,4 +173,24 @@ func validateRegistryTokenRealm(requestURL string, realm *url.URL) error {
 		return nil
 	}
 	return fmt.Errorf("registry auth challenge %q must use https or loopback http", realm.String())
+}
+
+func sameOrigin(a *url.URL, b *url.URL) bool {
+	if a == nil || b == nil {
+		return false
+	}
+	return strings.EqualFold(a.Scheme, b.Scheme) && strings.EqualFold(a.Hostname(), b.Hostname()) && effectiveURLPort(a) == effectiveURLPort(b)
+}
+
+func effectiveURLPort(u *url.URL) string {
+	if port := u.Port(); port != "" {
+		return port
+	}
+	if strings.EqualFold(u.Scheme, "http") {
+		return "80"
+	}
+	if strings.EqualFold(u.Scheme, "https") {
+		return "443"
+	}
+	return ""
 }

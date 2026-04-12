@@ -145,28 +145,18 @@ func fetchOCIFeature(ctx context.Context, cacheDir string, source string, ref oc
 		verification = verifyImage(ctx, ref.Registry+"/"+ref.Repository+"@"+digest)
 	}
 	featureDir := filepath.Join(baseDir, SanitizeCacheRef(digest))
-	if _, err := os.Stat(filepath.Join(featureDir, "devcontainer-feature.json")); err == nil {
+	if ok, err := hasFeatureManifest(featureDir); err != nil {
+		return "", "", "", "", verification, err
+	} else if ok {
 		return featureDir, ref.Registry + "/" + ref.Repository + "@" + digest, digest, ref.Reference, verification, nil
 	}
 	if len(manifest.Layers) == 0 {
 		return "", "", "", "", verification, fmt.Errorf("OCI feature %q has no layers", source)
 	}
-	if err := os.RemoveAll(featureDir); err != nil {
+	if err := populateFeatureCache(baseDir, featureDir, func(tempDir string) error {
+		return fetchOCIBlob(ctx, ref, manifest.Layers[0].Digest, token, tempDir, httpTimeout)
+	}); err != nil {
 		return "", "", "", "", verification, err
-	}
-	if err := os.MkdirAll(featureDir, 0o755); err != nil {
-		return "", "", "", "", verification, err
-	}
-	defer func() {
-		if _, err := os.Stat(filepath.Join(featureDir, "devcontainer-feature.json")); err != nil {
-			_ = os.RemoveAll(featureDir)
-		}
-	}()
-	if err := fetchOCIBlob(ctx, ref, manifest.Layers[0].Digest, token, featureDir, httpTimeout); err != nil {
-		return "", "", "", "", verification, err
-	}
-	if _, err := os.Stat(filepath.Join(featureDir, "devcontainer-feature.json")); err != nil {
-		return "", "", "", "", verification, fmt.Errorf("OCI feature %q did not contain devcontainer-feature.json", source)
 	}
 	return featureDir, ref.Registry + "/" + ref.Repository + "@" + digest, digest, ref.Reference, verification, nil
 }
@@ -187,25 +177,15 @@ func fetchTarballFeature(ctx context.Context, cacheDir string, source string, lo
 		return "", "", fmt.Errorf("feature %q integrity mismatch: got %s want %s", source, integrity, lock.Integrity)
 	}
 	featureDir := filepath.Join(baseDir, SanitizeCacheRef(integrity))
-	if _, err := os.Stat(filepath.Join(featureDir, "devcontainer-feature.json")); err == nil {
+	if ok, err := hasFeatureManifest(featureDir); err != nil {
+		return "", "", err
+	} else if ok {
 		return featureDir, integrity, nil
 	}
-	if err := os.RemoveAll(featureDir); err != nil {
+	if err := populateFeatureCache(baseDir, featureDir, func(tempDir string) error {
+		return ExtractFeatureLayer(bytes.NewReader(body), tempDir)
+	}); err != nil {
 		return "", "", err
-	}
-	if err := os.MkdirAll(featureDir, 0o755); err != nil {
-		return "", "", err
-	}
-	defer func() {
-		if _, err := os.Stat(filepath.Join(featureDir, "devcontainer-feature.json")); err != nil {
-			_ = os.RemoveAll(featureDir)
-		}
-	}()
-	if err := ExtractFeatureLayer(bytes.NewReader(body), featureDir); err != nil {
-		return "", "", err
-	}
-	if _, err := os.Stat(filepath.Join(featureDir, "devcontainer-feature.json")); err != nil {
-		return "", "", fmt.Errorf("tarball feature %q did not contain devcontainer-feature.json", source)
 	}
 	return featureDir, integrity, nil
 }
@@ -247,6 +227,61 @@ func effectiveFeatureHTTPTimeout(timeout time.Duration) time.Duration {
 		return timeout
 	}
 	return featureHTTPTimeout
+}
+
+func populateFeatureCache(baseDir string, featureDir string, populate func(string) error) error {
+	if err := os.MkdirAll(baseDir, 0o755); err != nil {
+		return err
+	}
+	if ok, err := hasFeatureManifest(featureDir); err != nil {
+		return err
+	} else if ok {
+		return nil
+	}
+	tempDir, err := os.MkdirTemp(baseDir, filepath.Base(featureDir)+".tmp-*")
+	if err != nil {
+		return err
+	}
+	keepTemp := false
+	defer func() {
+		if !keepTemp {
+			_ = os.RemoveAll(tempDir)
+		}
+	}()
+	if err := populate(tempDir); err != nil {
+		return err
+	}
+	if ok, err := hasFeatureManifest(tempDir); err != nil {
+		return err
+	} else if !ok {
+		return fmt.Errorf("cached feature is missing devcontainer-feature.json")
+	}
+	if err := os.Rename(tempDir, featureDir); err != nil {
+		if ok, statErr := hasFeatureManifest(featureDir); statErr == nil && ok {
+			return nil
+		}
+		if removeErr := os.RemoveAll(featureDir); removeErr != nil && !os.IsNotExist(removeErr) {
+			return err
+		}
+		if retryErr := os.Rename(tempDir, featureDir); retryErr != nil {
+			if ok, statErr := hasFeatureManifest(featureDir); statErr == nil && ok {
+				return nil
+			}
+			return retryErr
+		}
+	}
+	keepTemp = true
+	return nil
+}
+
+func hasFeatureManifest(featureDir string) (bool, error) {
+	if _, err := os.Stat(filepath.Join(featureDir, "devcontainer-feature.json")); err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
 }
 
 func featureHTTPClient(timeout time.Duration, redirectPolicy func(*http.Request, []*http.Request) error) *http.Client {

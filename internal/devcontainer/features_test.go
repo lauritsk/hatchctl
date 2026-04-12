@@ -127,6 +127,41 @@ func TestResolveFeaturesIgnoresMissingInstallsAfter(t *testing.T) {
 	}
 }
 
+func TestResolveFeaturesRejectsDuplicateFeatureIDs(t *testing.T) {
+	t.Parallel()
+
+	configDir := t.TempDir()
+	writeFeatureFixture(t, filepath.Join(configDir, "alpha"), `{"id":"shared"}`)
+	writeFeatureFixture(t, filepath.Join(configDir, "beta"), `{"id":"shared"}`)
+
+	configPath := filepath.Join(configDir, "devcontainer.json")
+	_, err := ResolveFeatures(context.Background(), configPath, configDir, t.TempDir(), map[string]any{
+		"./alpha": true,
+		"./beta":  true,
+	}, featureResolveOpts)
+	if err == nil || !strings.Contains(err.Error(), `duplicate id "shared"`) {
+		t.Fatalf("expected duplicate feature id error, got %v", err)
+	}
+}
+
+func TestResolveFeaturesFrozenLockfileUsesConfigDirForRemoteDetection(t *testing.T) {
+	workspace := t.TempDir()
+	t.Chdir(workspace)
+	localLookingRemote := filepath.Join(workspace, "owner", "repo", "feature")
+	if err := os.MkdirAll(localLookingRemote, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	configDir := t.TempDir()
+	configPath := filepath.Join(configDir, ".devcontainer.json")
+	_, err := ResolveFeatures(context.Background(), configPath, configDir, t.TempDir(), map[string]any{
+		"owner/repo/feature": true,
+	}, FeatureResolveOptions{AllowNetwork: true, LockfilePolicy: FeatureLockfilePolicyFrozen})
+	if err == nil || !strings.Contains(err.Error(), "requires a lockfile integrity in frozen lockfile mode") {
+		t.Fatalf("expected frozen lockfile error for remote feature, got %v", err)
+	}
+}
+
 func TestResolveFeaturesMaterializesOptionEnvironment(t *testing.T) {
 	t.Parallel()
 

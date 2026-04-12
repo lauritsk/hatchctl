@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"io"
-	"os"
 
 	"github.com/lauritsk/hatchctl/internal/bridge"
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
@@ -109,6 +108,7 @@ func NewDefault() *Service {
 }
 
 func (s *Service) Up(ctx context.Context, req UpRequest) (UpResult, error) {
+	executor := s.executor.WithTrustedSigners(req.Defaults.TrustedSigners)
 	buildPlan, err := s.workspacePlanBuilder(req.Defaults, workspacePlanOptions{
 		BridgeEnabled:      req.Defaults.BridgeEnabled,
 		SSHAgent:           req.Defaults.SSHAgent,
@@ -122,11 +122,12 @@ func (s *Service) Up(ctx context.Context, req UpRequest) (UpResult, error) {
 	return withMutationLock(s, ctx, "up", func() (workspaceplan.WorkspacePlan, error) {
 		return buildPlan()
 	}, func(workspacePlan workspaceplan.WorkspacePlan) (UpResult, error) {
-		return s.executor.Up(ctx, workspacePlan, reconcile.UpOptions{Recreate: req.Recreate, Debug: req.Global.Debug, IO: commandStreams(req.IO)})
+		return executor.Up(ctx, workspacePlan, reconcile.UpOptions{Recreate: req.Recreate, Debug: req.Global.Debug, IO: commandStreams(req.IO)})
 	})
 }
 
 func (s *Service) Build(ctx context.Context, req BuildRequest) (BuildResult, error) {
+	executor := s.executor.WithTrustedSigners(req.Defaults.TrustedSigners)
 	buildPlan, err := s.workspacePlanBuilder(req.Defaults, workspacePlanOptions{
 		TrustWorkspace: req.Defaults.TrustWorkspace,
 	})
@@ -136,11 +137,12 @@ func (s *Service) Build(ctx context.Context, req BuildRequest) (BuildResult, err
 	return withMutationLock(s, ctx, "build", func() (workspaceplan.WorkspacePlan, error) {
 		return buildPlan()
 	}, func(workspacePlan workspaceplan.WorkspacePlan) (BuildResult, error) {
-		return s.executor.Build(ctx, workspacePlan, reconcile.BuildOptions{Debug: req.Global.Debug, IO: commandStreams(req.IO)})
+		return executor.Build(ctx, workspacePlan, reconcile.BuildOptions{Debug: req.Global.Debug, IO: commandStreams(req.IO)})
 	})
 }
 
 func (s *Service) Exec(ctx context.Context, req ExecRequest) (int, error) {
+	executor := s.executor.WithTrustedSigners(req.Defaults.TrustedSigners)
 	buildPlan, err := s.workspacePlanBuilder(req.Defaults, workspacePlanOptions{ReadOnly: true, SSHAgent: req.Defaults.SSHAgent})
 	if err != nil {
 		return 0, err
@@ -152,10 +154,11 @@ func (s *Service) Exec(ctx context.Context, req ExecRequest) (int, error) {
 	if err := ensureNoActiveMutation(workspacePlan.LockProtected.StateDir); err != nil {
 		return 0, err
 	}
-	return s.executor.Exec(ctx, workspacePlan, reconcile.ExecOptions{Args: req.Args, RemoteEnv: req.RemoteEnv, Debug: req.Global.Debug, IO: commandStreams(req.IO)})
+	return executor.Exec(ctx, workspacePlan, reconcile.ExecOptions{Args: req.Args, RemoteEnv: req.RemoteEnv, Debug: req.Global.Debug, IO: commandStreams(req.IO)})
 }
 
 func (s *Service) ReadConfig(ctx context.Context, req ReadConfigRequest) (ReadConfigResult, error) {
+	executor := s.executor.WithTrustedSigners(req.Defaults.TrustedSigners)
 	buildPlan, err := s.workspacePlanBuilder(req.Defaults, workspacePlanOptions{ReadOnly: true, SSHAgent: req.Defaults.SSHAgent, Dotfiles: req.Defaults.Dotfiles})
 	if err != nil {
 		return ReadConfigResult{}, err
@@ -164,10 +167,11 @@ func (s *Service) ReadConfig(ctx context.Context, req ReadConfigRequest) (ReadCo
 	if err != nil {
 		return ReadConfigResult{}, err
 	}
-	return s.executor.ReadConfig(ctx, workspacePlan, reconcile.ReadConfigOptions{Debug: req.Global.Debug, IO: commandStreams(req.IO)})
+	return executor.ReadConfig(ctx, workspacePlan, reconcile.ReadConfigOptions{Debug: req.Global.Debug, IO: commandStreams(req.IO)})
 }
 
 func (s *Service) RunLifecycle(ctx context.Context, req RunLifecycleRequest) (RunLifecycleResult, error) {
+	executor := s.executor.WithTrustedSigners(req.Defaults.TrustedSigners)
 	buildPlan, err := s.workspacePlanBuilder(req.Defaults, workspacePlanOptions{ReadOnly: true, Dotfiles: req.Defaults.Dotfiles, AllowHostLifecycle: req.AllowHostLifecycle})
 	if err != nil {
 		return RunLifecycleResult{}, err
@@ -180,11 +184,12 @@ func (s *Service) RunLifecycle(ctx context.Context, req RunLifecycleRequest) (Ru
 	return withMutationLock(s, ctx, "run", func() (workspaceplan.WorkspacePlan, error) {
 		return buildPlan()
 	}, func(workspacePlan workspaceplan.WorkspacePlan) (RunLifecycleResult, error) {
-		return s.executor.RunLifecycle(ctx, workspacePlan, reconcile.RunLifecycleOptions{Phase: req.Phase, Debug: req.Global.Debug, IO: commandStreams(req.IO)})
+		return executor.RunLifecycle(ctx, workspacePlan, reconcile.RunLifecycleOptions{Phase: req.Phase, Debug: req.Global.Debug, IO: commandStreams(req.IO)})
 	})
 }
 
 func (s *Service) BridgeDoctor(ctx context.Context, req BridgeDoctorRequest) (bridge.Report, error) {
+	executor := s.executor.WithTrustedSigners(req.Defaults.TrustedSigners)
 	buildPlan, err := s.workspacePlanBuilder(req.Defaults, workspacePlanOptions{ReadOnly: true})
 	if err != nil {
 		return bridge.Report{}, err
@@ -193,7 +198,7 @@ func (s *Service) BridgeDoctor(ctx context.Context, req BridgeDoctorRequest) (br
 	if err != nil {
 		return bridge.Report{}, err
 	}
-	return s.executor.BridgeDoctor(ctx, workspacePlan, reconcile.BridgeDoctorOptions{Debug: req.Global.Debug, IO: commandStreams(req.IO)})
+	return executor.BridgeDoctor(ctx, workspacePlan, reconcile.BridgeDoctorOptions{Debug: req.Global.Debug, IO: commandStreams(req.IO)})
 }
 
 func buildWorkspacePlan(defaults CommandDefaults, lockfilePolicy devcontainer.FeatureLockfilePolicy, readOnly bool, bridgeEnabled bool, sshAgent bool, dotfiles DotfilesOptions, trustWorkspace bool, allowHostLifecycle bool) (workspaceplan.WorkspacePlan, error) {
@@ -214,7 +219,6 @@ func buildWorkspacePlan(defaults CommandDefaults, lockfilePolicy devcontainer.Fe
 }
 
 func (s *Service) workspacePlanBuilder(defaults CommandDefaults, opts workspacePlanOptions) (func() (workspaceplan.WorkspacePlan, error), error) {
-	s.executor.SetTrustedSigners(defaults.TrustedSigners)
 	policy, err := devcontainer.ParseFeatureLockfilePolicy(defaults.LockfilePolicy)
 	if err != nil {
 		return nil, err
@@ -252,15 +256,5 @@ func withMutationLock[T any](s *Service, ctx context.Context, command string, bu
 }
 
 func ensureNoActiveMutation(stateDir string) error {
-	coordination, err := storefs.ReadCoordination(stateDir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return err
-	}
-	if coordination.ActiveOwner != nil {
-		return &storefs.WorkspaceBusyError{StateDir: stateDir, Owner: coordination.ActiveOwner}
-	}
-	return nil
+	return storefs.CheckWorkspaceBusy(stateDir)
 }

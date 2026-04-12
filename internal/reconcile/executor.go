@@ -212,6 +212,15 @@ func (e *Executor) SetTrustedSigners(signers []security.TrustedSigner) {
 	}
 }
 
+func (e *Executor) WithTrustedSigners(signers []security.TrustedSigner) *Executor {
+	if e == nil {
+		return nil
+	}
+	clone := e.cloneWithIO(nil, nil, nil)
+	clone.SetTrustedSigners(signers)
+	return clone
+}
+
 func (e *Executor) VerificationCheck() func(context.Context, string) security.VerificationResult {
 	return e.imageVerifier.Check
 }

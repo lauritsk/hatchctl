@@ -43,6 +43,9 @@ func ResolveFeatures(ctx context.Context, configPath string, configDir string, c
 		}
 		features = append(features, *feature)
 		idx := len(features) - 1
+		if existing, ok := byAlias[feature.Metadata.ID]; ok && existing != idx {
+			return nil, fmt.Errorf("feature %q resolves to duplicate id %q", source, feature.Metadata.ID)
+		}
 		byAlias[source] = idx
 		byAlias[feature.Metadata.ID] = idx
 	}
@@ -57,7 +60,7 @@ func resolveFeature(ctx context.Context, configDir string, cacheDir string, sour
 	if !enabled {
 		return nil, nil
 	}
-	if err := validateFeatureLockfilePolicy(source, lock, policy); err != nil {
+	if err := validateFeatureLockfilePolicy(configDir, source, lock, policy); err != nil {
 		return nil, err
 	}
 	resolvedSource, err := resolveFeatureSource(ctx, configDir, cacheDir, source, lock, policy, opts)
