@@ -128,6 +128,80 @@ func (f *fakeExecutorEngine) ExecOutput(ctx context.Context, req dockercli.ExecR
 	return "", errors.New("unexpected exec output")
 }
 
+type testResolvedConfigOptions struct {
+	configDir  string
+	stateDir   string
+	cacheDir   string
+	config     spec.Config
+	features   []devcontainer.ResolvedFeature
+	sourceKind string
+	labels     map[string]string
+}
+
+func testResolvedConfig(opts testResolvedConfigOptions) devcontainer.ResolvedConfig {
+	configPath := filepath.Join(opts.configDir, "devcontainer.json")
+	workspaceFolder := "/workspace"
+	remoteWorkspace := opts.config.WorkspaceFolder
+	if remoteWorkspace == "" {
+		remoteWorkspace = "/workspaces/demo"
+	}
+	merged := spec.MergeMetadata(opts.config, featureMetadata(opts.features))
+	labels := opts.labels
+	if labels == nil {
+		labels = map[string]string{
+			devcontainer.HostFolderLabel: workspaceFolder,
+			devcontainer.ConfigFileLabel: configPath,
+			devcontainer.ManagedByLabel:  devcontainer.ManagedByValue,
+		}
+	}
+	sourceKind := opts.sourceKind
+	if sourceKind == "" {
+		sourceKind = "image"
+	}
+	return devcontainer.ResolvedConfig{
+		WorkspaceFolder: workspaceFolder,
+		ConfigPath:      configPath,
+		ConfigDir:       opts.configDir,
+		Config:          opts.config,
+		Features:        opts.features,
+		Merged:          merged,
+		StateDir:        opts.stateDir,
+		CacheDir:        opts.cacheDir,
+		WorkspaceMount:  "type=bind,source=/workspace,target=/workspaces/demo",
+		RemoteWorkspace: remoteWorkspace,
+		ImageName:       "hatchctl-demo",
+		SourceKind:      sourceKind,
+		ContainerName:   "hatchctl-demo-container",
+		Labels:          labels,
+	}
+}
+
+func writableResolvedResolver(resolved devcontainer.ResolvedConfig) *workspaceplan.Resolver {
+	return &workspaceplan.Resolver{
+		Resolve: func(context.Context, string, string, devcontainer.ResolveOptions) (devcontainer.ResolvedConfig, error) {
+			return resolved, nil
+		},
+	}
+}
+
+func readOnlyResolvedResolver(resolved devcontainer.ResolvedConfig) *workspaceplan.Resolver {
+	return &workspaceplan.Resolver{
+		ResolveReadOnly: func(context.Context, string, string, devcontainer.ResolveOptions) (devcontainer.ResolvedConfig, error) {
+			return resolved, nil
+		},
+	}
+}
+
+func fakePasswdExecOutput(t *testing.T) func(context.Context, dockercli.ExecRequest) (string, error) {
+	t.Helper()
+	return func(_ context.Context, req dockercli.ExecRequest) (string, error) {
+		if len(req.Command) != 2 || req.Command[0] != "cat" || req.Command[1] != passwdFilePath {
+			t.Fatalf("unexpected exec output command %#v", req.Command)
+		}
+		return "root:x:0:0:root:/root:/bin/sh\nvscode:x:1000:1000::/home/vscode:/bin/bash\n", nil
+	}
+}
+
 func TestUpUsesEnrichedResolvedMetadataForDotfilesTargetPath(t *testing.T) {
 	t.Parallel()
 
@@ -139,6 +213,17 @@ func TestUpUsesEnrichedResolvedMetadataForDotfilesTargetPath(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(featureDir, "install.sh"), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
 		t.Fatalf("write feature install script: %v", err)
 	}
+	resolvedConfig := testResolvedConfig(testResolvedConfigOptions{
+		configDir: configDir,
+		stateDir:  stateDir,
+		cacheDir:  cacheDir,
+		config: spec.Config{
+			Image:               "mcr.microsoft.com/devcontainers/base:ubuntu",
+			WorkspaceFolder:     "/workspaces/demo",
+			UpdateRemoteUserUID: &falseValue,
+		},
+		features: []devcontainer.ResolvedFeature{{Path: featureDir, Metadata: spec.MetadataEntry{ID: "mise"}}},
+	})
 	sourceMetadataLabel, err := spec.MetadataLabelValue([]spec.MetadataEntry{{RemoteUser: "vscode", UpdateRemoteUserUID: &falseValue}})
 	if err != nil {
 		t.Fatalf("metadata label: %v", err)
@@ -208,12 +293,7 @@ func TestUpUsesEnrichedResolvedMetadataForDotfilesTargetPath(t *testing.T) {
 				State: docker.ContainerState{Status: "running", Running: true},
 			}, nil
 		},
-		execOutputFunc: func(_ context.Context, req dockercli.ExecRequest) (string, error) {
-			if len(req.Command) != 2 || req.Command[0] != "cat" || req.Command[1] != passwdFilePath {
-				t.Fatalf("unexpected exec output command %#v", req.Command)
-			}
-			return "root:x:0:0:root:/root:/bin/sh\nvscode:x:1000:1000::/home/vscode:/bin/bash\n", nil
-		},
+		execOutputFunc: fakePasswdExecOutput(t),
 		execFunc: func(_ context.Context, req dockercli.ExecRequest) error {
 			execRequests = append(execRequests, req)
 			return nil
@@ -222,34 +302,7 @@ func TestUpUsesEnrichedResolvedMetadataForDotfilesTargetPath(t *testing.T) {
 
 	executor := NewExecutorWithIO(nil, nil, io.Discard, io.Discard)
 	executor.engine = engine
-	executor.planner = &workspaceplan.Resolver{
-		Resolve: func(context.Context, string, string, devcontainer.ResolveOptions) (devcontainer.ResolvedConfig, error) {
-			return devcontainer.ResolvedConfig{
-				WorkspaceFolder: "/workspace",
-				ConfigPath:      filepath.Join(configDir, "devcontainer.json"),
-				ConfigDir:       configDir,
-				Config: spec.Config{
-					Image:               "mcr.microsoft.com/devcontainers/base:ubuntu",
-					WorkspaceFolder:     "/workspaces/demo",
-					UpdateRemoteUserUID: &falseValue,
-				},
-				Features:        []devcontainer.ResolvedFeature{{Path: featureDir, Metadata: spec.MetadataEntry{ID: "mise"}}},
-				Merged:          spec.MergeMetadata(spec.Config{Image: "mcr.microsoft.com/devcontainers/base:ubuntu", WorkspaceFolder: "/workspaces/demo", UpdateRemoteUserUID: &falseValue}, []spec.MetadataEntry{{ID: "mise"}}),
-				StateDir:        stateDir,
-				CacheDir:        cacheDir,
-				WorkspaceMount:  "type=bind,source=/workspace,target=/workspaces/demo",
-				RemoteWorkspace: "/workspaces/demo",
-				ImageName:       "hatchctl-demo",
-				SourceKind:      "image",
-				ContainerName:   "hatchctl-demo-container",
-				Labels: map[string]string{
-					devcontainer.HostFolderLabel: "/workspace",
-					devcontainer.ConfigFileLabel: filepath.Join(configDir, "devcontainer.json"),
-					devcontainer.ManagedByLabel:  devcontainer.ManagedByValue,
-				},
-			}, nil
-		},
-	}
+	executor.planner = writableResolvedResolver(resolvedConfig)
 
 	workspacePlan := workspaceplan.WorkspacePlan{
 		Preferences: workspaceplan.Preferences{
@@ -287,6 +340,17 @@ func TestUpRecreateReinstallsDotfilesForNewContainer(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(featureDir, "install.sh"), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
 		t.Fatalf("write feature install script: %v", err)
 	}
+	resolvedConfig := testResolvedConfig(testResolvedConfigOptions{
+		configDir: configDir,
+		stateDir:  stateDir,
+		cacheDir:  cacheDir,
+		config: spec.Config{
+			Image:               "mcr.microsoft.com/devcontainers/base:ubuntu",
+			WorkspaceFolder:     "/workspaces/demo",
+			UpdateRemoteUserUID: &falseValue,
+		},
+		features: []devcontainer.ResolvedFeature{{Path: featureDir, Metadata: spec.MetadataEntry{ID: "mise"}}},
+	})
 	if err := storefs.WriteWorkspaceState(stateDir, storefs.WorkspaceState{
 		ContainerID:    "container-old",
 		ContainerKey:   "old-key",
@@ -361,12 +425,7 @@ func TestUpRecreateReinstallsDotfilesForNewContainer(t *testing.T) {
 		runDetachedFunc: func(_ context.Context, req dockercli.RunDetachedContainerRequest) (string, error) {
 			return "container-new", nil
 		},
-		execOutputFunc: func(_ context.Context, req dockercli.ExecRequest) (string, error) {
-			if len(req.Command) != 2 || req.Command[0] != "cat" || req.Command[1] != passwdFilePath {
-				t.Fatalf("unexpected exec output command %#v", req.Command)
-			}
-			return "root:x:0:0:root:/root:/bin/sh\nvscode:x:1000:1000::/home/vscode:/bin/bash\n", nil
-		},
+		execOutputFunc: fakePasswdExecOutput(t),
 		execFunc: func(_ context.Context, req dockercli.ExecRequest) error {
 			execRequests = append(execRequests, req)
 			return nil
@@ -375,34 +434,7 @@ func TestUpRecreateReinstallsDotfilesForNewContainer(t *testing.T) {
 
 	executor := NewExecutorWithIO(nil, nil, io.Discard, io.Discard)
 	executor.engine = engine
-	executor.planner = &workspaceplan.Resolver{
-		Resolve: func(context.Context, string, string, devcontainer.ResolveOptions) (devcontainer.ResolvedConfig, error) {
-			return devcontainer.ResolvedConfig{
-				WorkspaceFolder: "/workspace",
-				ConfigPath:      filepath.Join(configDir, "devcontainer.json"),
-				ConfigDir:       configDir,
-				Config: spec.Config{
-					Image:               "mcr.microsoft.com/devcontainers/base:ubuntu",
-					WorkspaceFolder:     "/workspaces/demo",
-					UpdateRemoteUserUID: &falseValue,
-				},
-				Features:        []devcontainer.ResolvedFeature{{Path: featureDir, Metadata: spec.MetadataEntry{ID: "mise"}}},
-				Merged:          spec.MergeMetadata(spec.Config{Image: "mcr.microsoft.com/devcontainers/base:ubuntu", WorkspaceFolder: "/workspaces/demo", UpdateRemoteUserUID: &falseValue}, []spec.MetadataEntry{{ID: "mise"}}),
-				StateDir:        stateDir,
-				CacheDir:        cacheDir,
-				WorkspaceMount:  "type=bind,source=/workspace,target=/workspaces/demo",
-				RemoteWorkspace: "/workspaces/demo",
-				ImageName:       "hatchctl-demo",
-				SourceKind:      "image",
-				ContainerName:   "hatchctl-demo-container",
-				Labels: map[string]string{
-					devcontainer.HostFolderLabel: "/workspace",
-					devcontainer.ConfigFileLabel: filepath.Join(configDir, "devcontainer.json"),
-					devcontainer.ManagedByLabel:  devcontainer.ManagedByValue,
-				},
-			}, nil
-		},
-	}
+	executor.planner = writableResolvedResolver(resolvedConfig)
 
 	workspacePlan := workspaceplan.WorkspacePlan{
 		Preferences:  workspaceplan.Preferences{Dotfiles: workspaceplan.DotfilesPreference{Repository: "https://github.com/example/dotfiles.git"}},
@@ -427,6 +459,15 @@ func TestExecMergesConfiguredImageMetadataWhenContainerLabelIsIncomplete(t *test
 	stateDir := t.TempDir()
 	cacheDir := t.TempDir()
 	configDir := t.TempDir()
+	resolvedConfig := testResolvedConfig(testResolvedConfigOptions{
+		configDir: configDir,
+		stateDir:  stateDir,
+		cacheDir:  cacheDir,
+		config: spec.Config{
+			Image:           "mcr.microsoft.com/devcontainers/base:ubuntu",
+			WorkspaceFolder: "/workspaces/demo",
+		},
+	})
 	if err := storefs.WriteWorkspaceState(stateDir, storefs.WorkspaceState{ContainerID: "container-123"}); err != nil {
 		t.Fatalf("write state: %v", err)
 	}
@@ -463,12 +504,7 @@ func TestExecMergesConfiguredImageMetadataWhenContainerLabelIsIncomplete(t *test
 				State: docker.ContainerState{Status: "running", Running: true},
 			}, nil
 		},
-		execOutputFunc: func(_ context.Context, req dockercli.ExecRequest) (string, error) {
-			if len(req.Command) != 2 || req.Command[0] != "cat" || req.Command[1] != passwdFilePath {
-				t.Fatalf("unexpected exec output command %#v", req.Command)
-			}
-			return "root:x:0:0:root:/root:/bin/sh\nvscode:x:1000:1000::/home/vscode:/bin/bash\n", nil
-		},
+		execOutputFunc: fakePasswdExecOutput(t),
 		execFunc: func(_ context.Context, req dockercli.ExecRequest) error {
 			execReq = req
 			return nil
@@ -477,31 +513,7 @@ func TestExecMergesConfiguredImageMetadataWhenContainerLabelIsIncomplete(t *test
 
 	executor := NewExecutorWithIO(nil, nil, io.Discard, io.Discard)
 	executor.engine = engine
-	executor.planner = &workspaceplan.Resolver{
-		ResolveReadOnly: func(context.Context, string, string, devcontainer.ResolveOptions) (devcontainer.ResolvedConfig, error) {
-			return devcontainer.ResolvedConfig{
-				WorkspaceFolder: "/workspace",
-				ConfigPath:      filepath.Join(configDir, "devcontainer.json"),
-				ConfigDir:       configDir,
-				Config: spec.Config{
-					Image:           "mcr.microsoft.com/devcontainers/base:ubuntu",
-					WorkspaceFolder: "/workspaces/demo",
-				},
-				Merged:          spec.MergeMetadata(spec.Config{Image: "mcr.microsoft.com/devcontainers/base:ubuntu", WorkspaceFolder: "/workspaces/demo"}, nil),
-				StateDir:        stateDir,
-				CacheDir:        cacheDir,
-				RemoteWorkspace: "/workspaces/demo",
-				ImageName:       "hatchctl-demo",
-				SourceKind:      "image",
-				ContainerName:   "hatchctl-demo-container",
-				Labels: map[string]string{
-					devcontainer.HostFolderLabel: "/workspace",
-					devcontainer.ConfigFileLabel: filepath.Join(configDir, "devcontainer.json"),
-					devcontainer.ManagedByLabel:  devcontainer.ManagedByValue,
-				},
-			}, nil
-		},
-	}
+	executor.planner = readOnlyResolvedResolver(resolvedConfig)
 
 	workspacePlan := workspaceplan.WorkspacePlan{
 		ReadOnly: true,
@@ -641,6 +653,13 @@ func TestBuildPersistsTrustedRefsToWorkspaceState(t *testing.T) {
 
 	stateDir := t.TempDir()
 	cacheDir := t.TempDir()
+	configDir := t.TempDir()
+	resolvedConfig := testResolvedConfig(testResolvedConfigOptions{
+		configDir: configDir,
+		stateDir:  stateDir,
+		cacheDir:  cacheDir,
+		config:    spec.Config{Image: "mcr.microsoft.com/devcontainers/base:ubuntu"},
+	})
 	trustedRef := "ghcr.io/example/feature@sha256:trusted"
 	engine := &fakeExecutorEngine{
 		inspectImageFunc: func(_ context.Context, req dockercli.InspectImageRequest) (docker.ImageInspect, error) {
@@ -653,17 +672,9 @@ func TestBuildPersistsTrustedRefsToWorkspaceState(t *testing.T) {
 	executor := NewExecutorWithIO(nil, nil, io.Discard, io.Discard)
 	executor.engine = engine
 	executor.imageVerifier = policy.NewImageVerificationPolicyWithPrompt(false, nil, trustedRef)
-	executor.planner = &workspaceplan.Resolver{
-		Resolve: func(context.Context, string, string, devcontainer.ResolveOptions) (devcontainer.ResolvedConfig, error) {
-			return devcontainer.ResolvedConfig{
-				Config:   spec.Config{Image: "mcr.microsoft.com/devcontainers/base:ubuntu"},
-				StateDir: stateDir,
-				CacheDir: cacheDir,
-			}, nil
-		},
-	}
+	executor.planner = writableResolvedResolver(resolvedConfig)
 
-	if _, err := executor.Build(context.Background(), workspaceplan.WorkspacePlan{LockProtected: workspaceplan.LockProtectedArtifacts{StateDir: stateDir}}, BuildOptions{}); err != nil {
+	if _, err := executor.Build(context.Background(), workspaceplan.WorkspacePlan{LockProtected: workspaceplan.LockProtectedArtifacts{StateDir: stateDir}, Trust: workspaceplan.TrustPlan{WorkspaceAllowed: true}}, BuildOptions{}); err != nil {
 		t.Fatalf("build: %v", err)
 	}
 	state, err := storefs.ReadWorkspaceState(stateDir)
@@ -681,6 +692,12 @@ func TestReadConfigReportsBridgeAndDotfilesState(t *testing.T) {
 	stateDir := t.TempDir()
 	cacheDir := t.TempDir()
 	configDir := t.TempDir()
+	resolvedConfig := testResolvedConfig(testResolvedConfigOptions{
+		configDir: configDir,
+		stateDir:  stateDir,
+		cacheDir:  cacheDir,
+		config:    spec.Config{Image: "mcr.microsoft.com/devcontainers/base:ubuntu", WorkspaceFolder: "/workspaces/demo"},
+	})
 	if err := storefs.WriteWorkspaceState(stateDir, storefs.WorkspaceState{
 		ContainerID:     "container-123",
 		ContainerKey:    "container-key",
@@ -747,29 +764,7 @@ func TestReadConfigReportsBridgeAndDotfilesState(t *testing.T) {
 			return "", nil
 		},
 	}
-	executor.planner = &workspaceplan.Resolver{
-		ResolveReadOnly: func(context.Context, string, string, devcontainer.ResolveOptions) (devcontainer.ResolvedConfig, error) {
-			return devcontainer.ResolvedConfig{
-				WorkspaceFolder: "/workspace",
-				ConfigPath:      filepath.Join(configDir, "devcontainer.json"),
-				ConfigDir:       configDir,
-				Config:          spec.Config{Image: "mcr.microsoft.com/devcontainers/base:ubuntu", WorkspaceFolder: "/workspaces/demo"},
-				Merged:          spec.MergeMetadata(spec.Config{Image: "mcr.microsoft.com/devcontainers/base:ubuntu", WorkspaceFolder: "/workspaces/demo"}, nil),
-				StateDir:        stateDir,
-				CacheDir:        cacheDir,
-				WorkspaceMount:  "type=bind,source=/workspace,target=/workspaces/demo",
-				RemoteWorkspace: "/workspaces/demo",
-				ImageName:       "hatchctl-demo",
-				SourceKind:      "image",
-				ContainerName:   "hatchctl-demo-container",
-				Labels: map[string]string{
-					devcontainer.HostFolderLabel: "/workspace",
-					devcontainer.ConfigFileLabel: filepath.Join(configDir, "devcontainer.json"),
-					devcontainer.ManagedByLabel:  devcontainer.ManagedByValue,
-				},
-			}, nil
-		},
-	}
+	executor.planner = readOnlyResolvedResolver(resolvedConfig)
 
 	result, err := executor.ReadConfig(context.Background(), workspaceplan.WorkspacePlan{
 		ReadOnly: true,
@@ -800,6 +795,12 @@ func TestRunLifecycleCreatePersistsLifecycleState(t *testing.T) {
 	stateDir := t.TempDir()
 	cacheDir := t.TempDir()
 	configDir := t.TempDir()
+	resolvedConfig := testResolvedConfig(testResolvedConfigOptions{
+		configDir: configDir,
+		stateDir:  stateDir,
+		cacheDir:  cacheDir,
+		config:    spec.Config{Image: "mcr.microsoft.com/devcontainers/base:ubuntu", WorkspaceFolder: "/workspaces/demo"},
+	})
 	if err := storefs.WriteWorkspaceState(stateDir, storefs.WorkspaceState{ContainerID: "container-123", ContainerKey: "container-key"}); err != nil {
 		t.Fatalf("write state: %v", err)
 	}
@@ -827,28 +828,7 @@ func TestRunLifecycleCreatePersistsLifecycleState(t *testing.T) {
 			}, nil
 		},
 	}
-	executor.planner = &workspaceplan.Resolver{
-		Resolve: func(context.Context, string, string, devcontainer.ResolveOptions) (devcontainer.ResolvedConfig, error) {
-			return devcontainer.ResolvedConfig{
-				WorkspaceFolder: "/workspace",
-				ConfigPath:      filepath.Join(configDir, "devcontainer.json"),
-				ConfigDir:       configDir,
-				Config:          spec.Config{Image: "mcr.microsoft.com/devcontainers/base:ubuntu", WorkspaceFolder: "/workspaces/demo"},
-				Merged:          spec.MergeMetadata(spec.Config{Image: "mcr.microsoft.com/devcontainers/base:ubuntu", WorkspaceFolder: "/workspaces/demo"}, nil),
-				StateDir:        stateDir,
-				CacheDir:        cacheDir,
-				RemoteWorkspace: "/workspaces/demo",
-				ImageName:       "hatchctl-demo",
-				SourceKind:      "image",
-				ContainerName:   "hatchctl-demo-container",
-				Labels: map[string]string{
-					devcontainer.HostFolderLabel: "/workspace",
-					devcontainer.ConfigFileLabel: filepath.Join(configDir, "devcontainer.json"),
-					devcontainer.ManagedByLabel:  devcontainer.ManagedByValue,
-				},
-			}, nil
-		},
-	}
+	executor.planner = writableResolvedResolver(resolvedConfig)
 
 	result, err := executor.RunLifecycle(context.Background(), workspaceplan.WorkspacePlan{}, RunLifecycleOptions{Phase: "create"})
 	if err != nil {
@@ -879,6 +859,12 @@ func TestBridgeDoctorReportsPersistedBridgeState(t *testing.T) {
 	stateDir := t.TempDir()
 	cacheDir := t.TempDir()
 	configDir := t.TempDir()
+	resolvedConfig := testResolvedConfig(testResolvedConfigOptions{
+		configDir: configDir,
+		stateDir:  stateDir,
+		cacheDir:  cacheDir,
+		config:    spec.Config{Image: "mcr.microsoft.com/devcontainers/base:ubuntu", WorkspaceFolder: "/workspaces/demo"},
+	})
 	paths, err := storefs.EnsureWorkspaceBridgePaths(stateDir)
 	if err != nil {
 		t.Fatalf("ensure bridge paths: %v", err)
@@ -908,22 +894,7 @@ func TestBridgeDoctorReportsPersistedBridgeState(t *testing.T) {
 	}
 
 	executor := NewExecutorWithIO(nil, nil, io.Discard, io.Discard)
-	executor.planner = &workspaceplan.Resolver{
-		ResolveReadOnly: func(context.Context, string, string, devcontainer.ResolveOptions) (devcontainer.ResolvedConfig, error) {
-			return devcontainer.ResolvedConfig{
-				WorkspaceFolder: "/workspace",
-				ConfigPath:      filepath.Join(configDir, "devcontainer.json"),
-				ConfigDir:       configDir,
-				Config:          spec.Config{Image: "mcr.microsoft.com/devcontainers/base:ubuntu", WorkspaceFolder: "/workspaces/demo"},
-				Merged:          spec.MergeMetadata(spec.Config{Image: "mcr.microsoft.com/devcontainers/base:ubuntu", WorkspaceFolder: "/workspaces/demo"}, nil),
-				StateDir:        stateDir,
-				CacheDir:        cacheDir,
-				RemoteWorkspace: "/workspaces/demo",
-				ImageName:       "hatchctl-demo",
-				SourceKind:      "image",
-			}, nil
-		},
-	}
+	executor.planner = readOnlyResolvedResolver(resolvedConfig)
 
 	report, err := executor.BridgeDoctor(context.Background(), workspaceplan.WorkspacePlan{ReadOnly: true}, BridgeDoctorOptions{})
 	if err != nil {
