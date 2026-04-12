@@ -350,25 +350,13 @@ func (e *Executor) ReadConfig(ctx context.Context, workspacePlan workspaceplan.W
 			return ReadConfigResult{}, err
 		}
 	}
-	var bridgeSession *bridge.Session
-	if state.BridgeEnabled {
-		bridgeSession, err = bridgecap.Preview(resolved.StateDir, true)
-		if err == nil {
-			resolved.Merged = bridgecap.Inject(bridgeSession, resolved.Merged)
-		}
-	}
-	if err != nil {
-		return ReadConfigResult{}, err
-	}
 	var bridgeReport *bridge.Report
-	if bridgeSession != nil {
-		bridgeReport = bridge.ReportFromSession(bridgeSession)
-	}
 	if state.BridgeEnabled {
 		report, err := bridgecap.Doctor(resolved.StateDir)
 		if err != nil {
 			return ReadConfigResult{}, err
 		}
+		resolved.Merged = bridgecap.Inject(reportSession(report), resolved.Merged)
 		bridgeReport = &report
 	}
 	session.SetResolved(resolved)
@@ -461,4 +449,25 @@ func (e *Executor) materializeWorkspace(ctx context.Context, workspacePlan works
 	}
 	workspacePlan = workspacePlan.WithResolved(resolved)
 	return workspacePlan, resolved, nil
+}
+
+func reportSession(report bridge.Report) *bridge.Session {
+	if !report.Enabled {
+		return nil
+	}
+	return &bridge.Session{
+		ID:         report.ID,
+		Enabled:    report.Enabled,
+		HelperArch: report.HelperArch,
+		Host:       report.Host,
+		Port:       report.Port,
+		StatePath:  report.StatePath,
+		ConfigPath: report.ConfigPath,
+		PIDPath:    report.PIDPath,
+		StatusPath: report.StatusPath,
+		HelperPath: report.HelperPath,
+		MountPath:  report.MountPath,
+		BinPath:    report.BinPath,
+		Status:     report.Status,
+	}
 }
