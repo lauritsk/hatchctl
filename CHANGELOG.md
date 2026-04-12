@@ -2,6 +2,29 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## [v0.6.14](https://github.com/lauritsk/hatchctl/compare/4ed5d633958225e38951c444ef193e20fbd1d428..v0.6.14) - 2026-04-11
+#### Bug Fixes
+- (**deps**) update module github.com/google/go-containerregistry to v0.21.5 - ([9ac0c77](https://github.com/lauritsk/hatchctl/commit/9ac0c7782730a64cbd2abf113f97d4d9ea9d578e)) - renovate[bot]
+- Gate repo-local host path defaults behind workspace trust - ([da32c15](https://github.com/lauritsk/hatchctl/commit/da32c155b628e77190465be8510e5767bf00e37a)) - Karl Hans Laurits
+#### Tests
+- (**runtime**) Reduce regression risk in bridge and reconcile workflows - ([9b92285](https://github.com/lauritsk/hatchctl/commit/9b9228539b3a1eb6d1d1e282abad088f7c52b68e)) - Karl Hans Laurits
+- Increase coverage for reconcile helpers - ([b06742b](https://github.com/lauritsk/hatchctl/commit/b06742bdc484cd8a5f4e113963f7e0f11d1f15b8)) - Karl Hans Laurits
+- Increase coverage for renderer and spec helpers - ([a71ff65](https://github.com/lauritsk/hatchctl/commit/a71ff65d5222eab1863c8451b427a2b350438b84)) - Karl Hans Laurits
+- Increase coverage for trust and storage helpers - ([e888e5e](https://github.com/lauritsk/hatchctl/commit/e888e5e046472bc39c8dc8c0e25f54b04026bb9a)) - Karl Hans Laurits
+#### Refactoring
+- Simplify remote feature source resolution branches - ([62b8c2c](https://github.com/lauritsk/hatchctl/commit/62b8c2c9b689d863d747fd9e137f9712e5ba595c)) - Karl Hans Laurits
+- Make the devcontainer resolve flow easier to follow - ([d027f2c](https://github.com/lauritsk/hatchctl/commit/d027f2c3b6c3fa9ccb9ecc682705fe4982de1da3)) - Karl Hans Laurits
+- Split config and runtime workflows into focused helpers - ([a60d17a](https://github.com/lauritsk/hatchctl/commit/a60d17ae1c44f13e22ad31d0f4bba6fd446c3f6e)) - Karl Hans Laurits
+#### Miscellaneous Chores
+- (**config**) migrate config renovate.json - ([1d31adc](https://github.com/lauritsk/hatchctl/commit/1d31adc655c6c670e5359f6a236a947f1814c9d0)) - renovate[bot]
+- (**deps**) update actions/upload-artifact action to v7 - ([f8c956f](https://github.com/lauritsk/hatchctl/commit/f8c956f989689d7c20d83fcc65d08098e1d54392)) - renovate[bot]
+- (**deps**) Remove stale module checksums - ([4eada1b](https://github.com/lauritsk/hatchctl/commit/4eada1bae8a0d00210ab3a0c28d4a1ed42b88378)) - Karl Hans Laurits
+- (**deps**) update actions/upload-artifact action to v6 - ([1ab2e8f](https://github.com/lauritsk/hatchctl/commit/1ab2e8f33e5bd2588fc659d5ddaef44e21770edc)) - renovate[bot]
+- (**devcontainer**) update devcontainer image to v0.2.0 - ([14b44bd](https://github.com/lauritsk/hatchctl/commit/14b44bd826adc236bc7d4e9b19cec67f73ea44b4)) - Karl Hans Laurits
+- (**mise**) Update hatchctl to v0.6.13 - ([4ed5d63](https://github.com/lauritsk/hatchctl/commit/4ed5d633958225e38951c444ef193e20fbd1d428)) - Karl Hans Laurits
+
+- - -
+
 ## [v0.6.13](https://github.com/lauritsk/hatchctl/compare/9621cb901dec10c92b114a20dd9cac630644d393..v0.6.13) - 2026-04-10
 #### Bug Fixes
 - (**ci**) Batch workflow output writes for shellcheck - ([eb400d6](https://github.com/lauritsk/hatchctl/commit/eb400d6e25a462cb811402287bdaf88d939204bf)) - Karl Hans Laurits
