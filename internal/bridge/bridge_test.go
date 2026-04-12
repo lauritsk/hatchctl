@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lauritsk/hatchctl/internal/devcontainer"
+	"github.com/lauritsk/hatchctl/internal/spec"
 	storefs "github.com/lauritsk/hatchctl/internal/store/fs"
 )
 
@@ -61,7 +61,7 @@ func TestInjectAddsBridgeEnvAndMountOnce(t *testing.T) {
 	t.Parallel()
 
 	session := &Session{StatePath: "/state/bridge", MountPath: "/var/run/hatchctl/bridge", BinPath: "/var/run/hatchctl/bridge/bin"}
-	merged := devcontainer.MergedConfig{
+	merged := spec.MergedConfig{
 		ContainerEnv: map[string]string{"PATH": "/usr/bin"},
 		Mounts:       []string{"type=bind,source=/state/bridge,target=/var/run/hatchctl/bridge"},
 	}

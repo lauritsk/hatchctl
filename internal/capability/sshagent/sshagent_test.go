@@ -8,12 +8,13 @@ import (
 
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	"github.com/lauritsk/hatchctl/internal/docker"
+	"github.com/lauritsk/hatchctl/internal/spec"
 )
 
 func TestInjectAddsSocketMountAndEnvironment(t *testing.T) {
 	t.Parallel()
 
-	merged, err := Inject("darwin", "", devcontainer.MergedConfig{})
+	merged, err := Inject("darwin", "", spec.MergedConfig{})
 	if err != nil {
 		t.Fatalf("inject ssh-agent: %v", err)
 	}

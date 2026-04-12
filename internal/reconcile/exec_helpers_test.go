@@ -8,6 +8,7 @@ import (
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	"github.com/lauritsk/hatchctl/internal/docker"
 	"github.com/lauritsk/hatchctl/internal/engine/dockercli"
+	"github.com/lauritsk/hatchctl/internal/spec"
 )
 
 func TestPasswdEntryFromPasswdSupportsNameAndUIDLookups(t *testing.T) {
@@ -50,7 +51,7 @@ func TestEffectiveExecUserPrefersMergedContainerAndInspect(t *testing.T) {
 		}
 		return docker.ContainerInspect{Config: docker.InspectConfig{User: "inspect-user"}}, nil
 	}}}
-	observed := ObservedState{Resolved: devcontainer.ResolvedConfig{Merged: devcontainer.MergedConfig{RemoteUser: "remote-user"}}, Target: RuntimeTarget{PrimaryContainer: "container-123"}}
+	observed := ObservedState{Resolved: devcontainer.ResolvedConfig{Merged: spec.MergedConfig{RemoteUser: "remote-user"}}, Target: RuntimeTarget{PrimaryContainer: "container-123"}}
 
 	user, err := executor.effectiveExecUser(context.Background(), observed)
 	if err != nil || user != "remote-user" {
@@ -86,7 +87,7 @@ func TestExecCommandAndRemoteEnvUsePasswdFallbacks(t *testing.T) {
 		requests = append(requests, req)
 		return "root:x:0:0:root:/root:/bin/sh\nvscode:x:1000:1000::/home/vscode:/bin/bash\n", nil
 	}}}
-	observed := ObservedState{Resolved: devcontainer.ResolvedConfig{RemoteWorkspace: "/workspaces/demo", Merged: devcontainer.MergedConfig{RemoteEnv: map[string]string{"REMOTE": "1"}}}, Target: RuntimeTarget{PrimaryContainer: "container-123"}}
+	observed := ObservedState{Resolved: devcontainer.ResolvedConfig{RemoteWorkspace: "/workspaces/demo", Merged: spec.MergedConfig{RemoteEnv: map[string]string{"REMOTE": "1"}}}, Target: RuntimeTarget{PrimaryContainer: "container-123"}}
 
 	command, err := executor.execCommand(context.Background(), observed, "vscode", nil)
 	if err != nil {
@@ -116,7 +117,7 @@ func TestExecRemoteEnvPreservesExplicitHomeAndDockerExecRequest(t *testing.T) {
 	executor := &Executor{engine: &fakeExecutorEngine{execOutputFunc: func(_ context.Context, req dockercli.ExecRequest) (string, error) {
 		return "vscode:x:1000:1000::/home/vscode:/bin/bash\n", nil
 	}}}
-	observed := ObservedState{Resolved: devcontainer.ResolvedConfig{RemoteWorkspace: "/workspaces/demo", Merged: devcontainer.MergedConfig{RemoteUser: "vscode", RemoteEnv: map[string]string{"HOME": "/custom", "REMOTE": "1"}}}, Target: RuntimeTarget{PrimaryContainer: "container-123"}}
+	observed := ObservedState{Resolved: devcontainer.ResolvedConfig{RemoteWorkspace: "/workspaces/demo", Merged: spec.MergedConfig{RemoteUser: "vscode", RemoteEnv: map[string]string{"HOME": "/custom", "REMOTE": "1"}}}, Target: RuntimeTarget{PrimaryContainer: "container-123"}}
 
 	env, err := executor.execRemoteEnv(context.Background(), observed, "vscode", map[string]string{"EXTRA": "2"})
 	if err != nil {
@@ -147,7 +148,7 @@ func TestExecArgsAndEffectiveRemoteUserHelpers(t *testing.T) {
 	if !reflect.DeepEqual(args, []string{"exec", "-i", "-t", "-u", "vscode", "--workdir", "/workspaces/demo", "-e", "A=1", "-e", "B=2", "container-123", "pwd"}) {
 		t.Fatalf("unexpected exec args %#v", args)
 	}
-	resolved := devcontainer.ResolvedConfig{Merged: devcontainer.MergedConfig{ContainerUser: "container-user"}}
+	resolved := devcontainer.ResolvedConfig{Merged: spec.MergedConfig{ContainerUser: "container-user"}}
 	if got := effectiveRemoteUserFromContainerInspect(&docker.ContainerInspect{Config: docker.InspectConfig{User: "inspect-user"}}, resolved); got != "container-user" {
 		t.Fatalf("unexpected effective remote user %q", got)
 	}

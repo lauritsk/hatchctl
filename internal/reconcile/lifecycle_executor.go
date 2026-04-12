@@ -12,7 +12,6 @@ import (
 	capdot "github.com/lauritsk/hatchctl/internal/capability/dotfiles"
 	capssh "github.com/lauritsk/hatchctl/internal/capability/sshagent"
 	"github.com/lauritsk/hatchctl/internal/command"
-	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	ui "github.com/lauritsk/hatchctl/internal/display"
 	"github.com/lauritsk/hatchctl/internal/docker"
 	"github.com/lauritsk/hatchctl/internal/engine/dockercli"
@@ -21,7 +20,7 @@ import (
 	storefs "github.com/lauritsk/hatchctl/internal/store/fs"
 )
 
-func injectSSHAgent(merged devcontainer.MergedConfig) (devcontainer.MergedConfig, error) {
+func injectSSHAgent(merged spec.MergedConfig) (spec.MergedConfig, error) {
 	return capssh.Inject(stdruntime.GOOS, os.Getenv("SSH_AUTH_SOCK"), merged)
 }
 

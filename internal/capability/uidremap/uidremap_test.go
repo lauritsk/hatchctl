@@ -6,19 +6,20 @@ import (
 
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	"github.com/lauritsk/hatchctl/internal/docker"
+	"github.com/lauritsk/hatchctl/internal/spec"
 )
 
 func TestEligibleRequiresNamedNonRootRemoteUser(t *testing.T) {
 	t.Parallel()
 
-	user, ok := Eligible(devcontainer.ResolvedConfig{Merged: devcontainer.MergedConfig{RemoteUser: "vscode"}}, docker.ImageInspect{})
+	user, ok := Eligible(devcontainer.ResolvedConfig{Merged: spec.MergedConfig{RemoteUser: "vscode"}}, docker.ImageInspect{})
 	if !ok || user != "vscode" {
 		t.Fatalf("expected named remote user to be eligible, got user=%q ok=%t", user, ok)
 	}
 	for _, resolved := range []devcontainer.ResolvedConfig{
-		{Merged: devcontainer.MergedConfig{RemoteUser: "root"}},
-		{Merged: devcontainer.MergedConfig{RemoteUser: "1000"}},
-		{Merged: devcontainer.MergedConfig{UpdateRemoteUserUID: boolPtr(false), RemoteUser: "vscode"}},
+		{Merged: spec.MergedConfig{RemoteUser: "root"}},
+		{Merged: spec.MergedConfig{RemoteUser: "1000"}},
+		{Merged: spec.MergedConfig{UpdateRemoteUserUID: boolPtr(false), RemoteUser: "vscode"}},
 	} {
 		if _, ok := Eligible(resolved, docker.ImageInspect{}); ok {
 			t.Fatalf("expected %#v to be ineligible", resolved)

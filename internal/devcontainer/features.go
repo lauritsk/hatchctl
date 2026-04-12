@@ -25,7 +25,7 @@ type ResolvedFeature struct {
 	Options       map[string]string
 	DependsOn     []string
 	InstallsAfter []string
-	Metadata      MetadataEntry
+	Metadata      spec.MetadataEntry
 }
 
 type FeatureResolveOptions struct {

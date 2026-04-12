@@ -171,28 +171,28 @@ func (e *Executor) InspectImageArchitecture(ctx context.Context, image string) (
 	return stdruntime.GOARCH, nil
 }
 
-func featureMetadata(features []devcontainer.ResolvedFeature) []devcontainer.MetadataEntry {
+func featureMetadata(features []devcontainer.ResolvedFeature) []spec.MetadataEntry {
 	if len(features) == 0 {
 		return nil
 	}
-	result := make([]devcontainer.MetadataEntry, 0, len(features))
+	result := make([]spec.MetadataEntry, 0, len(features))
 	for _, feature := range features {
 		result = append(result, feature.Metadata)
 	}
 	return result
 }
 
-func mergeManagedImageMetadata(base []devcontainer.MetadataEntry, overlay []devcontainer.MetadataEntry) []devcontainer.MetadataEntry {
+func mergeManagedImageMetadata(base []spec.MetadataEntry, overlay []spec.MetadataEntry) []spec.MetadataEntry {
 	if len(base) == 0 && len(overlay) == 0 {
 		return nil
 	}
-	merged := make([]devcontainer.MetadataEntry, 0, len(base)+len(overlay))
+	merged := make([]spec.MetadataEntry, 0, len(base)+len(overlay))
 	merged = append(merged, base...)
 	merged = append(merged, overlay...)
 	return merged
 }
 
-func (e *Executor) imageMetadata(ctx context.Context, image string) ([]devcontainer.MetadataEntry, error) {
+func (e *Executor) imageMetadata(ctx context.Context, image string) ([]spec.MetadataEntry, error) {
 	inspect, err := e.engine.InspectImage(ctx, dockercli.InspectImageRequest{Reference: image})
 	if err != nil {
 		return nil, err
@@ -200,7 +200,7 @@ func (e *Executor) imageMetadata(ctx context.Context, image string) ([]devcontai
 	return spec.MetadataFromLabel(inspect.Config.Labels[devcontainer.ImageMetadataLabel])
 }
 
-func (e *Executor) mergeSourceImageMetadata(ctx context.Context, resolved devcontainer.ResolvedConfig, runtimeImage string, metadata []devcontainer.MetadataEntry) ([]devcontainer.MetadataEntry, error) {
+func (e *Executor) mergeSourceImageMetadata(ctx context.Context, resolved devcontainer.ResolvedConfig, runtimeImage string, metadata []spec.MetadataEntry) ([]spec.MetadataEntry, error) {
 	if resolved.Config.Image == "" || resolved.Config.Image == runtimeImage {
 		return metadata, nil
 	}
@@ -218,7 +218,7 @@ func isManagedImage(resolved *devcontainer.ResolvedConfig, image string) bool {
 	return image == resolved.ImageName || strings.HasPrefix(image, resolved.ImageName+"-")
 }
 
-func writeFeatureBuildContext(buildDir string, baseImage string, features []devcontainer.ResolvedFeature, containerUser string, remoteUser string, metadata []devcontainer.MetadataEntry, imageKey string) error {
+func writeFeatureBuildContext(buildDir string, baseImage string, features []devcontainer.ResolvedFeature, containerUser string, remoteUser string, metadata []spec.MetadataEntry, imageKey string) error {
 	metadataLabel, err := spec.MetadataLabelValue(metadata)
 	if err != nil {
 		return err

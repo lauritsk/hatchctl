@@ -37,7 +37,7 @@ func TestEnsureWorkspaceTrustRejectsRiskySettings(t *testing.T) {
 			RunArgs: []string{"--privileged"},
 			Build:   &devcontainer.BuildConfig{Dockerfile: "../../Dockerfile"},
 		},
-		Merged: devcontainer.MergedConfig{
+		Merged: spec.MergedConfig{
 			Privileged: true,
 			Mounts:     []string{"type=bind,source=/tmp,target=/host-tmp"},
 		},

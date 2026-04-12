@@ -14,20 +14,21 @@ import (
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	"github.com/lauritsk/hatchctl/internal/docker"
 	"github.com/lauritsk/hatchctl/internal/engine/dockercli"
+	"github.com/lauritsk/hatchctl/internal/spec"
 )
 
 func TestImageHelperFunctions(t *testing.T) {
 	t.Parallel()
 
-	features := []devcontainer.ResolvedFeature{{Metadata: devcontainer.MetadataEntry{ID: "a"}}, {Metadata: devcontainer.MetadataEntry{ID: "b", ContainerEnv: map[string]string{"A": "1"}}}}
+	features := []devcontainer.ResolvedFeature{{Metadata: spec.MetadataEntry{ID: "a"}}, {Metadata: spec.MetadataEntry{ID: "b", ContainerEnv: map[string]string{"A": "1"}}}}
 	if got := featureMetadata(features); len(got) != 2 || got[0].ID != "a" || got[1].ID != "b" {
 		t.Fatalf("unexpected feature metadata %#v", got)
 	}
 	if mergeManagedImageMetadata(nil, nil) != nil {
 		t.Fatal("expected empty managed metadata merge to return nil")
 	}
-	merged := mergeManagedImageMetadata([]devcontainer.MetadataEntry{{ID: "base"}}, []devcontainer.MetadataEntry{{ID: "overlay"}})
-	if !reflect.DeepEqual(merged, []devcontainer.MetadataEntry{{ID: "base"}, {ID: "overlay"}}) {
+	merged := mergeManagedImageMetadata([]spec.MetadataEntry{{ID: "base"}}, []spec.MetadataEntry{{ID: "overlay"}})
+	if !reflect.DeepEqual(merged, []spec.MetadataEntry{{ID: "base"}, {ID: "overlay"}}) {
 		t.Fatalf("unexpected merged metadata %#v", merged)
 	}
 	resolved := devcontainer.ResolvedConfig{ImageName: "hatchctl-demo"}
@@ -95,7 +96,7 @@ func TestBuildDockerfileImageUsesResolvedBuildInputs(t *testing.T) {
 	resolved := devcontainer.ResolvedConfig{
 		ConfigDir: configDir,
 		Config:    devcontainer.Config{Build: &devcontainer.BuildConfig{Dockerfile: "Dockerfile.dev", Context: "ctx", Target: "dev", Args: map[string]string{"A": "1"}, Options: []string{"--pull"}}},
-		Merged:    devcontainer.MergedConfig{Metadata: []devcontainer.MetadataEntry{{RemoteUser: "vscode"}}},
+		Merged:    spec.MergedConfig{Metadata: []spec.MetadataEntry{{RemoteUser: "vscode"}}},
 	}
 
 	if err := executor.buildDockerfileImage(context.Background(), resolved, "hatchctl-demo", "image-key", nil); err != nil {
@@ -165,9 +166,9 @@ func TestEnsureUpdatedUIDContainerSkipsAndExecutesEligibleUser(t *testing.T) {
 		}
 		return nil
 	}}}
-	resolved := devcontainer.ResolvedConfig{Merged: devcontainer.MergedConfig{RemoteUser: "vscode"}}
+	resolved := devcontainer.ResolvedConfig{Merged: spec.MergedConfig{RemoteUser: "vscode"}}
 
-	if err := executor.EnsureUpdatedUIDContainer(context.Background(), devcontainer.ResolvedConfig{Merged: devcontainer.MergedConfig{UpdateRemoteUserUID: &falseValue}}, "image-ref", "container-123", nil); err != nil {
+	if err := executor.EnsureUpdatedUIDContainer(context.Background(), devcontainer.ResolvedConfig{Merged: spec.MergedConfig{UpdateRemoteUserUID: &falseValue}}, "image-ref", "container-123", nil); err != nil {
 		t.Fatalf("expected disabled uid remap to skip, got %v", err)
 	}
 	if called {

@@ -132,7 +132,7 @@ func TestDotfilesStatusHelpersAndTargetResolution(t *testing.T) {
 	executor := &Executor{engine: &fakeExecutorEngine{execOutputFunc: func(_ context.Context, req dockercli.ExecRequest) (string, error) {
 		return "vscode:x:1000:1000::/home/vscode:/bin/bash\n", nil
 	}}}
-	observed := ObservedState{Resolved: devcontainer.ResolvedConfig{Merged: devcontainer.MergedConfig{RemoteUser: "vscode"}}, Target: RuntimeTarget{PrimaryContainer: "container-123"}}
+	observed := ObservedState{Resolved: devcontainer.ResolvedConfig{Merged: spec.MergedConfig{RemoteUser: "vscode"}}, Target: RuntimeTarget{PrimaryContainer: "container-123"}}
 	if got, err := executor.resolveDotfilesTargetPath(context.Background(), observed, "$HOME/.dotfiles"); err != nil || got != "/home/vscode/.dotfiles" {
 		t.Fatalf("unexpected resolved dotfiles path %q err=%v", got, err)
 	}

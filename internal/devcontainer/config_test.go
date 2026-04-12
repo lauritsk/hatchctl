@@ -147,7 +147,7 @@ func TestMergeMetadataMatchesExpectedPrecedence(t *testing.T) {
 		SecurityOpt:     []string{"seccomp=unconfined"},
 		OverrideCommand: &falseValue,
 		OnCreateCommand: spec.LifecycleCommand{Kind: "string", Value: "config-create", Exists: true},
-	}, []MetadataEntry{{
+	}, []spec.MetadataEntry{{
 		RemoteUser:      "image-remote",
 		ContainerUser:   "image-container",
 		ForwardPorts:    spec.ForwardPorts{"localhost:3000", "localhost:8080"},
@@ -218,7 +218,7 @@ func TestMetadataFromLabelSupportsSingleAndArray(t *testing.T) {
 func TestMetadataLabelValueUsesObjectForSingleEntryAndArrayForMultiple(t *testing.T) {
 	t.Parallel()
 
-	single, err := spec.MetadataLabelValue([]MetadataEntry{{RemoteUser: "root"}})
+	single, err := spec.MetadataLabelValue([]spec.MetadataEntry{{RemoteUser: "root"}})
 	if err != nil {
 		t.Fatalf("marshal single metadata: %v", err)
 	}
@@ -226,7 +226,7 @@ func TestMetadataLabelValueUsesObjectForSingleEntryAndArrayForMultiple(t *testin
 		t.Fatalf("unexpected single metadata label %q", single)
 	}
 
-	multi, err := spec.MetadataLabelValue([]MetadataEntry{{RemoteUser: "root"}, {RemoteUser: "vscode"}})
+	multi, err := spec.MetadataLabelValue([]spec.MetadataEntry{{RemoteUser: "root"}, {RemoteUser: "vscode"}})
 	if err != nil {
 		t.Fatalf("marshal multiple metadata entries: %v", err)
 	}

@@ -4,6 +4,7 @@ import (
 	"github.com/lauritsk/hatchctl/internal/bridge"
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	"github.com/lauritsk/hatchctl/internal/docker"
+	"github.com/lauritsk/hatchctl/internal/spec"
 	storefs "github.com/lauritsk/hatchctl/internal/store/fs"
 )
 
@@ -15,7 +16,7 @@ func Preview(stateDir string, enabled bool) (*bridge.Session, error) {
 	return bridge.Preview(stateDir, enabled)
 }
 
-func Inject(session *bridge.Session, merged devcontainer.MergedConfig) devcontainer.MergedConfig {
+func Inject(session *bridge.Session, merged spec.MergedConfig) spec.MergedConfig {
 	return bridge.Inject(session, merged)
 }
 

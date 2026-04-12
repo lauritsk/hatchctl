@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/lauritsk/hatchctl/internal/spec"
 	storefs "github.com/lauritsk/hatchctl/internal/store/fs"
 )
 
@@ -34,7 +35,7 @@ func TestWriteFeatureStateFileUsesOwnerOnlyPermissions(t *testing.T) {
 	t.Parallel()
 
 	stateDir := filepath.Join(t.TempDir(), "state")
-	if err := WriteFeatureStateFile(stateDir, []ResolvedFeature{{Metadata: MetadataEntry{ID: "feature-a"}, Source: "./feature-a"}}); err != nil {
+	if err := WriteFeatureStateFile(stateDir, []ResolvedFeature{{Metadata: spec.MetadataEntry{ID: "feature-a"}, Source: "./feature-a"}}); err != nil {
 		t.Fatalf("write feature state: %v", err)
 	}
 	assertMode(t, stateDir, 0o700)

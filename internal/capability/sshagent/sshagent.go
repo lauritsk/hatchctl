@@ -8,6 +8,7 @@ import (
 
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	"github.com/lauritsk/hatchctl/internal/docker"
+	"github.com/lauritsk/hatchctl/internal/spec"
 )
 
 const (
@@ -17,7 +18,7 @@ const (
 
 var ErrUnavailable = errors.New("ssh-agent passthrough requires SSH_AUTH_SOCK to point to a readable host socket")
 
-func Inject(goos string, hostSocket string, merged devcontainer.MergedConfig) (devcontainer.MergedConfig, error) {
+func Inject(goos string, hostSocket string, merged spec.MergedConfig) (spec.MergedConfig, error) {
 	source, err := MountSource(goos, hostSocket)
 	if err != nil {
 		return merged, err

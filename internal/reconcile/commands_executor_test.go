@@ -139,11 +139,11 @@ func TestUpUsesEnrichedResolvedMetadataForDotfilesTargetPath(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(featureDir, "install.sh"), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
 		t.Fatalf("write feature install script: %v", err)
 	}
-	sourceMetadataLabel, err := spec.MetadataLabelValue([]devcontainer.MetadataEntry{{RemoteUser: "vscode", UpdateRemoteUserUID: &falseValue}})
+	sourceMetadataLabel, err := spec.MetadataLabelValue([]spec.MetadataEntry{{RemoteUser: "vscode", UpdateRemoteUserUID: &falseValue}})
 	if err != nil {
 		t.Fatalf("metadata label: %v", err)
 	}
-	managedMetadataLabel, err := spec.MetadataLabelValue([]devcontainer.MetadataEntry{{ID: "mise"}})
+	managedMetadataLabel, err := spec.MetadataLabelValue([]spec.MetadataEntry{{ID: "mise"}})
 	if err != nil {
 		t.Fatalf("managed metadata label: %v", err)
 	}
@@ -233,8 +233,8 @@ func TestUpUsesEnrichedResolvedMetadataForDotfilesTargetPath(t *testing.T) {
 					WorkspaceFolder:     "/workspaces/demo",
 					UpdateRemoteUserUID: &falseValue,
 				},
-				Features:        []devcontainer.ResolvedFeature{{Path: featureDir, Metadata: devcontainer.MetadataEntry{ID: "mise"}}},
-				Merged:          spec.MergeMetadata(devcontainer.Config{Image: "mcr.microsoft.com/devcontainers/base:ubuntu", WorkspaceFolder: "/workspaces/demo", UpdateRemoteUserUID: &falseValue}, []devcontainer.MetadataEntry{{ID: "mise"}}),
+				Features:        []devcontainer.ResolvedFeature{{Path: featureDir, Metadata: spec.MetadataEntry{ID: "mise"}}},
+				Merged:          spec.MergeMetadata(devcontainer.Config{Image: "mcr.microsoft.com/devcontainers/base:ubuntu", WorkspaceFolder: "/workspaces/demo", UpdateRemoteUserUID: &falseValue}, []spec.MetadataEntry{{ID: "mise"}}),
 				StateDir:        stateDir,
 				CacheDir:        cacheDir,
 				WorkspaceMount:  "type=bind,source=/workspace,target=/workspaces/demo",
@@ -297,11 +297,11 @@ func TestUpRecreateReinstallsDotfilesForNewContainer(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("write prior state: %v", err)
 	}
-	sourceMetadataLabel, err := spec.MetadataLabelValue([]devcontainer.MetadataEntry{{RemoteUser: "vscode", UpdateRemoteUserUID: &falseValue}})
+	sourceMetadataLabel, err := spec.MetadataLabelValue([]spec.MetadataEntry{{RemoteUser: "vscode", UpdateRemoteUserUID: &falseValue}})
 	if err != nil {
 		t.Fatalf("source metadata label: %v", err)
 	}
-	managedMetadataLabel, err := spec.MetadataLabelValue([]devcontainer.MetadataEntry{{ID: "mise"}})
+	managedMetadataLabel, err := spec.MetadataLabelValue([]spec.MetadataEntry{{ID: "mise"}})
 	if err != nil {
 		t.Fatalf("managed metadata label: %v", err)
 	}
@@ -386,8 +386,8 @@ func TestUpRecreateReinstallsDotfilesForNewContainer(t *testing.T) {
 					WorkspaceFolder:     "/workspaces/demo",
 					UpdateRemoteUserUID: &falseValue,
 				},
-				Features:        []devcontainer.ResolvedFeature{{Path: featureDir, Metadata: devcontainer.MetadataEntry{ID: "mise"}}},
-				Merged:          spec.MergeMetadata(devcontainer.Config{Image: "mcr.microsoft.com/devcontainers/base:ubuntu", WorkspaceFolder: "/workspaces/demo", UpdateRemoteUserUID: &falseValue}, []devcontainer.MetadataEntry{{ID: "mise"}}),
+				Features:        []devcontainer.ResolvedFeature{{Path: featureDir, Metadata: spec.MetadataEntry{ID: "mise"}}},
+				Merged:          spec.MergeMetadata(devcontainer.Config{Image: "mcr.microsoft.com/devcontainers/base:ubuntu", WorkspaceFolder: "/workspaces/demo", UpdateRemoteUserUID: &falseValue}, []spec.MetadataEntry{{ID: "mise"}}),
 				StateDir:        stateDir,
 				CacheDir:        cacheDir,
 				WorkspaceMount:  "type=bind,source=/workspace,target=/workspaces/demo",
@@ -430,11 +430,11 @@ func TestExecMergesConfiguredImageMetadataWhenContainerLabelIsIncomplete(t *test
 	if err := storefs.WriteWorkspaceState(stateDir, storefs.WorkspaceState{ContainerID: "container-123"}); err != nil {
 		t.Fatalf("write state: %v", err)
 	}
-	containerMetadataLabel, err := spec.MetadataLabelValue([]devcontainer.MetadataEntry{{ID: "mise"}})
+	containerMetadataLabel, err := spec.MetadataLabelValue([]spec.MetadataEntry{{ID: "mise"}})
 	if err != nil {
 		t.Fatalf("container metadata label: %v", err)
 	}
-	sourceMetadataLabel, err := spec.MetadataLabelValue([]devcontainer.MetadataEntry{{RemoteUser: "vscode"}})
+	sourceMetadataLabel, err := spec.MetadataLabelValue([]spec.MetadataEntry{{RemoteUser: "vscode"}})
 	if err != nil {
 		t.Fatalf("metadata label: %v", err)
 	}

@@ -15,6 +15,7 @@ import (
 	"syscall"
 
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
+	"github.com/lauritsk/hatchctl/internal/spec"
 	storefs "github.com/lauritsk/hatchctl/internal/store/fs"
 )
 
@@ -149,7 +150,7 @@ func Preview(stateDir string, enabled bool) (*Session, error) {
 	return session, nil
 }
 
-func Inject(session *Session, merged devcontainer.MergedConfig) devcontainer.MergedConfig {
+func Inject(session *Session, merged spec.MergedConfig) spec.MergedConfig {
 	if session == nil {
 		return merged
 	}
@@ -267,7 +268,7 @@ func normalizeHelperArch(value string) string {
 	return value
 }
 
-func applySession(session *Session, merged devcontainer.MergedConfig) devcontainer.MergedConfig {
+func applySession(session *Session, merged spec.MergedConfig) spec.MergedConfig {
 	containerEnv := cloneEnv(merged.ContainerEnv)
 	containerEnv["BROWSER"] = filepath.ToSlash(filepath.Join(session.BinPath, "devcontainer-open"))
 	containerEnv["DEVCONTAINER_BRIDGE_ENABLED"] = "true"

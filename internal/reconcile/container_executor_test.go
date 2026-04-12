@@ -11,6 +11,7 @@ import (
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	"github.com/lauritsk/hatchctl/internal/docker"
 	"github.com/lauritsk/hatchctl/internal/engine/dockercli"
+	"github.com/lauritsk/hatchctl/internal/spec"
 )
 
 func TestContainerBridgeModeMatches(t *testing.T) {
@@ -100,10 +101,10 @@ func TestRenderComposeOverrideIncludesDerivedSettings(t *testing.T) {
 		StateDir:       "/state",
 		ComposeService: "app",
 		WorkspaceMount: "type=bind,source=/workspace,target=/workspaces/demo,consistency=cached",
-		Features:       []devcontainer.ResolvedFeature{{Metadata: devcontainer.MetadataEntry{ID: "mise"}}},
+		Features:       []devcontainer.ResolvedFeature{{Metadata: spec.MetadataEntry{ID: "mise"}}},
 		Labels:         map[string]string{"devcontainer.local_folder": "/workspace"},
 		Config:         devcontainer.Config{OverrideCommand: &trueValue},
-		Merged: devcontainer.MergedConfig{
+		Merged: spec.MergedConfig{
 			ContainerEnv: map[string]string{
 				"DEVCONTAINER_BRIDGE_ENABLED": "true",
 				"SSH_AUTH_SOCK":               capssh.ContainerSocketPath,
@@ -116,7 +117,7 @@ func TestRenderComposeOverrideIncludesDerivedSettings(t *testing.T) {
 			ContainerUser: "vscode",
 			CapAdd:        []string{"SYS_PTRACE"},
 			SecurityOpt:   []string{"seccomp=unconfined"},
-			Metadata:      []devcontainer.MetadataEntry{{ID: "mise"}},
+			Metadata:      []spec.MetadataEntry{{ID: "mise"}},
 		},
 	}
 
@@ -255,7 +256,7 @@ func TestCreateComposeContainerWritesTemporaryOverrideAndRemovesIt(t *testing.T)
 		ComposeProject: "demo",
 		ComposeService: "app",
 		WorkspaceMount: "type=bind,source=/workspace,target=/workspaces/demo",
-		Merged:         devcontainer.MergedConfig{},
+		Merged:         spec.MergedConfig{},
 	}
 
 	id, err := executor.createComposeContainer(context.Background(), resolved, "managed-image", "container-key", "", nil)

@@ -306,8 +306,8 @@ func featureIDs(features []ResolvedFeature) []string {
 	return ids
 }
 
-func featureMetadataForTest(features []ResolvedFeature) []MetadataEntry {
-	entries := make([]MetadataEntry, 0, len(features))
+func featureMetadataForTest(features []ResolvedFeature) []spec.MetadataEntry {
+	entries := make([]spec.MetadataEntry, 0, len(features))
 	for _, feature := range features {
 		entries = append(entries, feature.Metadata)
 	}

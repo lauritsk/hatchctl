@@ -31,7 +31,7 @@ type ResolvedConfig struct {
 	ConfigDir       string
 	Config          Config
 	Features        []ResolvedFeature
-	Merged          MergedConfig
+	Merged          spec.MergedConfig
 	StateDir        string
 	CacheDir        string
 	WorkspaceMount  string
@@ -184,7 +184,7 @@ func resolveFeaturesForWorkspace(ctx context.Context, workspaceSpec WorkspaceSpe
 }
 
 func buildResolvedConfig(workspaceSpec WorkspaceSpec, stateDir string, cacheDir string, features []ResolvedFeature) ResolvedConfig {
-	metadata := make([]MetadataEntry, 0, len(features))
+	metadata := make([]spec.MetadataEntry, 0, len(features))
 	for _, feature := range features {
 		metadata = append(metadata, feature.Metadata)
 	}

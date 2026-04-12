@@ -119,7 +119,7 @@ func TestContainerKeyChangesWithRuntimeInputs(t *testing.T) {
 		RemoteWorkspace: "/workspaces/demo",
 		Labels:          map[string]string{"devcontainer.config_file": "/workspace/.devcontainer/devcontainer.json"},
 		Config:          devcontainer.Config{RunArgs: []string{"--network=host"}},
-		Merged:          devcontainer.MergedConfig{ContainerUser: "vscode", Mounts: []string{"type=volume,source=data,target=/data"}, CapAdd: []string{"NET_ADMIN"}, SecurityOpt: []string{"label=disable"}, Init: true, Privileged: true, ContainerEnv: map[string]string{"A": "1"}},
+		Merged:          spec.MergedConfig{ContainerUser: "vscode", Mounts: []string{"type=volume,source=data,target=/data"}, CapAdd: []string{"NET_ADMIN"}, SecurityOpt: []string{"label=disable"}, Init: true, Privileged: true, ContainerEnv: map[string]string{"A": "1"}},
 	}
 
 	key1, err := ContainerKey(resolved, "image@sha256:abc", false, false)
@@ -148,7 +148,7 @@ func TestLifecycleKeyChangesWithCommandsAndDotfiles(t *testing.T) {
 
 	resolved := devcontainer.ResolvedConfig{
 		Config: devcontainer.Config{InitializeCommand: spec.LifecycleCommand{Kind: "string", Value: "echo init", Exists: true}},
-		Merged: devcontainer.MergedConfig{
+		Merged: spec.MergedConfig{
 			OnCreateCommands:      []spec.LifecycleCommand{{Kind: "string", Value: "echo create", Exists: true}},
 			UpdateContentCommands: []spec.LifecycleCommand{{Kind: "array", Args: []string{"echo", "update"}, Exists: true}},
 			PostCreateCommands:    []spec.LifecycleCommand{{Kind: "string", Value: "echo post", Exists: true}},

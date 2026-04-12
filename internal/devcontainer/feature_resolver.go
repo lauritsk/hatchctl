@@ -7,6 +7,7 @@ import (
 
 	"github.com/lauritsk/hatchctl/internal/featurefetch"
 	"github.com/lauritsk/hatchctl/internal/security"
+	"github.com/lauritsk/hatchctl/internal/spec"
 )
 
 type resolvedFeatureSource struct {
@@ -89,7 +90,7 @@ func resolveFeature(ctx context.Context, configDir string, cacheDir string, sour
 		Options:       materialized,
 		DependsOn:     sortedKeys(manifest.DependsOn),
 		InstallsAfter: slices.Clone(manifest.InstallsAfter),
-		Metadata: MetadataEntry{
+		Metadata: spec.MetadataEntry{
 			ID:                   manifest.ID,
 			Init:                 manifest.Init,
 			Privileged:           manifest.Privileged,
