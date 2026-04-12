@@ -320,8 +320,17 @@ func TestBridgeHostServiceForwardsSingleUseExactPortWhenAvailable(t *testing.T) 
 		time.Sleep(10 * time.Millisecond)
 	}
 
-	if _, err := net.DialTimeout("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(hostPort)), 200*time.Millisecond); err == nil {
-		t.Fatal("expected single-use forward listener to be closed after first connection")
+	deadline = time.Now().Add(2 * time.Second)
+	for {
+		listener, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(hostPort)))
+		if err == nil {
+			_ = listener.Close()
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("expected single-use forward listener to be closed after first connection: %v", err)
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 	deadline = time.Now().Add(2 * time.Second)
 	for {
