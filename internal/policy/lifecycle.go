@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	"github.com/lauritsk/hatchctl/internal/spec"
 )
 
@@ -14,7 +13,7 @@ func HostLifecycleTrustRequired(command spec.LifecycleCommand) bool {
 	return !command.Empty()
 }
 
-func EnsureHostLifecycleAllowed(command devcontainer.LifecycleCommand, allow bool) error {
+func EnsureHostLifecycleAllowed(command spec.LifecycleCommand, allow bool) error {
 	if command.Empty() || allow {
 		return nil
 	}

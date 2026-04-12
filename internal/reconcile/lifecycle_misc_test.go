@@ -18,6 +18,7 @@ import (
 	"github.com/lauritsk/hatchctl/internal/docker"
 	"github.com/lauritsk/hatchctl/internal/engine/dockercli"
 	"github.com/lauritsk/hatchctl/internal/policy"
+	"github.com/lauritsk/hatchctl/internal/spec"
 	storefs "github.com/lauritsk/hatchctl/internal/store/fs"
 )
 
@@ -62,13 +63,13 @@ func TestRunCommandSupportsStringArrayAndObject(t *testing.T) {
 		calls = append(calls, append([]string(nil), args...))
 		return nil
 	}
-	if err := runCommand(context.Background(), runner, devcontainer.LifecycleCommand{Kind: "string", Value: "echo hi", Exists: true}); err != nil {
+	if err := runCommand(context.Background(), runner, spec.LifecycleCommand{Kind: "string", Value: "echo hi", Exists: true}); err != nil {
 		t.Fatalf("run string command: %v", err)
 	}
-	if err := runCommand(context.Background(), runner, devcontainer.LifecycleCommand{Kind: "array", Args: []string{"echo", "there"}, Exists: true}); err != nil {
+	if err := runCommand(context.Background(), runner, spec.LifecycleCommand{Kind: "array", Args: []string{"echo", "there"}, Exists: true}); err != nil {
 		t.Fatalf("run array command: %v", err)
 	}
-	if err := runCommand(context.Background(), runner, devcontainer.LifecycleCommand{Kind: "object", Steps: map[string]devcontainer.LifecycleCommand{"b": {Kind: "string", Value: "echo two", Exists: true}, "a": {Kind: "array", Args: []string{"echo", "one"}, Exists: true}}, Exists: true}); err != nil {
+	if err := runCommand(context.Background(), runner, spec.LifecycleCommand{Kind: "object", Steps: map[string]spec.LifecycleCommand{"b": {Kind: "string", Value: "echo two", Exists: true}, "a": {Kind: "array", Args: []string{"echo", "one"}, Exists: true}}, Exists: true}); err != nil {
 		t.Fatalf("run object command: %v", err)
 	}
 	if !reflect.DeepEqual(calls, [][]string{{"/bin/sh", "-lc", "echo hi"}, {"echo", "there"}, {"echo", "one"}, {"/bin/sh", "-lc", "echo two"}}) {
@@ -85,7 +86,7 @@ func TestRunCommandWrapsFailingStep(t *testing.T) {
 			return errBoom
 		}
 		return nil
-	}, devcontainer.LifecycleCommand{Kind: "object", Steps: map[string]devcontainer.LifecycleCommand{"a": {Kind: "string", Value: "echo ok", Exists: true}, "b": {Kind: "array", Args: []string{"echo", "fail"}, Exists: true}}, Exists: true})
+	}, spec.LifecycleCommand{Kind: "object", Steps: map[string]spec.LifecycleCommand{"a": {Kind: "string", Value: "echo ok", Exists: true}, "b": {Kind: "array", Args: []string{"echo", "fail"}, Exists: true}}, Exists: true})
 	if err == nil || !strings.Contains(err.Error(), "lifecycle step b") || !errors.Is(err, errBoom) {
 		t.Fatalf("expected wrapped lifecycle step error, got %v", err)
 	}
@@ -96,13 +97,13 @@ func TestRunHostLifecycleUsesRunnerAndSkipsEmpty(t *testing.T) {
 
 	runner := &recordingRunner{}
 	streams := commandIO{Stdin: strings.NewReader("in"), Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}}
-	if err := runHostLifecycle(context.Background(), "/workspace", devcontainer.LifecycleCommand{}, streams, runner); err != nil {
+	if err := runHostLifecycle(context.Background(), "/workspace", spec.LifecycleCommand{}, streams, runner); err != nil {
 		t.Fatalf("run empty host lifecycle: %v", err)
 	}
 	if len(runner.runs) != 0 {
 		t.Fatalf("expected empty lifecycle to skip runner, got %#v", runner.runs)
 	}
-	if err := runHostLifecycle(context.Background(), "/workspace", devcontainer.LifecycleCommand{Kind: "string", Value: "echo hi", Exists: true}, streams, runner); err != nil {
+	if err := runHostLifecycle(context.Background(), "/workspace", spec.LifecycleCommand{Kind: "string", Value: "echo hi", Exists: true}, streams, runner); err != nil {
 		t.Fatalf("run host lifecycle: %v", err)
 	}
 	if len(runner.runs) != 1 || runner.runs[0].Binary != "/bin/sh" || runner.runs[0].Dir != "/workspace" {

@@ -11,6 +11,7 @@ import (
 
 	"github.com/lauritsk/hatchctl/internal/featurefetch"
 	"github.com/lauritsk/hatchctl/internal/security"
+	"github.com/lauritsk/hatchctl/internal/spec"
 )
 
 type ResolvedFeature struct {
@@ -46,11 +47,11 @@ type featureManifest struct {
 	CapAdd               []string                 `json:"capAdd,omitempty"`
 	SecurityOpt          []string                 `json:"securityOpt,omitempty"`
 	Customizations       map[string]any           `json:"customizations,omitempty"`
-	OnCreateCommand      LifecycleCommand         `json:"onCreateCommand,omitempty"`
-	UpdateContentCommand LifecycleCommand         `json:"updateContentCommand,omitempty"`
-	PostCreateCommand    LifecycleCommand         `json:"postCreateCommand,omitempty"`
-	PostStartCommand     LifecycleCommand         `json:"postStartCommand,omitempty"`
-	PostAttachCommand    LifecycleCommand         `json:"postAttachCommand,omitempty"`
+	OnCreateCommand      spec.LifecycleCommand    `json:"onCreateCommand,omitempty"`
+	UpdateContentCommand spec.LifecycleCommand    `json:"updateContentCommand,omitempty"`
+	PostCreateCommand    spec.LifecycleCommand    `json:"postCreateCommand,omitempty"`
+	PostStartCommand     spec.LifecycleCommand    `json:"postStartCommand,omitempty"`
+	PostAttachCommand    spec.LifecycleCommand    `json:"postAttachCommand,omitempty"`
 	InstallsAfter        []string                 `json:"installsAfter,omitempty"`
 	DependsOn            map[string]any           `json:"dependsOn,omitempty"`
 	Options              map[string]featureOption `json:"options,omitempty"`

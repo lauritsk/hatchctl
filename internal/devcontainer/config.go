@@ -20,12 +20,9 @@ const (
 )
 
 type (
-	Config           = spec.Config
-	BuildConfig      = spec.BuildConfig
-	LifecycleCommand = spec.LifecycleCommand
-	ForwardPorts     = spec.ForwardPorts
-	LifecycleStep    = spec.LifecycleStep
-	WorkspaceSpec    = spec.WorkspaceSpec
+	Config        = spec.Config
+	BuildConfig   = spec.BuildConfig
+	WorkspaceSpec = spec.WorkspaceSpec
 )
 
 type ResolvedConfig struct {

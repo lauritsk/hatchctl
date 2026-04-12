@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
+	"github.com/lauritsk/hatchctl/internal/spec"
 )
 
 func TestManagedImageKeyChangesWithDockerfileAndFeatures(t *testing.T) {
@@ -146,13 +147,13 @@ func TestLifecycleKeyChangesWithCommandsAndDotfiles(t *testing.T) {
 	t.Parallel()
 
 	resolved := devcontainer.ResolvedConfig{
-		Config: devcontainer.Config{InitializeCommand: devcontainer.LifecycleCommand{Kind: "string", Value: "echo init", Exists: true}},
+		Config: devcontainer.Config{InitializeCommand: spec.LifecycleCommand{Kind: "string", Value: "echo init", Exists: true}},
 		Merged: devcontainer.MergedConfig{
-			OnCreateCommands:      []devcontainer.LifecycleCommand{{Kind: "string", Value: "echo create", Exists: true}},
-			UpdateContentCommands: []devcontainer.LifecycleCommand{{Kind: "array", Args: []string{"echo", "update"}, Exists: true}},
-			PostCreateCommands:    []devcontainer.LifecycleCommand{{Kind: "string", Value: "echo post", Exists: true}},
-			PostStartCommands:     []devcontainer.LifecycleCommand{{Kind: "string", Value: "echo start", Exists: true}},
-			PostAttachCommands:    []devcontainer.LifecycleCommand{{Kind: "string", Value: "echo attach", Exists: true}},
+			OnCreateCommands:      []spec.LifecycleCommand{{Kind: "string", Value: "echo create", Exists: true}},
+			UpdateContentCommands: []spec.LifecycleCommand{{Kind: "array", Args: []string{"echo", "update"}, Exists: true}},
+			PostCreateCommands:    []spec.LifecycleCommand{{Kind: "string", Value: "echo post", Exists: true}},
+			PostStartCommands:     []spec.LifecycleCommand{{Kind: "string", Value: "echo start", Exists: true}},
+			PostAttachCommands:    []spec.LifecycleCommand{{Kind: "string", Value: "echo attach", Exists: true}},
 		},
 	}
 

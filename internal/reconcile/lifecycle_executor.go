@@ -17,6 +17,7 @@ import (
 	"github.com/lauritsk/hatchctl/internal/docker"
 	"github.com/lauritsk/hatchctl/internal/engine/dockercli"
 	"github.com/lauritsk/hatchctl/internal/policy"
+	"github.com/lauritsk/hatchctl/internal/spec"
 	storefs "github.com/lauritsk/hatchctl/internal/store/fs"
 )
 
@@ -41,7 +42,7 @@ func DotfilesNeedsInstall(state storefs.WorkspaceState, cfg capdot.Config) bool 
 	return status != nil && status.NeedsInstall
 }
 
-func runHostLifecycle(ctx context.Context, cwd string, lifecycle devcontainer.LifecycleCommand, streams commandIO, host command.Runner) error {
+func runHostLifecycle(ctx context.Context, cwd string, lifecycle spec.LifecycleCommand, streams commandIO, host command.Runner) error {
 	if lifecycle.Empty() {
 		return nil
 	}
@@ -53,7 +54,7 @@ func runHostLifecycle(ctx context.Context, cwd string, lifecycle devcontainer.Li
 	}, lifecycle)
 }
 
-func runCommand(ctx context.Context, runner func(context.Context, []string) error, command devcontainer.LifecycleCommand) error {
+func runCommand(ctx context.Context, runner func(context.Context, []string) error, command spec.LifecycleCommand) error {
 	switch command.Kind {
 	case "string":
 		return runner(ctx, []string{"/bin/sh", "-lc", command.Value})
@@ -130,7 +131,7 @@ func (e *Executor) runAttachLifecycle(ctx context.Context, observed ObservedStat
 	return e.runContainerLifecycleList(ctx, observed, observed.Resolved.Merged.PostAttachCommands, events, lifecycleProgressLabel("postAttachCommand"))
 }
 
-func (e *Executor) runContainerLifecycleList(ctx context.Context, observed ObservedState, commands []devcontainer.LifecycleCommand, events ui.Sink, label string) error {
+func (e *Executor) runContainerLifecycleList(ctx context.Context, observed ObservedState, commands []spec.LifecycleCommand, events ui.Sink, label string) error {
 	for _, command := range commands {
 		if err := e.runContainerLifecycle(ctx, observed, command, events, label); err != nil {
 			return err
@@ -139,7 +140,7 @@ func (e *Executor) runContainerLifecycleList(ctx context.Context, observed Obser
 	return nil
 }
 
-func (e *Executor) runContainerLifecycle(ctx context.Context, observed ObservedState, command devcontainer.LifecycleCommand, events ui.Sink, label string) error {
+func (e *Executor) runContainerLifecycle(ctx context.Context, observed ObservedState, command spec.LifecycleCommand, events ui.Sink, label string) error {
 	if command.Empty() {
 		return nil
 	}

@@ -130,7 +130,7 @@ func TestMergeMetadataMatchesExpectedPrecedence(t *testing.T) {
 	merged := spec.MergeMetadata(Config{
 		RemoteUser:    "config-remote",
 		ContainerUser: "config-container",
-		ForwardPorts:  ForwardPorts{"localhost:3000", "service:9000"},
+		ForwardPorts:  spec.ForwardPorts{"localhost:3000", "service:9000"},
 		RemoteEnv: map[string]string{
 			"BASE":   "config",
 			"CONFIG": "yes",
@@ -146,18 +146,18 @@ func TestMergeMetadataMatchesExpectedPrecedence(t *testing.T) {
 		CapAdd:          []string{"SYS_PTRACE"},
 		SecurityOpt:     []string{"seccomp=unconfined"},
 		OverrideCommand: &falseValue,
-		OnCreateCommand: LifecycleCommand{Kind: "string", Value: "config-create", Exists: true},
+		OnCreateCommand: spec.LifecycleCommand{Kind: "string", Value: "config-create", Exists: true},
 	}, []MetadataEntry{{
 		RemoteUser:      "image-remote",
 		ContainerUser:   "image-container",
-		ForwardPorts:    ForwardPorts{"localhost:3000", "localhost:8080"},
+		ForwardPorts:    spec.ForwardPorts{"localhost:3000", "localhost:8080"},
 		RemoteEnv:       map[string]string{"BASE": "image", "IMAGE": "yes"},
 		ContainerEnv:    map[string]string{"KEEP": "image", "IMAGE": "yes"},
 		Mounts:          []string{"type=bind,source=/image,target=/shared", "type=volume,target=/image-only"},
 		CapAdd:          []string{"NET_ADMIN"},
 		SecurityOpt:     []string{"label=disable"},
 		OverrideCommand: &trueValue,
-		OnCreateCommand: LifecycleCommand{Kind: "string", Value: "image-create", Exists: true},
+		OnCreateCommand: spec.LifecycleCommand{Kind: "string", Value: "image-create", Exists: true},
 	}})
 
 	if merged.RemoteUser != "config-remote" {
