@@ -2,7 +2,6 @@ package plan
 
 import (
 	"context"
-	"reflect"
 
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	"github.com/lauritsk/hatchctl/internal/security"
@@ -28,10 +27,11 @@ func (r *Resolver) Clone() *Resolver {
 }
 
 func (r *Resolver) Materialize(ctx context.Context, workspacePlan WorkspacePlan, verifyImage func(context.Context, string) security.VerificationResult) (devcontainer.ResolvedConfig, error) {
+	usePlannedWorkspaceSpec := r != nil && r.Resolve == nil && r.ResolveReadOnly == nil
 	r = r.withDefaults()
 	resolveOpts := workspacePlan.ResolveOptions(verifyImage)
 	resolveOpts.Warn = r.Warn
-	if usesPlannedWorkspaceSpec(r) && workspacePlan.Immutable.Spec.ConfigPath != "" {
+	if usePlannedWorkspaceSpec && workspacePlan.Immutable.Spec.ConfigPath != "" {
 		return r.ResolveWorkspaceSpec(ctx, workspacePlan.Immutable.Spec, workspacePlan.LockProtected.StateDir, workspacePlan.LockProtected.CacheDir, resolveOpts)
 	}
 	if workspacePlan.ReadOnly {
@@ -51,16 +51,4 @@ func (r *Resolver) withDefaults() *Resolver {
 		r.ResolveReadOnly = devcontainer.ResolveReadOnlyWithOptions
 	}
 	return r
-}
-
-func usesPlannedWorkspaceSpec(r *Resolver) bool {
-	return resolveFuncPointer(r.Resolve) == resolveFuncPointer(devcontainer.ResolveWithOptions) && resolveFuncPointer(r.ResolveReadOnly) == resolveFuncPointer(devcontainer.ResolveReadOnlyWithOptions)
-}
-
-func resolveFuncPointer[T any](fn T) uintptr {
-	value := reflect.ValueOf(fn)
-	if !value.IsValid() || value.IsNil() {
-		return 0
-	}
-	return value.Pointer()
 }

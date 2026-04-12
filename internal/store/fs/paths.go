@@ -14,6 +14,28 @@ type OutputRoots struct {
 	CacheRoot string
 }
 
+func ResolveOutputRoots(stateRoot string, cacheRoot string) (OutputRoots, error) {
+	roots, err := DefaultOutputRoots()
+	if err != nil {
+		return OutputRoots{}, err
+	}
+	if stateRoot != "" {
+		roots.StateRoot = stateRoot
+	}
+	if cacheRoot != "" {
+		roots.CacheRoot = cacheRoot
+	}
+	return roots, nil
+}
+
+func WorkspaceOutputDirs(stateRoot string, cacheRoot string, workspace string, configPath string) (OutputRoots, string, string, error) {
+	roots, err := ResolveOutputRoots(stateRoot, cacheRoot)
+	if err != nil {
+		return OutputRoots{}, "", "", err
+	}
+	return roots, WorkspaceScopedDir(roots.StateRoot, workspace, configPath), WorkspaceScopedDir(roots.CacheRoot, workspace, configPath), nil
+}
+
 func DefaultOutputRoots() (OutputRoots, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {

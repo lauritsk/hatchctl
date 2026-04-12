@@ -204,3 +204,23 @@ func TestWorkspacePathHelpersUseStableHashedKeys(t *testing.T) {
 		t.Fatalf("unexpected darwin roots %#v", darwinRoots)
 	}
 }
+
+func TestWorkspaceOutputDirsUsesResolvedRootsAndOverrides(t *testing.T) {
+	t.Parallel()
+
+	workspace := "/workspace/demo"
+	configPath := "/workspace/demo/.devcontainer/devcontainer.json"
+	roots, stateDir, cacheDir, err := WorkspaceOutputDirs("/custom-state", "/custom-cache", workspace, configPath)
+	if err != nil {
+		t.Fatalf("workspace output dirs: %v", err)
+	}
+	if roots.StateRoot != "/custom-state" || roots.CacheRoot != "/custom-cache" {
+		t.Fatalf("unexpected roots %#v", roots)
+	}
+	if stateDir != WorkspaceScopedDir("/custom-state", workspace, configPath) {
+		t.Fatalf("unexpected state dir %q", stateDir)
+	}
+	if cacheDir != WorkspaceScopedDir("/custom-cache", workspace, configPath) {
+		t.Fatalf("unexpected cache dir %q", cacheDir)
+	}
+}

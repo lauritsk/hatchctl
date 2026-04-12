@@ -88,7 +88,7 @@ func BuildWorkspacePlan(req BuildWorkspacePlanRequest) (WorkspacePlan, error) {
 	if err != nil {
 		return WorkspacePlan{}, err
 	}
-	stateBaseDir, cacheBaseDir, stateDir, cacheDir, err := workspaceOutputDirs(workspaceSpec.WorkspaceFolder, workspaceSpec.ConfigPath, req.StateBaseDir, req.CacheBaseDir)
+	roots, stateDir, cacheDir, err := storefs.WorkspaceOutputDirs(req.StateBaseDir, req.CacheBaseDir, workspaceSpec.WorkspaceFolder, workspaceSpec.ConfigPath)
 	if err != nil {
 		return WorkspacePlan{}, err
 	}
@@ -104,8 +104,8 @@ func BuildWorkspacePlan(req BuildWorkspacePlanRequest) (WorkspacePlan, error) {
 			Spec:           workspaceSpec,
 		},
 		LockProtected: LockProtectedArtifacts{
-			StateBaseDir:         stateBaseDir,
-			CacheBaseDir:         cacheBaseDir,
+			StateBaseDir:         roots.StateRoot,
+			CacheBaseDir:         roots.CacheRoot,
 			StateDir:             stateDir,
 			CacheDir:             cacheDir,
 			UsesPlanCache:        true,
@@ -186,22 +186,4 @@ func featureMaterializationMode(policyValue devcontainer.FeatureLockfilePolicy) 
 	default:
 		return FeatureMaterializationReuse, nil
 	}
-}
-
-func workspaceOutputDirs(workspace string, configPath string, stateBaseDir string, cacheBaseDir string) (string, string, string, string, error) {
-	if stateBaseDir == "" || cacheBaseDir == "" {
-		roots, err := storefs.DefaultOutputRoots()
-		if err != nil {
-			return "", "", "", "", err
-		}
-		if stateBaseDir == "" {
-			stateBaseDir = roots.StateRoot
-		}
-		if cacheBaseDir == "" {
-			cacheBaseDir = roots.CacheRoot
-		}
-	}
-	stateDir := storefs.WorkspaceScopedDir(stateBaseDir, workspace, configPath)
-	cacheDir := storefs.WorkspaceScopedDir(cacheBaseDir, workspace, configPath)
-	return stateBaseDir, cacheBaseDir, stateDir, cacheDir, nil
 }

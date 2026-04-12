@@ -100,10 +100,15 @@ func ResolveWorkspaceSpecWithOptions(ctx context.Context, workspaceSpec Workspac
 		workspaceSpec.ConfigDir = filepath.Dir(workspaceSpec.ConfigPath)
 	}
 	if stateDir == "" || cacheDir == "" {
-		var err error
-		stateDir, cacheDir, err = workspaceOutputDirs(workspaceSpec.WorkspaceFolder, workspaceSpec.ConfigPath, opts)
+		_, resolvedStateDir, resolvedCacheDir, err := storefs.WorkspaceOutputDirs(opts.StateBaseDir, opts.CacheBaseDir, workspaceSpec.WorkspaceFolder, workspaceSpec.ConfigPath)
 		if err != nil {
 			return ResolvedConfig{}, err
+		}
+		if stateDir == "" {
+			stateDir = resolvedStateDir
+		}
+		if cacheDir == "" {
+			cacheDir = resolvedCacheDir
 		}
 	}
 	persistence := resolverPersistence{}
@@ -136,7 +141,7 @@ func resolveWorkspaceSpecAndDirs(workspaceArg string, configArg string, opts Res
 	if err != nil {
 		return WorkspaceSpec{}, "", "", err
 	}
-	stateDir, cacheDir, err := workspaceOutputDirs(workspaceSpec.WorkspaceFolder, workspaceSpec.ConfigPath, opts)
+	_, stateDir, cacheDir, err := storefs.WorkspaceOutputDirs(opts.StateBaseDir, opts.CacheBaseDir, workspaceSpec.WorkspaceFolder, workspaceSpec.ConfigPath)
 	if err != nil {
 		return WorkspaceSpec{}, "", "", err
 	}
@@ -208,20 +213,4 @@ func buildResolvedConfig(workspaceSpec WorkspaceSpec, stateDir string, cacheDir 
 			ManagedByLabel:  ManagedByValue,
 		},
 	}
-}
-
-func workspaceOutputDirs(workspace string, configPath string, opts ResolveOptions) (string, string, error) {
-	roots, err := storefs.DefaultOutputRoots()
-	if err != nil {
-		return "", "", err
-	}
-	stateRoot := roots.StateRoot
-	if opts.StateBaseDir != "" {
-		stateRoot = opts.StateBaseDir
-	}
-	cacheRoot := roots.CacheRoot
-	if opts.CacheBaseDir != "" {
-		cacheRoot = opts.CacheBaseDir
-	}
-	return storefs.WorkspaceScopedDir(stateRoot, workspace, configPath), storefs.WorkspaceScopedDir(cacheRoot, workspace, configPath), nil
 }

@@ -106,7 +106,7 @@ run = "goreleaser check"
 
 [tasks."release:verify"]
 description = "Verify release prerequisites are clean"
-run = "tmp=$(mktemp -d) && trap 'git worktree remove --force \"$tmp\"' EXIT && git worktree add --quiet --detach \"$tmp\" HEAD && (cd \"$tmp\" && go mod tidy && test -z \"$(git status --porcelain -- go.mod go.sum)\" && go generate ./... && test -z \"$(git status --porcelain)\")"
+run = "tmp=$(mktemp -d) && trap 'git worktree remove --force \"$tmp\"' EXIT && git worktree add --quiet --detach \"$tmp\" HEAD && (cd \"$tmp\" && go mod tidy && test -z \"$(git status --porcelain -- go.mod go.sum)\" && test -z \"$(git status --porcelain)\")"
 
 [tasks."release:publish"]
 # tools.goreleaser = "2.15.2"

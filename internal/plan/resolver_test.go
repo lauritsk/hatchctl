@@ -181,3 +181,34 @@ func TestResolverMaterializeUsesWorkspacePlanSpecByDefault(t *testing.T) {
 		t.Fatalf("expected materialization to use planned spec workspace %q, got %q", workspace, resolved.WorkspaceFolder)
 	}
 }
+
+func TestResolverMaterializeSkipsWorkspacePlanSpecWhenCustomResolverConfigured(t *testing.T) {
+	t.Parallel()
+
+	resolver := NewResolver()
+	called := false
+	resolver.Resolve = func(_ context.Context, workspaceArg string, configArg string, _ devcontainer.ResolveOptions) (devcontainer.ResolvedConfig, error) {
+		called = true
+		if workspaceArg != "/workspace" || configArg != "/workspace/devcontainer.json" {
+			t.Fatalf("unexpected resolve args workspace=%q config=%q", workspaceArg, configArg)
+		}
+		return devcontainer.ResolvedConfig{}, nil
+	}
+
+	_, err := resolver.Materialize(context.Background(), WorkspacePlan{
+		Immutable: ImmutableInputs{
+			Workspace:  "/workspace",
+			ConfigPath: "/workspace/devcontainer.json",
+			Spec: spec.WorkspaceSpec{
+				WorkspaceFolder: "/planned-workspace",
+				ConfigPath:      "/planned-workspace/.devcontainer/devcontainer.json",
+			},
+		},
+	}, nil)
+	if err != nil {
+		t.Fatalf("materialize plan: %v", err)
+	}
+	if !called {
+		t.Fatal("expected custom resolver to bypass planned workspace spec")
+	}
+}

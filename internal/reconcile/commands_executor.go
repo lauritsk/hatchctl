@@ -99,11 +99,10 @@ func (e *Executor) prepareUp(ctx context.Context, workspacePlan workspaceplan.Wo
 	if err != nil {
 		return nil, devcontainer.ResolvedConfig{}, capdot.Config{}, nil, workspaceplan.WorkspacePlan{}, err
 	}
-	resolved, err := e.Materialize(ctx, workspacePlan, opts.Debug, opts.IO.Events, phaseResolve, "Resolving development container")
+	workspacePlan, resolved, err := e.materializeWorkspace(ctx, workspacePlan, opts.Debug, opts.IO.Events, phaseResolve, "Resolving development container")
 	if err != nil {
 		return nil, devcontainer.ResolvedConfig{}, capdot.Config{}, nil, workspaceplan.WorkspacePlan{}, err
 	}
-	workspacePlan = workspacePlan.WithResolved(resolved)
 	session, err := e.PrepareObservedSession(ctx, ObservedSessionOptions{Plan: workspacePlan, Resolved: resolved, Debug: opts.Debug, Events: opts.IO.Events, LoadState: true, AllowMissingContainer: true, InspectContainer: true})
 	if err != nil {
 		return nil, devcontainer.ResolvedConfig{}, capdot.Config{}, nil, workspaceplan.WorkspacePlan{}, err
@@ -223,16 +222,10 @@ func (e *Executor) runUpLifecycle(ctx context.Context, session *Session, tracker
 
 func (e *Executor) Build(ctx context.Context, workspacePlan workspaceplan.WorkspacePlan, opts BuildOptions) (BuildResult, error) {
 	executor := e.cloneWithIO(opts.IO.Stdin, opts.IO.Stdout, opts.IO.Stderr)
-	resolved, err := executor.Materialize(ctx, workspacePlan, opts.Debug, opts.IO.Events, phaseResolve, "Resolving development container")
+	workspacePlan, resolved, err := executor.materializeWorkspace(ctx, workspacePlan, opts.Debug, opts.IO.Events, phaseResolve, "Resolving development container")
 	if err != nil {
 		return BuildResult{}, err
 	}
-	workspacePlan = workspacePlan.WithResolved(resolved)
-	session, err := executor.PrepareObservedSession(ctx, ObservedSessionOptions{Plan: workspacePlan, Resolved: resolved, Debug: opts.Debug, Events: opts.IO.Events})
-	if err != nil {
-		return BuildResult{}, err
-	}
-	resolved = session.Resolved()
 	if err := policy.EnsureWorkspaceTrust(resolved, workspacePlan.Trust.WorkspaceAllowed); err != nil {
 		return BuildResult{}, err
 	}
@@ -253,11 +246,10 @@ func (e *Executor) Build(ctx context.Context, workspacePlan workspaceplan.Worksp
 
 func (e *Executor) Exec(ctx context.Context, workspacePlan workspaceplan.WorkspacePlan, opts ExecOptions) (int, error) {
 	executor := e.cloneWithIO(opts.IO.Stdin, opts.IO.Stdout, opts.IO.Stderr)
-	resolved, err := executor.Materialize(ctx, workspacePlan, opts.Debug, opts.IO.Events, phaseResolve, "Resolving development container")
+	workspacePlan, resolved, err := executor.materializeWorkspace(ctx, workspacePlan, opts.Debug, opts.IO.Events, phaseResolve, "Resolving development container")
 	if err != nil {
 		return 0, err
 	}
-	workspacePlan = workspacePlan.WithResolved(resolved)
 	session, err := executor.PrepareObservedSession(ctx, ObservedSessionOptions{Plan: workspacePlan, Resolved: resolved, Debug: opts.Debug, Events: opts.IO.Events, FindContainer: true, InspectContainer: true})
 	if err != nil {
 		return 0, err
@@ -336,11 +328,10 @@ func (e *Executor) ReadConfig(ctx context.Context, workspacePlan workspaceplan.W
 	if err != nil {
 		return ReadConfigResult{}, err
 	}
-	resolved, err := executor.Materialize(ctx, workspacePlan, opts.Debug, opts.IO.Events, phaseConfig, "Inspecting resolved configuration")
+	workspacePlan, resolved, err := executor.materializeWorkspace(ctx, workspacePlan, opts.Debug, opts.IO.Events, phaseConfig, "Inspecting resolved configuration")
 	if err != nil {
 		return ReadConfigResult{}, err
 	}
-	workspacePlan = workspacePlan.WithResolved(resolved)
 	session, err := executor.PrepareObservedSession(ctx, ObservedSessionOptions{Plan: workspacePlan, Resolved: resolved, Debug: opts.Debug, Events: opts.IO.Events, LoadState: true, FindContainer: true, AllowMissingContainer: true, InspectContainer: true})
 	if err != nil {
 		return ReadConfigResult{}, err
@@ -414,11 +405,10 @@ func (e *Executor) RunLifecycle(ctx context.Context, workspacePlan workspaceplan
 	if err != nil {
 		return RunLifecycleResult{}, err
 	}
-	resolved, err := executor.Materialize(ctx, workspacePlan, opts.Debug, opts.IO.Events, phaseResolve, "Resolving development container")
+	workspacePlan, resolved, err := executor.materializeWorkspace(ctx, workspacePlan, opts.Debug, opts.IO.Events, phaseResolve, "Resolving development container")
 	if err != nil {
 		return RunLifecycleResult{}, err
 	}
-	workspacePlan = workspacePlan.WithResolved(resolved)
 	session, err := executor.PrepareObservedSession(ctx, ObservedSessionOptions{Plan: workspacePlan, Resolved: resolved, Debug: opts.Debug, Events: opts.IO.Events, Enrich: true, FindContainer: true, LoadState: true})
 	if err != nil {
 		return RunLifecycleResult{}, err
@@ -457,14 +447,18 @@ func (e *Executor) RunLifecycle(ctx context.Context, workspacePlan workspaceplan
 
 func (e *Executor) BridgeDoctor(ctx context.Context, workspacePlan workspaceplan.WorkspacePlan, opts BridgeDoctorOptions) (bridge.Report, error) {
 	executor := e.cloneWithIO(opts.IO.Stdin, opts.IO.Stdout, opts.IO.Stderr)
-	resolved, err := executor.Materialize(ctx, workspacePlan, opts.Debug, opts.IO.Events, phaseBridge, "Inspecting bridge state")
+	_, resolved, err := executor.materializeWorkspace(ctx, workspacePlan, opts.Debug, opts.IO.Events, phaseBridge, "Inspecting bridge state")
 	if err != nil {
 		return bridge.Report{}, err
+	}
+	return bridgecap.Doctor(resolved.StateDir)
+}
+
+func (e *Executor) materializeWorkspace(ctx context.Context, workspacePlan workspaceplan.WorkspacePlan, debug bool, events ui.Sink, phase string, label string) (workspaceplan.WorkspacePlan, devcontainer.ResolvedConfig, error) {
+	resolved, err := e.Materialize(ctx, workspacePlan, debug, events, phase, label)
+	if err != nil {
+		return workspaceplan.WorkspacePlan{}, devcontainer.ResolvedConfig{}, err
 	}
 	workspacePlan = workspacePlan.WithResolved(resolved)
-	session, err := executor.PrepareObservedSession(ctx, ObservedSessionOptions{Plan: workspacePlan, Resolved: resolved, Debug: opts.Debug, Events: opts.IO.Events})
-	if err != nil {
-		return bridge.Report{}, err
-	}
-	return bridgecap.Doctor(session.Resolved().StateDir)
+	return workspacePlan, resolved, nil
 }
