@@ -2,17 +2,26 @@
 
 Run devcontainers from the terminal.
 
-## Overview
+[![CI](https://img.shields.io/github/actions/workflow/status/lauritsk/hatchctl/ci.yml?style=flat-square&label=CI)](https://github.com/lauritsk/hatchctl/actions/workflows/ci.yml)
+[![GitHub release](https://img.shields.io/github/v/release/lauritsk/hatchctl?style=flat-square)](https://github.com/lauritsk/hatchctl/releases)
+![Go 1.26+](https://img.shields.io/badge/Go-1.26+-00ADD8?style=flat-square&logo=go)
+![macOS and Linux](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-555?style=flat-square)
 
-`hatchctl` starts a devcontainer-backed workspace, shows the resolved config, and runs commands inside the container without editor tooling.
+[Install](#install) • [Quick Start](#quick-start) • [Configuration](#configuration) • [Security Defaults](#security-defaults) • [Development](#development)
 
-It is built for people who already use Docker and want a direct CLI for everyday devcontainer tasks like:
+`hatchctl` is a Go CLI for creating, inspecting, and using devcontainer-based workspaces without editor integration. It is built for developers who already use Docker and want a direct, scriptable CLI for everyday devcontainer work.
 
-- starting a workspace from `devcontainer.json`
-- reusing an existing container instead of rebuilding every time
-- inspecting merged config and detected runtime state
-- running shells, tests, and one-off commands inside the container
-- scripting these flows with JSON output
+> [!NOTE]
+> `hatchctl` supports macOS and Linux. Windows is not currently supported. Browser-open and localhost callback bridge support are macOS-only.
+
+## Why hatchctl
+
+- Start or reuse a devcontainer from the terminal with `hatchctl up`
+- Open a shell or run one-off commands with `hatchctl exec`
+- Inspect merged config and runtime state with `hatchctl config`
+- Re-run lifecycle phases without opening an editor with `hatchctl run`
+- Script devcontainer workflows with JSON output
+- Keep trust-sensitive behavior gated by explicit opt-in flags
 
 ## Install
 
@@ -22,30 +31,38 @@ Install with `mise`:
 mise use github:lauritsk/hatchctl@latest
 ```
 
+Install from source with Go:
+
+```sh
+go install github.com/lauritsk/hatchctl/cmd/hatchctl@latest
+```
+
+Prebuilt binaries for macOS and Linux are published on the [GitHub Releases](https://github.com/lauritsk/hatchctl/releases) page.
+
 ## Requirements
 
 - Docker with a working `docker` CLI on `PATH`
-- Docker Compose support through the Docker CLI (`docker compose`)
-- a Linux container runtime target for devcontainers
-- macOS only if you need browser-open or localhost callback bridge support
+- Docker Compose support through `docker compose`
+- A Linux container runtime target for devcontainers
+- macOS if you need browser-open or localhost callback bridge support
 
-`hatchctl` shells out to the Docker CLI.
+`hatchctl` shells out to the Docker CLI rather than talking to the engine directly.
 
 ## Quick Start
 
-Start or reuse the devcontainer for the current workspace:
+Create or reuse the devcontainer for the current workspace:
 
 ```sh
 hatchctl up
 ```
 
-Open the default shell inside the container workspace:
+Open the default shell inside the container:
 
 ```sh
 hatchctl exec
 ```
 
-Run tests inside the container:
+Run a command inside the container:
 
 ```sh
 hatchctl exec -- go test ./...
@@ -63,105 +80,87 @@ Use JSON output in scripts:
 hatchctl up --json
 ```
 
-## Support Matrix
-
-- host OS: macOS and Linux are supported; Windows is not currently supported
-- bridge support: browser-open and localhost callback forwarding are macOS only
-- container orchestration: single-container image and Dockerfile workflows are supported
-- container orchestration: Compose devcontainers are supported for a single service
-- automation: JSON output is supported for `up`, `build`, `exec`, `config`, `run`, and `bridge doctor`
+> [!TIP]
+> Use `--` with `exec` to separate `hatchctl` flags from the command you want to run in the container.
 
 ## Commands
 
+| Command | Purpose |
+| --- | --- |
+| `hatchctl up` | Create or reuse the managed devcontainer |
+| `hatchctl build` | Build the devcontainer image without starting it |
+| `hatchctl exec` | Open a shell or run a command inside the container |
+| `hatchctl config` | Show merged config and detected runtime state |
+| `hatchctl run --phase <phase>` | Re-run lifecycle phases in an existing container |
+| `hatchctl bridge doctor` | Check macOS bridge availability and status |
+
+Common examples:
+
 ```sh
-hatchctl up
 hatchctl up --dotfiles lauritsk/dotfiles
-hatchctl up --allow-host-lifecycle
 hatchctl up --ssh
-hatchctl up --trust-workspace
-hatchctl up --feature-timeout 2m
-hatchctl build
-hatchctl exec
-hatchctl exec -- go test ./...
-hatchctl config --json
+hatchctl up --trust-workspace --allow-host-lifecycle
+hatchctl build --json
+hatchctl exec --env CI=1 -- sh -lc 'make test'
 hatchctl run --phase start
-hatchctl bridge doctor
 ```
 
-### Command Guide
+## Configuration
 
-- `hatchctl up`: create or reuse the workspace container
-- `hatchctl build`: build the devcontainer image without starting the container
-- `hatchctl exec`: open the remote user's default shell in the container workspace
-- `hatchctl exec -- ...`: run a command inside the container
-- `hatchctl config`: show the merged config and detected runtime state
-- `hatchctl run --phase ...`: re-run lifecycle steps in an existing container
-- `hatchctl bridge doctor`: check whether macOS bridge support is available and healthy
+`hatchctl` reads configuration from:
 
-Use `--` with `exec` to separate `hatchctl` flags from the command you want to run in the container.
-
-## Config Files
-
-- user config: platform config dir plus `/hatchctl/config.toml`, usually `~/.config/hatchctl/config.toml` on Linux and `~/Library/Application Support/hatchctl/config.toml` on macOS
+- user config: `~/.config/hatchctl/config.toml` on Linux, `~/Library/Application Support/hatchctl/config.toml` on macOS
 - workspace config: `.hatchctl/config.toml`
-- workspace values for `workspace`, `state_dir`, `cache_dir`, `bridge`, `ssh`, `dotfiles`, and `verification.trusted_signers` only apply when you also pass `--trust-workspace`
-- workspace values for `config`, `feature_timeout`, and `lockfile_policy` apply without extra trust
 
-Dotfiles are configured outside `devcontainer.json`, matching editor tooling. Most users only need `--dotfiles <repo>` or `[dotfiles].repository`. Use `--dotfiles-install-command` and `--dotfiles-target-path` only when the repository needs a custom install step or checkout location. Matching `HATCHCTL_DOTFILES_*` environment variables also work.
+Workspace config is intentionally limited by default. Host-affecting settings such as `workspace`, `state_dir`, `cache_dir`, `bridge`, `ssh`, `dotfiles`, and `verification.trusted_signers` only apply when you explicitly trust the repository with `--trust-workspace` or `HATCHCTL_TRUST_WORKSPACE=1`.
 
-Trusted signers are configurable in either config file. When you do not configure signers explicitly, `hatchctl` recommends GitHub Actions keyless signatures from the same GitHub repository for `ghcr.io/<owner>/<repo>` images. Override that with explicit signers when you need a narrower policy:
+Example:
 
 ```toml
+config = ".devcontainer/devcontainer.json"
+feature_timeout = "2m"
+lockfile_policy = "auto"
+
+[dotfiles]
+repository = "lauritsk/dotfiles"
+
 [verification]
 [[verification.trusted_signers]]
 issuer = "https://token.actions.githubusercontent.com"
 subject_regexp = "^https://github.com/lauritsk/hatchctl/.github/workflows/release.yml@refs/tags/.+$"
 ```
 
-Use `--ssh` when you want the container to see the host `ssh-agent` socket. This applies the equivalent of ssh-agent passthrough in `devcontainer.json`. On macOS, hatchctl uses `/run/host-services/ssh-auth.sock` instead of binding the raw launchd socket path. You can persist that in user config, or in workspace config when you also pass `--trust-workspace`.
+Useful environment variables:
 
-Remote feature downloads default to a `90s` HTTP timeout. Override that per command with `--feature-timeout`, for example `hatchctl up --feature-timeout 2m`.
-
-Host-side lifecycle commands are gated by default. If a workspace uses `initializeCommand`, rerun with `--allow-host-lifecycle` or set `HATCHCTL_ALLOW_HOST_LIFECYCLE=1` once you trust that repository.
-
-Repo-controlled Docker settings that can expand host access are also gated by default. If a workspace requests custom bind mounts, elevated container privileges, or build paths outside the workspace, review the config first and then rerun with `--trust-workspace` or set `HATCHCTL_TRUST_WORKSPACE=1`.
-
-`--lockfile-policy` controls how remote features are resolved:
-
-- `auto`: use the lockfile when available and refresh it when needed
-- `frozen`: fail instead of changing lockfile-backed resolution
-- `update`: refresh lockfile-backed resolution
-
-`config` and `bridge doctor` default to `frozen` so inspection commands do not unexpectedly update dependency state.
-
-Use `--bridge` on macOS when the container needs host-side browser open or localhost callback forwarding during auth flows. Forwarded localhost callback ports stay on the original loopback port when available and fall back to a randomized single-use loopback listener only when needed.
+- `HATCHCTL_TRUST_WORKSPACE=1`
+- `HATCHCTL_ALLOW_HOST_LIFECYCLE=1`
+- `HATCHCTL_COSIGN_STRICT=1`
+- `HATCHCTL_ALLOW_INSECURE_FEATURES=1`
+- `HATCHCTL_DOTFILES_REPOSITORY`
+- `HATCHCTL_DOTFILES_INSTALL_COMMAND`
+- `HATCHCTL_DOTFILES_TARGET_PATH`
 
 ## Security Defaults
 
-- `initializeCommand` does not run on the host unless you explicitly opt in with `--allow-host-lifecycle` or `HATCHCTL_ALLOW_HOST_LIFECYCLE=1`
-- repo-controlled Docker settings that expand host access do not run unless you explicitly opt in with `--trust-workspace` or `HATCHCTL_TRUST_WORKSPACE=1`
-- repo-local `.hatchctl/config.toml` values for `workspace`, `state_dir`, `cache_dir`, `bridge`, `ssh`, `dotfiles`, and `verification.trusted_signers` only apply when you explicitly opt in with `--trust-workspace` or `HATCHCTL_TRUST_WORKSPACE=1`
-- direct tarball features must use `https`, except loopback `http` sources used for local development and tests
-- unsigned images warn by default and prompt on TTY; pressing Enter selects `N`
-- set `HATCHCTL_COSIGN_STRICT=1` to fail closed for unsigned images instead of warning
-- unsigned remote OCI features fail by default in non-interactive runs and prompt on TTY; pressing Enter selects `N`
-- set `HATCHCTL_ALLOW_INSECURE_FEATURES=1` only when you intentionally want to bypass remote OCI feature verification
-- the macOS bridge listener binds to loopback only, and forwarded localhost callback ports stay on the original loopback port when available and otherwise fall back to randomized single-use loopback listeners
-- workspace state and cache files are written with owner-only permissions where possible
+`hatchctl` assumes `devcontainer.json` and repo-local config may come from repositories you do not fully trust yet.
 
-These defaults are meant to reduce the risk of opening an untrusted repository or consuming an untrusted remote feature source.
+- Host-side `initializeCommand` is blocked unless you opt in with `--allow-host-lifecycle`
+- Repo-controlled Docker settings that expand host access are blocked unless you opt in with `--trust-workspace`
+- Unsigned images warn by default; set `HATCHCTL_COSIGN_STRICT=1` to fail closed
+- Unsigned remote OCI features fail by default in non-interactive runs
+- Direct tarball features must use `https`, except loopback `http` for local development and tests
+- The macOS bridge binds to loopback only
 
-## Supported Devcontainer Features
+See [SECURITY.md](./SECURITY.md) for the full policy and threat model.
 
-- config discovery for `.devcontainer/devcontainer.json` and `.devcontainer.json`
-- JSONC parsing for devcontainer files
-- single-container image and Dockerfile workflows
-- single-service Compose workflows
-- local file-path, OCI, direct tarball, and deprecated GitHub shorthand feature references
-- lifecycle execution for `initializeCommand`, `onCreateCommand`, `updateContentCommand`, `postCreateCommand`, `postStartCommand`, and `postAttachCommand`; `initializeCommand` is host-side and requires `--allow-host-lifecycle` or `HATCHCTL_ALLOW_HOST_LIFECYCLE=1`
-- workspace-scoped state and container reuse
-- machine-readable JSON output for `up`, `build`, `exec`, `config`, `run`, and `bridge doctor`
-- dotfiles setup through CLI flags or `HATCHCTL_DOTFILES_*` environment variables
+## Support Matrix
+
+- Host OS: macOS and Linux
+- Bridge support: macOS only
+- Devcontainer sources: single-container image and Dockerfile workflows
+- Compose support: single-service Compose devcontainers
+- Feature sources: local path, OCI, direct tarball, and deprecated GitHub shorthand
+- JSON output: `up`, `build`, `exec`, `config`, `run`, and `bridge doctor`
 
 ## Development
 
@@ -169,22 +168,24 @@ This repository uses `mise` for local tooling and task orchestration.
 
 Common commands:
 
-- `mise run format`
-- `mise run test`
-- `mise run test:coverage`
-- `mise run build`
-- `mise run hatchctl -- help`
-- `mise run hatchctl -- up`
+```sh
+mise run check
+mise run test
+mise run test:coverage
+mise run test:race
+mise run build
+mise run hatchctl -- up
+```
+
+For contributor workflow, commits, and release process details, see [CONTRIBUTING.md](./CONTRIBUTING.md).
 
 ## Troubleshooting
 
-See `docs/troubleshooting.md` for common fixes for workspace lock errors, trust-gated config, bridge issues, unsigned image prompts, and release verification failures.
+See [docs/troubleshooting.md](./docs/troubleshooting.md) for common fixes around workspace locks, trust-gated config, bridge issues, unsigned images, and release verification failures.
 
 ## Verifying Releases
 
 Release checksums are signed with keyless Cosign using GitHub Actions OIDC.
-
-Verify a published release with:
 
 ```sh
 cosign verify-blob hatchctl_checksums.txt \

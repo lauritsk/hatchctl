@@ -1,6 +1,6 @@
 # AGENTS
 
-This repository is pre-alpha. Agents do not need to preserve existing APIs, interfaces, package boundaries, or internal designs. If a goal is better served by rewriting, removing, collapsing, or replacing an existing abstraction, do that.
+Agents do not need to preserve existing APIs, interfaces, package boundaries, or internal designs. If a goal is better served by rewriting, removing, collapsing, or replacing an existing abstraction, do that.
 
 Prioritize:
 
