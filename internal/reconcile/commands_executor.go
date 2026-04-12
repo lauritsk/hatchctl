@@ -319,7 +319,7 @@ func (e *Executor) enrichExecResolvedConfig(ctx context.Context, session *Sessio
 			if err != nil {
 				return err
 			}
-			resolved.Merged = spec.MergeMetadata(devcontainer.Config{}, metadata)
+			resolved.Merged = spec.MergeMetadata(spec.Config{}, metadata)
 			resolved.Merged.Config = resolved.Config
 			return nil
 		}

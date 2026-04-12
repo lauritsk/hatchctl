@@ -30,9 +30,9 @@ func TestManagedImageKeyChangesWithDockerfileAndFeatures(t *testing.T) {
 		WorkspaceFolder: workspace,
 		ConfigPath:      filepath.Join(configDir, "devcontainer.json"),
 		ConfigDir:       configDir,
-		Config: devcontainer.Config{
+		Config: spec.Config{
 			Image: "ghcr.io/example/base:1",
-			Build: &devcontainer.BuildConfig{Context: "ctx"},
+			Build: &spec.BuildConfig{Context: "ctx"},
 		},
 		ImageName:  "hatchctl-demo",
 		SourceKind: "dockerfile",
@@ -118,7 +118,7 @@ func TestContainerKeyChangesWithRuntimeInputs(t *testing.T) {
 		WorkspaceMount:  "type=bind,source=/workspace,target=/workspaces/demo",
 		RemoteWorkspace: "/workspaces/demo",
 		Labels:          map[string]string{"devcontainer.config_file": "/workspace/.devcontainer/devcontainer.json"},
-		Config:          devcontainer.Config{RunArgs: []string{"--network=host"}},
+		Config:          spec.Config{RunArgs: []string{"--network=host"}},
 		Merged:          spec.MergedConfig{ContainerUser: "vscode", Mounts: []string{"type=volume,source=data,target=/data"}, CapAdd: []string{"NET_ADMIN"}, SecurityOpt: []string{"label=disable"}, Init: true, Privileged: true, ContainerEnv: map[string]string{"A": "1"}},
 	}
 
@@ -147,7 +147,7 @@ func TestLifecycleKeyChangesWithCommandsAndDotfiles(t *testing.T) {
 	t.Parallel()
 
 	resolved := devcontainer.ResolvedConfig{
-		Config: devcontainer.Config{InitializeCommand: spec.LifecycleCommand{Kind: "string", Value: "echo init", Exists: true}},
+		Config: spec.Config{InitializeCommand: spec.LifecycleCommand{Kind: "string", Value: "echo init", Exists: true}},
 		Merged: spec.MergedConfig{
 			OnCreateCommands:      []spec.LifecycleCommand{{Kind: "string", Value: "echo create", Exists: true}},
 			UpdateContentCommands: []spec.LifecycleCommand{{Kind: "array", Args: []string{"echo", "update"}, Exists: true}},

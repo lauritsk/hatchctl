@@ -19,17 +19,13 @@ const (
 	SSHAgentLabel      = "devcontainer.ssh_agent.enabled"
 )
 
-type (
-	Config        = spec.Config
-	BuildConfig   = spec.BuildConfig
-	WorkspaceSpec = spec.WorkspaceSpec
-)
+type WorkspaceSpec = spec.WorkspaceSpec
 
 type ResolvedConfig struct {
 	WorkspaceFolder string
 	ConfigPath      string
 	ConfigDir       string
-	Config          Config
+	Config          spec.Config
 	Features        []ResolvedFeature
 	Merged          spec.MergedConfig
 	StateDir        string

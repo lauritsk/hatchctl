@@ -127,7 +127,7 @@ func TestMergeMetadataMatchesExpectedPrecedence(t *testing.T) {
 
 	falseValue := false
 	trueValue := true
-	merged := spec.MergeMetadata(Config{
+	merged := spec.MergeMetadata(spec.Config{
 		RemoteUser:    "config-remote",
 		ContainerUser: "config-container",
 		ForwardPorts:  spec.ForwardPorts{"localhost:3000", "service:9000"},

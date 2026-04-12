@@ -138,7 +138,7 @@ func (e *Executor) EnrichMergedConfig(ctx context.Context, resolved *devcontaine
 		if err != nil {
 			return err
 		}
-		resolved.Merged = spec.MergeMetadata(devcontainer.Config{}, metadata)
+		resolved.Merged = spec.MergeMetadata(spec.Config{}, metadata)
 		resolved.Merged.Config = resolved.Config
 		return nil
 	}

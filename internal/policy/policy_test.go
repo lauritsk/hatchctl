@@ -33,9 +33,9 @@ func TestEnsureWorkspaceTrustRejectsRiskySettings(t *testing.T) {
 	resolved := devcontainer.ResolvedConfig{
 		WorkspaceFolder: workspace,
 		ConfigDir:       filepath.Join(workspace, ".devcontainer"),
-		Config: devcontainer.Config{
+		Config: spec.Config{
 			RunArgs: []string{"--privileged"},
-			Build:   &devcontainer.BuildConfig{Dockerfile: "../../Dockerfile"},
+			Build:   &spec.BuildConfig{Dockerfile: "../../Dockerfile"},
 		},
 		Merged: spec.MergedConfig{
 			Privileged: true,

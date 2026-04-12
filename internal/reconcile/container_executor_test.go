@@ -103,7 +103,7 @@ func TestRenderComposeOverrideIncludesDerivedSettings(t *testing.T) {
 		WorkspaceMount: "type=bind,source=/workspace,target=/workspaces/demo,consistency=cached",
 		Features:       []devcontainer.ResolvedFeature{{Metadata: spec.MetadataEntry{ID: "mise"}}},
 		Labels:         map[string]string{"devcontainer.local_folder": "/workspace"},
-		Config:         devcontainer.Config{OverrideCommand: &trueValue},
+		Config:         spec.Config{OverrideCommand: &trueValue},
 		Merged: spec.MergedConfig{
 			ContainerEnv: map[string]string{
 				"DEVCONTAINER_BRIDGE_ENABLED": "true",

@@ -228,13 +228,13 @@ func TestUpUsesEnrichedResolvedMetadataForDotfilesTargetPath(t *testing.T) {
 				WorkspaceFolder: "/workspace",
 				ConfigPath:      filepath.Join(configDir, "devcontainer.json"),
 				ConfigDir:       configDir,
-				Config: devcontainer.Config{
+				Config: spec.Config{
 					Image:               "mcr.microsoft.com/devcontainers/base:ubuntu",
 					WorkspaceFolder:     "/workspaces/demo",
 					UpdateRemoteUserUID: &falseValue,
 				},
 				Features:        []devcontainer.ResolvedFeature{{Path: featureDir, Metadata: spec.MetadataEntry{ID: "mise"}}},
-				Merged:          spec.MergeMetadata(devcontainer.Config{Image: "mcr.microsoft.com/devcontainers/base:ubuntu", WorkspaceFolder: "/workspaces/demo", UpdateRemoteUserUID: &falseValue}, []spec.MetadataEntry{{ID: "mise"}}),
+				Merged:          spec.MergeMetadata(spec.Config{Image: "mcr.microsoft.com/devcontainers/base:ubuntu", WorkspaceFolder: "/workspaces/demo", UpdateRemoteUserUID: &falseValue}, []spec.MetadataEntry{{ID: "mise"}}),
 				StateDir:        stateDir,
 				CacheDir:        cacheDir,
 				WorkspaceMount:  "type=bind,source=/workspace,target=/workspaces/demo",
@@ -381,13 +381,13 @@ func TestUpRecreateReinstallsDotfilesForNewContainer(t *testing.T) {
 				WorkspaceFolder: "/workspace",
 				ConfigPath:      filepath.Join(configDir, "devcontainer.json"),
 				ConfigDir:       configDir,
-				Config: devcontainer.Config{
+				Config: spec.Config{
 					Image:               "mcr.microsoft.com/devcontainers/base:ubuntu",
 					WorkspaceFolder:     "/workspaces/demo",
 					UpdateRemoteUserUID: &falseValue,
 				},
 				Features:        []devcontainer.ResolvedFeature{{Path: featureDir, Metadata: spec.MetadataEntry{ID: "mise"}}},
-				Merged:          spec.MergeMetadata(devcontainer.Config{Image: "mcr.microsoft.com/devcontainers/base:ubuntu", WorkspaceFolder: "/workspaces/demo", UpdateRemoteUserUID: &falseValue}, []spec.MetadataEntry{{ID: "mise"}}),
+				Merged:          spec.MergeMetadata(spec.Config{Image: "mcr.microsoft.com/devcontainers/base:ubuntu", WorkspaceFolder: "/workspaces/demo", UpdateRemoteUserUID: &falseValue}, []spec.MetadataEntry{{ID: "mise"}}),
 				StateDir:        stateDir,
 				CacheDir:        cacheDir,
 				WorkspaceMount:  "type=bind,source=/workspace,target=/workspaces/demo",
@@ -483,11 +483,11 @@ func TestExecMergesConfiguredImageMetadataWhenContainerLabelIsIncomplete(t *test
 				WorkspaceFolder: "/workspace",
 				ConfigPath:      filepath.Join(configDir, "devcontainer.json"),
 				ConfigDir:       configDir,
-				Config: devcontainer.Config{
+				Config: spec.Config{
 					Image:           "mcr.microsoft.com/devcontainers/base:ubuntu",
 					WorkspaceFolder: "/workspaces/demo",
 				},
-				Merged:          spec.MergeMetadata(devcontainer.Config{Image: "mcr.microsoft.com/devcontainers/base:ubuntu", WorkspaceFolder: "/workspaces/demo"}, nil),
+				Merged:          spec.MergeMetadata(spec.Config{Image: "mcr.microsoft.com/devcontainers/base:ubuntu", WorkspaceFolder: "/workspaces/demo"}, nil),
 				StateDir:        stateDir,
 				CacheDir:        cacheDir,
 				RemoteWorkspace: "/workspaces/demo",
@@ -656,7 +656,7 @@ func TestBuildPersistsTrustedRefsToWorkspaceState(t *testing.T) {
 	executor.planner = &workspaceplan.Resolver{
 		Resolve: func(context.Context, string, string, devcontainer.ResolveOptions) (devcontainer.ResolvedConfig, error) {
 			return devcontainer.ResolvedConfig{
-				Config:   devcontainer.Config{Image: "mcr.microsoft.com/devcontainers/base:ubuntu"},
+				Config:   spec.Config{Image: "mcr.microsoft.com/devcontainers/base:ubuntu"},
 				StateDir: stateDir,
 				CacheDir: cacheDir,
 			}, nil
@@ -753,8 +753,8 @@ func TestReadConfigReportsBridgeAndDotfilesState(t *testing.T) {
 				WorkspaceFolder: "/workspace",
 				ConfigPath:      filepath.Join(configDir, "devcontainer.json"),
 				ConfigDir:       configDir,
-				Config:          devcontainer.Config{Image: "mcr.microsoft.com/devcontainers/base:ubuntu", WorkspaceFolder: "/workspaces/demo"},
-				Merged:          spec.MergeMetadata(devcontainer.Config{Image: "mcr.microsoft.com/devcontainers/base:ubuntu", WorkspaceFolder: "/workspaces/demo"}, nil),
+				Config:          spec.Config{Image: "mcr.microsoft.com/devcontainers/base:ubuntu", WorkspaceFolder: "/workspaces/demo"},
+				Merged:          spec.MergeMetadata(spec.Config{Image: "mcr.microsoft.com/devcontainers/base:ubuntu", WorkspaceFolder: "/workspaces/demo"}, nil),
 				StateDir:        stateDir,
 				CacheDir:        cacheDir,
 				WorkspaceMount:  "type=bind,source=/workspace,target=/workspaces/demo",
@@ -833,8 +833,8 @@ func TestRunLifecycleCreatePersistsLifecycleState(t *testing.T) {
 				WorkspaceFolder: "/workspace",
 				ConfigPath:      filepath.Join(configDir, "devcontainer.json"),
 				ConfigDir:       configDir,
-				Config:          devcontainer.Config{Image: "mcr.microsoft.com/devcontainers/base:ubuntu", WorkspaceFolder: "/workspaces/demo"},
-				Merged:          spec.MergeMetadata(devcontainer.Config{Image: "mcr.microsoft.com/devcontainers/base:ubuntu", WorkspaceFolder: "/workspaces/demo"}, nil),
+				Config:          spec.Config{Image: "mcr.microsoft.com/devcontainers/base:ubuntu", WorkspaceFolder: "/workspaces/demo"},
+				Merged:          spec.MergeMetadata(spec.Config{Image: "mcr.microsoft.com/devcontainers/base:ubuntu", WorkspaceFolder: "/workspaces/demo"}, nil),
 				StateDir:        stateDir,
 				CacheDir:        cacheDir,
 				RemoteWorkspace: "/workspaces/demo",
@@ -914,8 +914,8 @@ func TestBridgeDoctorReportsPersistedBridgeState(t *testing.T) {
 				WorkspaceFolder: "/workspace",
 				ConfigPath:      filepath.Join(configDir, "devcontainer.json"),
 				ConfigDir:       configDir,
-				Config:          devcontainer.Config{Image: "mcr.microsoft.com/devcontainers/base:ubuntu", WorkspaceFolder: "/workspaces/demo"},
-				Merged:          spec.MergeMetadata(devcontainer.Config{Image: "mcr.microsoft.com/devcontainers/base:ubuntu", WorkspaceFolder: "/workspaces/demo"}, nil),
+				Config:          spec.Config{Image: "mcr.microsoft.com/devcontainers/base:ubuntu", WorkspaceFolder: "/workspaces/demo"},
+				Merged:          spec.MergeMetadata(spec.Config{Image: "mcr.microsoft.com/devcontainers/base:ubuntu", WorkspaceFolder: "/workspaces/demo"}, nil),
 				StateDir:        stateDir,
 				CacheDir:        cacheDir,
 				RemoteWorkspace: "/workspaces/demo",

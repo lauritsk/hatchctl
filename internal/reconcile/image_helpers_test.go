@@ -95,7 +95,7 @@ func TestBuildDockerfileImageUsesResolvedBuildInputs(t *testing.T) {
 	}}}
 	resolved := devcontainer.ResolvedConfig{
 		ConfigDir: configDir,
-		Config:    devcontainer.Config{Build: &devcontainer.BuildConfig{Dockerfile: "Dockerfile.dev", Context: "ctx", Target: "dev", Args: map[string]string{"A": "1"}, Options: []string{"--pull"}}},
+		Config:    spec.Config{Build: &spec.BuildConfig{Dockerfile: "Dockerfile.dev", Context: "ctx", Target: "dev", Args: map[string]string{"A": "1"}, Options: []string{"--pull"}}},
 		Merged:    spec.MergedConfig{Metadata: []spec.MetadataEntry{{RemoteUser: "vscode"}}},
 	}
 
