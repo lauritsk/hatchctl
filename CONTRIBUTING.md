@@ -14,11 +14,15 @@ Common tasks:
 - `mise run release:verify`
 - `mise run hatchctl -- <args>`
 
-Renovate updates dependencies and GitHub Actions. Regular updates wait at least 7 days before PR creation and then automerge after CI passes. Vulnerability fixes are handled separately by Renovate and are not delayed by the minimum release age. Changes in `mise.toml` should still be reviewed carefully when adjusting CI, release, or security tooling.
+Renovate updates dependencies and GitHub Actions. Regular updates wait at least 7 days before PR creation, then automerge after CI passes. Vulnerability fixes are handled separately and are not delayed. Review `mise.toml` changes carefully when they affect CI, release, or security tooling.
 
 ## Commits
 
-Commits must follow the Conventional Commits format. Cocogitto enforces this in local checks and CI.
+Commits must follow Conventional Commits. Cocogitto enforces this in local checks and CI.
+
+Use the helper task when creating commits:
+
+- `mise run commit -- <type> "<message>" [scope]`
 
 Examples:
 

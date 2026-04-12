@@ -14,11 +14,11 @@ Some `devcontainer.json` settings are blocked until you explicitly trust the rep
 
 - rerun with `--trust-workspace` when the repo requests host-affecting Docker settings such as extra binds, privilege, or build contexts outside the workspace
 - rerun with `--allow-host-lifecycle` when the repo uses host-side `initializeCommand`
-- prefer user-level config for personal defaults; workspace-local `.hatchctl/config.toml` host-affecting settings only apply after `--trust-workspace`
+- prefer user config for personal defaults; workspace-local `.hatchctl/config.toml` host-affecting settings and `verification.trusted_signers` only apply after `--trust-workspace`
 
 ## Unsigned Images Or Features
 
-Image and remote OCI feature verification fail closed in non-interactive runs.
+Remote OCI feature verification fails closed in non-interactive runs. Images warn by default unless you set `HATCHCTL_COSIGN_STRICT=1`.
 
 - configure trusted signers in `.hatchctl/config.toml` when you expect a signed remote image or feature source
 - check the exact image or feature reference in the error output before adding trust rules
@@ -34,7 +34,7 @@ Bridge support is only active on macOS.
 
 ## Release Verification Failures
 
-`mise run release:verify` checks that generated artifacts stay clean from a detached worktree.
+`mise run release:verify` runs from a detached worktree and expects `go mod tidy` and `go generate ./...` to leave no changes behind.
 
 - run `go mod tidy` and `go generate ./...` locally to reproduce the exact failure
 - inspect changes to `go.mod`, `go.sum`, and generated files before tagging a release
