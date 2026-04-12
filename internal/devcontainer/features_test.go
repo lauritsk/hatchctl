@@ -80,6 +80,53 @@ func TestResolveFeaturesOrdersDependenciesAndInstallsAfter(t *testing.T) {
 	}
 }
 
+func TestResolveFeaturesRequiresConfiguredDependsOn(t *testing.T) {
+	t.Parallel()
+
+	configDir := t.TempDir()
+	writeFeatureFixture(t, filepath.Join(configDir, "alpha"), `{
+		"id": "alpha",
+		"dependsOn": {"missing": true}
+	}`)
+	writeFeatureFixture(t, filepath.Join(configDir, "beta"), `{
+		"id": "beta"
+	}`)
+
+	configPath := filepath.Join(configDir, "devcontainer.json")
+	_, err := ResolveFeatures(context.Background(), configPath, configDir, t.TempDir(), map[string]any{
+		"./alpha": true,
+		"./beta":  true,
+	}, featureResolveOpts)
+	if err == nil || !strings.Contains(err.Error(), `dependsOn "missing"`) {
+		t.Fatalf("expected missing dependsOn error, got %v", err)
+	}
+}
+
+func TestResolveFeaturesIgnoresMissingInstallsAfter(t *testing.T) {
+	t.Parallel()
+
+	configDir := t.TempDir()
+	writeFeatureFixture(t, filepath.Join(configDir, "alpha"), `{
+		"id": "alpha",
+		"installsAfter": ["missing"]
+	}`)
+	writeFeatureFixture(t, filepath.Join(configDir, "beta"), `{
+		"id": "beta"
+	}`)
+
+	configPath := filepath.Join(configDir, "devcontainer.json")
+	features, err := ResolveFeatures(context.Background(), configPath, configDir, t.TempDir(), map[string]any{
+		"./alpha": true,
+		"./beta":  true,
+	}, featureResolveOpts)
+	if err != nil {
+		t.Fatalf("resolve features: %v", err)
+	}
+	if got := strings.Join(featureIDs(features), ","); got != "alpha,beta" && got != "beta,alpha" {
+		t.Fatalf("unexpected feature order %q", got)
+	}
+}
+
 func TestResolveFeaturesMaterializesOptionEnvironment(t *testing.T) {
 	t.Parallel()
 

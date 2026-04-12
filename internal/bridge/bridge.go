@@ -254,9 +254,6 @@ func helperBinaryData(helperArch string) ([]byte, error) {
 		return data, nil
 	}
 	supported := slices.Sorted(maps.Keys(embeddedHelpers))
-	if helperArch == "" {
-		return nil, fmt.Errorf("bridge helper not embedded in this build; use a release binary or set %s", helperBinaryEnvVar)
-	}
 	return nil, fmt.Errorf("bridge helper arch %q not embedded in this build; supported=%v; use a release binary or set %s", helperArch, supported, helperBinaryEnvVar)
 }
 

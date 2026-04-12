@@ -9,7 +9,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"sort"
 
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	"github.com/lauritsk/hatchctl/internal/spec"
@@ -166,8 +165,7 @@ func hashFile(h hash.Hash, path string) error {
 }
 
 func hashDir(h hash.Hash, root string) error {
-	entries := make([]string, 0)
-	if err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+	return filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -175,25 +173,13 @@ func hashDir(h hash.Hash, root string) error {
 		if err != nil {
 			return err
 		}
-		entries = append(entries, rel)
-		return nil
-	}); err != nil {
-		return err
-	}
-	sort.Strings(entries)
-	for _, rel := range entries {
-		path := filepath.Join(root, rel)
 		writeKeyValue(h, "path", rel)
-		info, err := os.Stat(path)
-		if err != nil {
-			return err
-		}
-		if info.IsDir() {
-			continue
+		if d.IsDir() {
+			return nil
 		}
 		if err := hashFile(h, path); err != nil {
 			return err
 		}
-	}
-	return nil
+		return nil
+	})
 }

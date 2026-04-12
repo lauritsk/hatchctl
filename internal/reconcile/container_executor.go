@@ -379,10 +379,14 @@ func renderComposeOverride(resolved devcontainer.ResolvedConfig, image string, c
 	allMounts := append([]string{resolved.WorkspaceMount}, resolved.Merged.Mounts...)
 	namedVolumes := map[string]struct{}{}
 	for _, mount := range allMounts {
-		if value, ok := composeMountValue(mount); ok {
+		mountSpec, ok := spec.ParseMountSpec(mount)
+		if !ok {
+			continue
+		}
+		if value, ok := composeMountValue(mountSpec); ok {
 			service.Volumes = append(service.Volumes, value)
 		}
-		if source, ok := composeNamedVolume(mount); ok {
+		if source, ok := composeNamedVolume(mountSpec); ok {
 			namedVolumes[source] = struct{}{}
 		}
 	}
@@ -428,11 +432,7 @@ func overrideCommandEnabled(value *bool) bool {
 	return *value
 }
 
-func composeMountValue(raw string) (composeServiceMount, bool) {
-	mountSpec, ok := spec.ParseMountSpec(raw)
-	if !ok {
-		return composeServiceMount{}, false
-	}
+func composeMountValue(mountSpec spec.MountSpec) (composeServiceMount, bool) {
 	switch mountSpec.Type {
 	case "bind", "volume":
 		if mountSpec.Source == "" {
@@ -479,9 +479,8 @@ func composeMountValue(raw string) (composeServiceMount, bool) {
 	}
 }
 
-func composeNamedVolume(raw string) (string, bool) {
-	mountSpec, ok := spec.ParseMountSpec(raw)
-	if !ok || mountSpec.Type != "volume" || mountSpec.Source == "" {
+func composeNamedVolume(mountSpec spec.MountSpec) (string, bool) {
+	if mountSpec.Type != "volume" || mountSpec.Source == "" {
 		return "", false
 	}
 	return mountSpec.Source, true
@@ -496,6 +495,25 @@ func sortedVolumeNames(values map[string]struct{}) []string {
 	return keys
 }
 
+func composeTarget(resolved devcontainer.ResolvedConfig, overridePath string) dockercli.ComposeTarget {
+	files := append([]string(nil), resolved.ComposeFiles...)
+	if overridePath != "" {
+		files = append(files, overridePath)
+	}
+	return dockercli.ComposeTarget{Files: files, Project: resolved.ComposeProject, Dir: resolved.ConfigDir}
+}
+
+func (e *Executor) startComposeService(ctx context.Context, resolved devcontainer.ResolvedConfig, overridePath string, events ui.Sink) error {
+	stdout, stderr := e.progressWriters(events, phaseContainer, fmt.Sprintf("Starting compose service %s", resolved.ComposeService), e.stdout, e.stderr)
+	return e.engine.ComposeUp(ctx, dockercli.ComposeUpRequest{
+		Target:   composeTarget(resolved, overridePath),
+		Services: []string{resolved.ComposeService},
+		NoBuild:  true,
+		Detach:   true,
+		Streams:  dockercli.Streams{Stdout: stdout, Stderr: stderr},
+	})
+}
+
 func (e *Executor) createComposeContainer(ctx context.Context, resolved devcontainer.ResolvedConfig, image string, containerKey string, overridePath string, events ui.Sink) (string, error) {
 	path := overridePath
 	var err error
@@ -506,12 +524,7 @@ func (e *Executor) createComposeContainer(ctx context.Context, resolved devconta
 		}
 		defer os.Remove(path)
 	}
-	stdout, stderr := e.progressWriters(events, phaseContainer, fmt.Sprintf("Starting compose service %s", resolved.ComposeService), e.stdout, e.stderr)
-	target := dockercli.ComposeTarget{Files: append([]string(nil), resolved.ComposeFiles...), Project: resolved.ComposeProject, Dir: resolved.ConfigDir}
-	if path != "" {
-		target.Files = append(target.Files, path)
-	}
-	if err := e.engine.ComposeUp(ctx, dockercli.ComposeUpRequest{Target: target, Services: []string{resolved.ComposeService}, NoBuild: true, Detach: true, Streams: dockercli.Streams{Stdout: stdout, Stderr: stderr}}); err != nil {
+	if err := e.startComposeService(ctx, resolved, path, events); err != nil {
 		return "", err
 	}
 	return e.findComposeContainer(ctx, resolved)
@@ -531,12 +544,7 @@ func (e *Executor) ensureComposeContainer(ctx context.Context, resolved devconta
 			return reusedID, false, nil
 		}
 	}
-	stdout, stderr := e.progressWriters(events, phaseContainer, fmt.Sprintf("Starting compose service %s", resolved.ComposeService), e.stdout, e.stderr)
-	target := dockercli.ComposeTarget{Files: append([]string(nil), resolved.ComposeFiles...), Project: resolved.ComposeProject, Dir: resolved.ConfigDir}
-	if overridePath != "" {
-		target.Files = append(target.Files, overridePath)
-	}
-	if err := e.engine.ComposeUp(ctx, dockercli.ComposeUpRequest{Target: target, Services: []string{resolved.ComposeService}, NoBuild: true, Detach: true, Streams: dockercli.Streams{Stdout: stdout, Stderr: stderr}}); err != nil {
+	if err := e.startComposeService(ctx, resolved, overridePath, events); err != nil {
 		return "", false, err
 	}
 	containerID, err = e.findComposeContainer(ctx, resolved)

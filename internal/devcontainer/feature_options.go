@@ -72,9 +72,6 @@ func featureOptionEnvName(key string) string {
 	for i, r := range key {
 		switch {
 		case (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || r == '_':
-			if i == 0 && r >= '0' && r <= '9' {
-				b.WriteByte('_')
-			}
 			if r >= 'a' && r <= 'z' {
 				b.WriteRune(r - ('a' - 'A'))
 			} else {

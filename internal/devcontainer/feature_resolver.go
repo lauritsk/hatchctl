@@ -20,10 +20,6 @@ type resolvedFeatureSource struct {
 }
 
 func ResolveFeatures(ctx context.Context, configPath string, configDir string, cacheDir string, values map[string]any, opts FeatureResolveOptions) ([]ResolvedFeature, error) {
-	return resolveFeatures(ctx, configPath, configDir, cacheDir, values, opts)
-}
-
-func resolveFeatures(ctx context.Context, configPath string, configDir string, cacheDir string, values map[string]any, opts FeatureResolveOptions) ([]ResolvedFeature, error) {
 	if len(values) == 0 {
 		return nil, nil
 	}

@@ -2,7 +2,6 @@ package reconcile
 
 import (
 	"context"
-	"sort"
 	"strings"
 
 	"github.com/lauritsk/hatchctl/internal/docker"
@@ -56,14 +55,19 @@ func uniqueContainerIDs(output string) []string {
 }
 
 func bestContainer(inspects []docker.ContainerInspect) docker.ContainerInspect {
-	ordered := append([]docker.ContainerInspect(nil), inspects...)
-	sort.Slice(ordered, func(i int, j int) bool {
-		if ordered[i].State.Running != ordered[j].State.Running {
-			return ordered[i].State.Running
+	best := inspects[0]
+	for _, candidate := range inspects[1:] {
+		if candidate.State.Running != best.State.Running {
+			if candidate.State.Running {
+				best = candidate
+			}
+			continue
 		}
-		return ordered[i].ID < ordered[j].ID
-	})
-	return ordered[0]
+		if candidate.ID < best.ID {
+			best = candidate
+		}
+	}
+	return best
 }
 
 func inspectContainerWithEngine(engine engine) containerInspector {

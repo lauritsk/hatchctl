@@ -57,3 +57,16 @@ func TestSelectBestContainerSkipsMissingContainers(t *testing.T) {
 		t.Fatalf("expected remaining live container, got %#v", best)
 	}
 }
+
+func TestBestContainerUsesLowestIDForTie(t *testing.T) {
+	t.Parallel()
+
+	best := bestContainer([]docker.ContainerInspect{
+		{ID: "zulu", State: docker.ContainerState{Running: true}},
+		{ID: "alpha", State: docker.ContainerState{Running: true}},
+		{ID: "bravo", State: docker.ContainerState{Running: false}},
+	})
+	if best.ID != "alpha" {
+		t.Fatalf("expected lowest running container id, got %#v", best)
+	}
+}

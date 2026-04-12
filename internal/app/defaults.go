@@ -92,10 +92,10 @@ func ResolveDefaults(req ResolveDefaultsRequest) (CommandDefaults, error) {
 	}
 
 	resolved := CommandDefaults{
-		Workspace:      resolveHostPathDefault(req.Workspace, loaded.User.Workspace, loaded.Workspace.Workspace, trustedWorkspace),
+		Workspace:      resolveStringDefault(req.Workspace, loaded.User.Workspace, loaded.Workspace.Workspace, trustedWorkspace),
 		ConfigPath:     firstConfigured(req.ConfigPath.Changed, req.ConfigPath.Value, config.ConfigPath),
-		StateDir:       resolveHostPathDefault(FlagValue[string]{}, loaded.User.StateDir, loaded.Workspace.StateDir, trustedWorkspace),
-		CacheDir:       resolveHostPathDefault(FlagValue[string]{}, loaded.User.CacheDir, loaded.Workspace.CacheDir, trustedWorkspace),
+		StateDir:       resolveStringDefault(FlagValue[string]{}, loaded.User.StateDir, loaded.Workspace.StateDir, trustedWorkspace),
+		CacheDir:       resolveStringDefault(FlagValue[string]{}, loaded.User.CacheDir, loaded.Workspace.CacheDir, trustedWorkspace),
 		FeatureTimeout: resolvedTimeout,
 		LockfilePolicy: resolveLockfilePolicy(config, req.LockfilePolicy),
 		Dotfiles:       resolveDotfilesDefaults(loaded, req.Dotfiles, trustedWorkspace),
@@ -134,18 +134,18 @@ func resolveLockfilePolicy(config appconfig.Config, flag FlagValue[string]) stri
 
 func resolveDotfilesDefaults(loaded appconfig.LoadedConfig, flags DotfilesOptionValues, trustedWorkspace bool) DotfilesOptions {
 	return DotfilesOptions{
-		Repository: resolveDotfilesValue(flags.Repository, loaded.User.Dotfiles.Repository, loaded.Workspace.Dotfiles.Repository, trustedWorkspace),
-		InstallCommand: resolveDotfilesValue(
+		Repository: resolveStringDefault(flags.Repository, loaded.User.Dotfiles.Repository, loaded.Workspace.Dotfiles.Repository, trustedWorkspace),
+		InstallCommand: resolveStringDefault(
 			flags.InstallCommand,
 			loaded.User.Dotfiles.InstallCommand,
 			loaded.Workspace.Dotfiles.InstallCommand,
 			trustedWorkspace,
 		),
-		TargetPath: resolveDotfilesValue(flags.TargetPath, loaded.User.Dotfiles.TargetPath, loaded.Workspace.Dotfiles.TargetPath, trustedWorkspace),
+		TargetPath: resolveStringDefault(flags.TargetPath, loaded.User.Dotfiles.TargetPath, loaded.Workspace.Dotfiles.TargetPath, trustedWorkspace),
 	}
 }
 
-func resolveDotfilesValue(flag FlagValue[string], userValue string, workspaceValue string, trustedWorkspace bool) string {
+func resolveStringDefault(flag FlagValue[string], userValue string, workspaceValue string, trustedWorkspace bool) string {
 	if flag.Changed {
 		return flag.Value
 	}
@@ -175,13 +175,6 @@ func resolveOptionalBoolDefault(target *bool, flag *FlagValue[bool], userValue *
 	if userValue != nil {
 		*target = *userValue
 	}
-}
-
-func resolveHostPathDefault(flag FlagValue[string], userValue string, workspaceValue string, trustedWorkspace bool) string {
-	if flag.Changed {
-		return flag.Value
-	}
-	return preferredWorkspaceValue(userValue, workspaceValue, trustedWorkspace)
 }
 
 func preferredWorkspaceValue(userValue string, workspaceValue string, trustedWorkspace bool) string {

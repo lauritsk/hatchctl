@@ -95,23 +95,24 @@ func orderFeatures(features []ResolvedFeature, byAlias map[string]int) ([]Resolv
 	incoming := make([]int, len(features))
 	edges := make([][]int, len(features))
 	for i, feature := range features {
-		deps := append([]string(nil), feature.DependsOn...)
-		deps = append(deps, feature.InstallsAfter...)
 		seen := map[int]struct{}{}
-		for _, dep := range deps {
+		for _, dep := range feature.DependsOn {
 			idx, ok := byAlias[dep]
 			if !ok || idx == i {
-				if contains(feature.DependsOn, dep) {
-					return nil, fmt.Errorf("feature %q dependsOn %q, but only configured features are supported", feature.Metadata.ID, dep)
-				}
+				return nil, fmt.Errorf("feature %q dependsOn %q, but only configured features are supported", feature.Metadata.ID, dep)
+			}
+			if !addFeatureOrderEdge(edges, incoming, seen, idx, i) {
 				continue
 			}
-			if _, ok := seen[idx]; ok {
+		}
+		for _, dep := range feature.InstallsAfter {
+			idx, ok := byAlias[dep]
+			if !ok || idx == i {
 				continue
 			}
-			seen[idx] = struct{}{}
-			edges[idx] = append(edges[idx], i)
-			incoming[i]++
+			if !addFeatureOrderEdge(edges, incoming, seen, idx, i) {
+				continue
+			}
 		}
 	}
 	ready := make([]int, 0, len(features))
@@ -139,4 +140,14 @@ func orderFeatures(features []ResolvedFeature, byAlias map[string]int) ([]Resolv
 		return nil, fmt.Errorf("feature dependency cycle detected")
 	}
 	return result, nil
+}
+
+func addFeatureOrderEdge(edges [][]int, incoming []int, seen map[int]struct{}, from int, to int) bool {
+	if _, ok := seen[from]; ok {
+		return false
+	}
+	seen[from] = struct{}{}
+	edges[from] = append(edges[from], to)
+	incoming[to]++
+	return true
 }

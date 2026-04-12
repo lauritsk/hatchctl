@@ -32,7 +32,7 @@ func (t *StateTracker) BeginContainer(containerID string, containerKey string) {
 	t.state.BridgeEnabled = false
 	t.state.BridgeSessionID = ""
 	t.state.BridgeTransition = nil
-	t.setDotfiles(DotfilesConfig{}, false)
+	t.setDotfiles(DotfilesConfig{})
 }
 
 func (t *StateTracker) ApplyContainer(containerID string, containerKey string, created bool) {
@@ -83,7 +83,7 @@ func (t *StateTracker) CompleteLifecycle(key string, dotfiles DotfilesConfig) {
 	t.state.LifecycleTransition = nil
 	t.state.LifecycleReady = true
 	t.state.LifecycleKey = key
-	t.setDotfiles(dotfiles, dotfiles.Enabled())
+	t.setDotfiles(dotfiles)
 }
 
 func (t *StateTracker) CompletePlannedLifecycle(plan LifecyclePlan, dotfiles DotfilesConfig, installDotfiles bool) {
@@ -106,18 +106,18 @@ func (t *StateTracker) BeginDotfiles(kind string, key string) {
 
 func (t *StateTracker) CompleteDotfiles(dotfiles DotfilesConfig) {
 	t.state.DotfilesTransition = nil
-	t.setDotfiles(dotfiles, dotfiles.Enabled())
+	t.setDotfiles(dotfiles)
 }
 
-func (t *StateTracker) setDotfiles(dotfiles DotfilesConfig, ready bool) {
-	t.state.DotfilesReady = ready
+func (t *StateTracker) setDotfiles(dotfiles DotfilesConfig) {
 	t.state.DotfilesRepo = dotfiles.Repository
-	t.state.DotfilesInstall = dotfiles.InstallCommand
-	t.state.DotfilesTarget = dotfiles.TargetPath
 	t.state.DotfilesTransition = nil
-	if dotfiles.Repository == "" {
-		t.state.DotfilesReady = false
+	t.state.DotfilesReady = dotfiles.Enabled()
+	if !t.state.DotfilesReady {
 		t.state.DotfilesInstall = ""
 		t.state.DotfilesTarget = ""
+		return
 	}
+	t.state.DotfilesInstall = dotfiles.InstallCommand
+	t.state.DotfilesTarget = dotfiles.TargetPath
 }

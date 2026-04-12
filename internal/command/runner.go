@@ -74,9 +74,6 @@ func (Local) Start(opts StartOptions) (*os.Process, error) {
 }
 
 func AppendEnv(base []string, extra ...string) []string {
-	if len(extra) == 0 {
-		return append([]string(nil), base...)
-	}
 	result := append([]string(nil), base...)
 	result = append(result, extra...)
 	return result
