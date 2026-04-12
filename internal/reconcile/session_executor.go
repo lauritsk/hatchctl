@@ -7,6 +7,7 @@ import (
 	ui "github.com/lauritsk/hatchctl/internal/display"
 	"github.com/lauritsk/hatchctl/internal/docker"
 	workspaceplan "github.com/lauritsk/hatchctl/internal/plan"
+	storefs "github.com/lauritsk/hatchctl/internal/store/fs"
 )
 
 type ObservedSessionOptions struct {
@@ -71,11 +72,11 @@ func (s *Session) Image() string {
 	return s.prepared.image
 }
 
-func (s *Session) State() devcontainer.State {
+func (s *Session) State() storefs.WorkspaceState {
 	return s.prepared.state
 }
 
-func (s *Session) SetState(state devcontainer.State) {
+func (s *Session) SetState(state storefs.WorkspaceState) {
 	s.prepared.state = state
 	s.prepared.observed.Control.WorkspaceState = state
 	s.prepared.containerID = state.ContainerID

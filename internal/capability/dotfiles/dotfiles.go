@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/lauritsk/hatchctl/internal/capability"
-	"github.com/lauritsk/hatchctl/internal/devcontainer"
+	storefs "github.com/lauritsk/hatchctl/internal/store/fs"
 )
 
 const InstallScript = `set -eu
@@ -154,11 +154,11 @@ func ResolveTargetPath(home string, targetPath string) string {
 	return strings.TrimSuffix(home, "/") + strings.TrimPrefix(targetPath, "$HOME")
 }
 
-func StateMatches(state devcontainer.State, cfg Config) bool {
+func StateMatches(state storefs.WorkspaceState, cfg Config) bool {
 	return state.DotfilesReady && state.DotfilesTransition == nil && state.DotfilesRepo == cfg.Repository && state.DotfilesInstall == cfg.InstallCommand && state.DotfilesTarget == cfg.TargetPath
 }
 
-func StatusFor(state devcontainer.State, cfg Config) *Status {
+func StatusFor(state storefs.WorkspaceState, cfg Config) *Status {
 	if !cfg.Enabled() && state.DotfilesRepo == "" && state.DotfilesTarget == "" && !state.DotfilesReady {
 		return nil
 	}

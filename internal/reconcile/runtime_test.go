@@ -4,8 +4,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	"github.com/lauritsk/hatchctl/internal/docker"
+	storefs "github.com/lauritsk/hatchctl/internal/store/fs"
 )
 
 func TestPlanImageReusesManagedImageWhenReuseKeyMatches(t *testing.T) {
@@ -59,7 +59,7 @@ func TestPlanContainerUsesContainerKeyInsteadOfAdHocFlags(t *testing.T) {
 func TestPlanUpLifecycleUsesPersistedKeyAndTransitionState(t *testing.T) {
 	t.Parallel()
 
-	observed := ObservedState{Control: ControlState{WorkspaceState: devcontainer.State{LifecycleReady: true, LifecycleKey: "lifecycle-key"}}}
+	observed := ObservedState{Control: ControlState{WorkspaceState: storefs.WorkspaceState{LifecycleReady: true, LifecycleKey: "lifecycle-key"}}}
 	plan := PlanUpLifecycle(observed, DesiredLifecycle{Key: "lifecycle-key"})
 	if plan.RunCreate {
 		t.Fatalf("expected create lifecycle to be skipped, got %#v", plan)
@@ -68,7 +68,7 @@ func TestPlanUpLifecycleUsesPersistedKeyAndTransitionState(t *testing.T) {
 		t.Fatalf("expected start/attach lifecycle to remain enabled, got %#v", plan)
 	}
 
-	observed.Control.WorkspaceState.LifecycleTransition = &devcontainer.StateTransition{Kind: "all", Key: "old"}
+	observed.Control.WorkspaceState.LifecycleTransition = &storefs.StateTransition{Kind: "all", Key: "old"}
 	plan = PlanUpLifecycle(observed, DesiredLifecycle{Key: "lifecycle-key"})
 	if !plan.RunCreate || !plan.NeedsRecovery {
 		t.Fatalf("expected pending lifecycle transition to force recovery, got %#v", plan)

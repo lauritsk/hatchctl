@@ -39,7 +39,7 @@ type RuntimeTarget struct {
 }
 
 type ControlState struct {
-	WorkspaceState  devcontainer.State
+	WorkspaceState  storefs.WorkspaceState
 	Coordination    storefs.CoordinationRecord
 	PlanCachePath   string
 	PlanCacheExists bool
@@ -218,14 +218,14 @@ func readTokenMatchesInspect(token ReadToken, inspect docker.ContainerInspect) b
 	return true
 }
 
-func (o *Observer) observeTarget(ctx context.Context, resolved devcontainer.ResolvedConfig, state devcontainer.State, inspectTarget bool, allowMissing bool) (RuntimeTarget, devcontainer.State, *docker.ContainerInspect, error) {
+func (o *Observer) observeTarget(ctx context.Context, resolved devcontainer.ResolvedConfig, state storefs.WorkspaceState, inspectTarget bool, allowMissing bool) (RuntimeTarget, storefs.WorkspaceState, *docker.ContainerInspect, error) {
 	previousContainerID := state.ContainerID
 	target, container, err := o.lookupRuntimeTarget(ctx, resolved, state)
 	if err != nil {
 		if allowMissing && errors.Is(err, ErrObservedTargetNotFound) {
 			return runtimeTargetFromResolved(resolved, resolved.ImageName), clearedState(state), nil, nil
 		}
-		return RuntimeTarget{}, devcontainer.State{}, nil, err
+		return RuntimeTarget{}, storefs.WorkspaceState{}, nil, err
 	}
 	state = observedTargetState(state, previousContainerID, container)
 	if container != nil {
@@ -237,7 +237,7 @@ func (o *Observer) observeTarget(ctx context.Context, resolved devcontainer.Reso
 	return target, state, container, nil
 }
 
-func (o *Observer) lookupRuntimeTarget(ctx context.Context, resolved devcontainer.ResolvedConfig, state devcontainer.State) (RuntimeTarget, *docker.ContainerInspect, error) {
+func (o *Observer) lookupRuntimeTarget(ctx context.Context, resolved devcontainer.ResolvedConfig, state storefs.WorkspaceState) (RuntimeTarget, *docker.ContainerInspect, error) {
 	if resolved.SourceKind == "compose" {
 		return o.lookupComposeTarget(ctx, resolved)
 	}
@@ -254,7 +254,7 @@ func (o *Observer) lookupComposeTarget(ctx context.Context, resolved devcontaine
 	return target, primary, nil
 }
 
-func (o *Observer) lookupManagedTarget(ctx context.Context, resolved devcontainer.ResolvedConfig, state devcontainer.State) (RuntimeTarget, *docker.ContainerInspect, error) {
+func (o *Observer) lookupManagedTarget(ctx context.Context, resolved devcontainer.ResolvedConfig, state storefs.WorkspaceState) (RuntimeTarget, *docker.ContainerInspect, error) {
 	inspect, err := o.observeManagedContainer(ctx, resolved, state)
 	if err != nil {
 		return RuntimeTarget{}, nil, err
@@ -276,7 +276,7 @@ func runtimeTargetFromResolved(resolved devcontainer.ResolvedConfig, image strin
 	}
 }
 
-func observedTargetState(state devcontainer.State, previousContainerID string, container *docker.ContainerInspect) devcontainer.State {
+func observedTargetState(state storefs.WorkspaceState, previousContainerID string, container *docker.ContainerInspect) storefs.WorkspaceState {
 	if container == nil {
 		return clearedState(state)
 	}
@@ -287,7 +287,7 @@ func observedTargetState(state devcontainer.State, previousContainerID string, c
 	return state
 }
 
-func (o *Observer) observeManagedContainer(ctx context.Context, resolved devcontainer.ResolvedConfig, state devcontainer.State) (*docker.ContainerInspect, error) {
+func (o *Observer) observeManagedContainer(ctx context.Context, resolved devcontainer.ResolvedConfig, state storefs.WorkspaceState) (*docker.ContainerInspect, error) {
 	if state.ContainerID != "" {
 		inspect, err := o.backend.InspectContainer(ctx, state.ContainerID)
 		if err == nil {
@@ -344,8 +344,8 @@ func (o *Observer) inspectListedContainers(ctx context.Context, req dockercli.Li
 	return inspectContainerList(ctx, output, inspectContainerWithObserverBackend(o.backend))
 }
 
-func clearedState(state devcontainer.State) devcontainer.State {
-	return devcontainer.State{Version: state.Version, BridgeEnabled: state.BridgeEnabled, BridgeSessionID: state.BridgeSessionID, BridgeTransition: state.BridgeTransition}
+func clearedState(state storefs.WorkspaceState) storefs.WorkspaceState {
+	return storefs.WorkspaceState{Version: state.Version, BridgeEnabled: state.BridgeEnabled, BridgeSessionID: state.BridgeSessionID, BridgeTransition: state.BridgeTransition}
 }
 
 func targetKind(resolved devcontainer.ResolvedConfig) TargetKind {
@@ -366,7 +366,7 @@ func (o ObservedState) readToken() ReadToken {
 	}
 }
 
-func observeCapabilities(container *docker.ContainerInspect, state devcontainer.State, resolved devcontainer.ResolvedConfig) CapabilityState {
+func observeCapabilities(container *docker.ContainerInspect, state storefs.WorkspaceState, resolved devcontainer.ResolvedConfig) CapabilityState {
 	capabilityState := CapabilityState{
 		BridgeEnabled:   bridgecap.EnabledFromInspect(container, state),
 		DotfilesApplied: state.DotfilesReady && state.DotfilesTransition == nil,

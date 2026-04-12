@@ -3,7 +3,7 @@ package dotfiles
 import (
 	"testing"
 
-	"github.com/lauritsk/hatchctl/internal/devcontainer"
+	storefs "github.com/lauritsk/hatchctl/internal/store/fs"
 )
 
 func TestNormalizeExpandsShortRepositoryAndTarget(t *testing.T) {
@@ -33,7 +33,7 @@ func TestStatusForTracksWhetherInstallIsNeeded(t *testing.T) {
 	t.Parallel()
 
 	cfg := Config{Repository: "https://github.com/lauritsk/dotfiles.git", InstallCommand: "install.sh", TargetPath: "$HOME/.dotfiles"}
-	state := devcontainer.State{DotfilesReady: true, DotfilesRepo: cfg.Repository, DotfilesInstall: cfg.InstallCommand, DotfilesTarget: cfg.TargetPath}
+	state := storefs.WorkspaceState{DotfilesReady: true, DotfilesRepo: cfg.Repository, DotfilesInstall: cfg.InstallCommand, DotfilesTarget: cfg.TargetPath}
 	status := StatusFor(state, cfg)
 	if status == nil || status.NeedsInstall || !status.Applied {
 		t.Fatalf("expected matching dotfiles state, got %#v", status)

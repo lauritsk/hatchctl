@@ -4,6 +4,7 @@ import (
 	"github.com/lauritsk/hatchctl/internal/bridge"
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	"github.com/lauritsk/hatchctl/internal/docker"
+	storefs "github.com/lauritsk/hatchctl/internal/store/fs"
 )
 
 func Prepare(stateDir string, helperArch string) (*bridge.Session, error) {
@@ -26,7 +27,7 @@ func Doctor(stateDir string) (bridge.Report, error) {
 	return bridge.Doctor(stateDir)
 }
 
-func EnabledFromInspect(inspect *docker.ContainerInspect, state devcontainer.State) bool {
+func EnabledFromInspect(inspect *docker.ContainerInspect, state storefs.WorkspaceState) bool {
 	if inspect != nil && inspect.Config.Labels[devcontainer.BridgeEnabledLabel] == "true" {
 		return true
 	}

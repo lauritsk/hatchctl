@@ -3,7 +3,6 @@ package reconcile
 import (
 	"testing"
 
-	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	storefs "github.com/lauritsk/hatchctl/internal/store/fs"
 )
 
@@ -11,7 +10,7 @@ func TestStateTrackerPersistsLifecycleBridgeAndDotfilesState(t *testing.T) {
 	t.Parallel()
 
 	stateDir := t.TempDir()
-	tracker := NewStateTracker(stateDir, devcontainer.State{})
+	tracker := NewStateTracker(stateDir, storefs.WorkspaceState{})
 	plan := LifecyclePlan{RunCreate: true, RunStart: true, RunAttach: true, Key: "lifecycle-key", TransitionKind: LifecyclePhaseAll}
 	dotfiles := DotfilesConfig{Repository: "github.com/example/dotfiles", InstallCommand: "install.sh", TargetPath: "$HOME/.dotfiles"}
 	tracker.BeginContainer("container-123", "container-key")
@@ -48,7 +47,7 @@ func TestStateTrackerPersistsLifecycleBridgeAndDotfilesState(t *testing.T) {
 func TestStateTrackerBeginPlannedLifecycleSkipsDotfilesWithoutCreate(t *testing.T) {
 	t.Parallel()
 
-	tracker := NewStateTracker(t.TempDir(), devcontainer.State{})
+	tracker := NewStateTracker(t.TempDir(), storefs.WorkspaceState{})
 	tracker.BeginPlannedLifecycle(LifecyclePlan{RunStart: true, Key: "lifecycle-key"}, true)
 	state := tracker.State()
 	if state.LifecycleTransition == nil || state.LifecycleTransition.Key != "lifecycle-key" {
@@ -62,7 +61,7 @@ func TestStateTrackerBeginPlannedLifecycleSkipsDotfilesWithoutCreate(t *testing.
 func TestStateTrackerApplyContainerAndBridgeHelpers(t *testing.T) {
 	t.Parallel()
 
-	tracker := NewStateTracker(t.TempDir(), devcontainer.State{})
+	tracker := NewStateTracker(t.TempDir(), storefs.WorkspaceState{})
 	tracker.ApplyContainer("container-123", "container-key", true)
 	state := tracker.State()
 	if state.ContainerID != "container-123" || state.ContainerKey != "container-key" {

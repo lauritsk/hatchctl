@@ -133,7 +133,7 @@ type commandIO struct {
 type preparedWorkspace struct {
 	resolved         devcontainer.ResolvedConfig
 	image            string
-	state            devcontainer.State
+	state            storefs.WorkspaceState
 	containerID      string
 	containerInspect *docker.ContainerInspect
 	observed         ObservedState

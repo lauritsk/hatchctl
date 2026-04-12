@@ -12,7 +12,7 @@ func TestWriteStateUsesOwnerOnlyPermissions(t *testing.T) {
 	t.Parallel()
 
 	stateDir := filepath.Join(t.TempDir(), "state")
-	if err := storefs.WriteWorkspaceState(stateDir, State{ContainerID: "container-123"}); err != nil {
+	if err := storefs.WriteWorkspaceState(stateDir, storefs.WorkspaceState{ContainerID: "container-123"}); err != nil {
 		t.Fatalf("write state: %v", err)
 	}
 	assertMode(t, stateDir, 0o700)

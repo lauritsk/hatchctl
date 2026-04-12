@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	"github.com/lauritsk/hatchctl/internal/capability"
-	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	"github.com/lauritsk/hatchctl/internal/docker"
+	storefs "github.com/lauritsk/hatchctl/internal/store/fs"
 )
 
 const (
@@ -209,6 +209,6 @@ func PlanLifecycleCommand(observed ObservedState, desired DesiredLifecycle) (Lif
 	return plan, nil
 }
 
-func LifecycleStateApplied(state devcontainer.State, desiredKey string) bool {
+func LifecycleStateApplied(state storefs.WorkspaceState, desiredKey string) bool {
 	return state.LifecycleReady && state.LifecycleKey == desiredKey && state.LifecycleTransition == nil
 }

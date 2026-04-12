@@ -17,6 +17,7 @@ import (
 	"github.com/lauritsk/hatchctl/internal/docker"
 	"github.com/lauritsk/hatchctl/internal/engine/dockercli"
 	"github.com/lauritsk/hatchctl/internal/policy"
+	storefs "github.com/lauritsk/hatchctl/internal/store/fs"
 )
 
 func injectSSHAgent(merged devcontainer.MergedConfig) (devcontainer.MergedConfig, error) {
@@ -27,7 +28,7 @@ func EnsureContainerHasSSHAgent(inspect *docker.ContainerInspect) error {
 	return capssh.EnsureAttached(inspect)
 }
 
-func DotfilesStatusFromState(state devcontainer.State, cfg capdot.Config) *DotfilesStatus {
+func DotfilesStatusFromState(state storefs.WorkspaceState, cfg capdot.Config) *DotfilesStatus {
 	status := capdot.StatusFor(state, cfg)
 	if status == nil {
 		return nil
@@ -35,7 +36,7 @@ func DotfilesStatusFromState(state devcontainer.State, cfg capdot.Config) *Dotfi
 	return &DotfilesStatus{Configured: status.Configured, Applied: status.Applied, NeedsInstall: status.NeedsInstall, Repository: status.Repository, InstallCommand: status.InstallCommand, TargetPath: status.TargetPath}
 }
 
-func DotfilesNeedsInstall(state devcontainer.State, cfg capdot.Config) bool {
+func DotfilesNeedsInstall(state storefs.WorkspaceState, cfg capdot.Config) bool {
 	status := DotfilesStatusFromState(state, cfg)
 	return status != nil && status.NeedsInstall
 }
@@ -77,7 +78,7 @@ func lifecycleProgressLabel(name string) string {
 	return fmt.Sprintf("Running %s lifecycle hook", name)
 }
 
-func (e *Executor) RunLifecyclePlan(ctx context.Context, observed ObservedState, state devcontainer.State, dotfiles capdot.Config, allowHostLifecycle bool, events ui.Sink, plan LifecyclePlan) error {
+func (e *Executor) RunLifecyclePlan(ctx context.Context, observed ObservedState, state storefs.WorkspaceState, dotfiles capdot.Config, allowHostLifecycle bool, events ui.Sink, plan LifecyclePlan) error {
 	if plan.RunCreate {
 		if err := e.runCreateLifecycle(ctx, observed, state, dotfiles, true, allowHostLifecycle, events); err != nil {
 			return err
@@ -96,7 +97,7 @@ func (e *Executor) RunLifecyclePlan(ctx context.Context, observed ObservedState,
 	return nil
 }
 
-func (e *Executor) runCreateLifecycle(ctx context.Context, observed ObservedState, state devcontainer.State, dotfiles capdot.Config, runDotfiles bool, allowHostLifecycle bool, events ui.Sink) error {
+func (e *Executor) runCreateLifecycle(ctx context.Context, observed ObservedState, state storefs.WorkspaceState, dotfiles capdot.Config, runDotfiles bool, allowHostLifecycle bool, events ui.Sink) error {
 	resolved := observed.Resolved
 	if err := policy.EnsureHostLifecycleAllowed(resolved.Config.InitializeCommand, allowHostLifecycle); err != nil {
 		return err

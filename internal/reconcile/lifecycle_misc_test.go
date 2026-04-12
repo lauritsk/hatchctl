@@ -116,7 +116,7 @@ func TestRunHostLifecycleUsesRunnerAndSkipsEmpty(t *testing.T) {
 func TestDotfilesStatusHelpersAndTargetResolution(t *testing.T) {
 	t.Parallel()
 
-	state := devcontainer.State{DotfilesReady: true, DotfilesRepo: "https://github.com/example/dotfiles.git", DotfilesInstall: "install.sh", DotfilesTarget: "$HOME/.dotfiles"}
+	state := storefs.WorkspaceState{DotfilesReady: true, DotfilesRepo: "https://github.com/example/dotfiles.git", DotfilesInstall: "install.sh", DotfilesTarget: "$HOME/.dotfiles"}
 	cfg := capdot.Config{Repository: "https://github.com/example/dotfiles.git", InstallCommand: "install.sh", TargetPath: "$HOME/.dotfiles"}
 	status := DotfilesStatusFromState(state, cfg)
 	if status == nil || !status.Applied || status.NeedsInstall {
@@ -198,13 +198,13 @@ func TestProgressWritersEmitOnceAndRedactionHelpers(t *testing.T) {
 func TestSessionSettersKeepObservedStateInSync(t *testing.T) {
 	t.Parallel()
 
-	session := &Session{prepared: preparedWorkspace{resolved: devcontainer.ResolvedConfig{ImageName: "image-a"}, state: devcontainer.State{ContainerID: "container-a"}, containerID: "container-a", containerInspect: &docker.ContainerInspect{ID: "container-a"}, observed: ObservedState{Resolved: devcontainer.ResolvedConfig{ImageName: "image-a"}, Target: RuntimeTarget{PrimaryContainer: "container-a"}, Control: ControlState{WorkspaceState: devcontainer.State{ContainerID: "container-a"}}, Container: &docker.ContainerInspect{ID: "container-a"}}}}
+	session := &Session{prepared: preparedWorkspace{resolved: devcontainer.ResolvedConfig{ImageName: "image-a"}, state: storefs.WorkspaceState{ContainerID: "container-a"}, containerID: "container-a", containerInspect: &docker.ContainerInspect{ID: "container-a"}, observed: ObservedState{Resolved: devcontainer.ResolvedConfig{ImageName: "image-a"}, Target: RuntimeTarget{PrimaryContainer: "container-a"}, Control: ControlState{WorkspaceState: storefs.WorkspaceState{ContainerID: "container-a"}}, Container: &docker.ContainerInspect{ID: "container-a"}}}}
 
 	session.SetResolved(devcontainer.ResolvedConfig{ImageName: "image-b"})
 	if session.Observed().Resolved.ImageName != "image-b" {
 		t.Fatalf("expected resolved config sync, got %#v", session.Observed().Resolved)
 	}
-	session.SetState(devcontainer.State{ContainerID: "container-b", DotfilesReady: true})
+	session.SetState(storefs.WorkspaceState{ContainerID: "container-b", DotfilesReady: true})
 	if session.ContainerID() != "container-b" || session.Observed().Control.WorkspaceState.ContainerID != "container-b" || session.ContainerInspect() != nil {
 		t.Fatalf("unexpected session state after SetState %#v", session.Observed())
 	}

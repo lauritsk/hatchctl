@@ -287,7 +287,7 @@ func TestUpRecreateReinstallsDotfilesForNewContainer(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(featureDir, "install.sh"), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
 		t.Fatalf("write feature install script: %v", err)
 	}
-	if err := storefs.WriteWorkspaceState(stateDir, devcontainer.State{
+	if err := storefs.WriteWorkspaceState(stateDir, storefs.WorkspaceState{
 		ContainerID:    "container-old",
 		ContainerKey:   "old-key",
 		LifecycleReady: true,
@@ -427,7 +427,7 @@ func TestExecMergesConfiguredImageMetadataWhenContainerLabelIsIncomplete(t *test
 	stateDir := t.TempDir()
 	cacheDir := t.TempDir()
 	configDir := t.TempDir()
-	if err := storefs.WriteWorkspaceState(stateDir, devcontainer.State{ContainerID: "container-123"}); err != nil {
+	if err := storefs.WriteWorkspaceState(stateDir, storefs.WorkspaceState{ContainerID: "container-123"}); err != nil {
 		t.Fatalf("write state: %v", err)
 	}
 	containerMetadataLabel, err := spec.MetadataLabelValue([]devcontainer.MetadataEntry{{ID: "mise"}})
@@ -601,7 +601,7 @@ func TestMaterializeReadOnlyUsesPersistedTrustedRefs(t *testing.T) {
 
 	stateDir := t.TempDir()
 	ref := "ghcr.io/example/feature@sha256:def456"
-	if err := storefs.WriteWorkspaceState(stateDir, devcontainer.State{TrustedRefs: []string{ref}}); err != nil {
+	if err := storefs.WriteWorkspaceState(stateDir, storefs.WorkspaceState{TrustedRefs: []string{ref}}); err != nil {
 		t.Fatalf("write state: %v", err)
 	}
 	prompted := false
@@ -681,7 +681,7 @@ func TestReadConfigReportsBridgeAndDotfilesState(t *testing.T) {
 	stateDir := t.TempDir()
 	cacheDir := t.TempDir()
 	configDir := t.TempDir()
-	if err := storefs.WriteWorkspaceState(stateDir, devcontainer.State{
+	if err := storefs.WriteWorkspaceState(stateDir, storefs.WorkspaceState{
 		ContainerID:     "container-123",
 		ContainerKey:    "container-key",
 		BridgeEnabled:   true,
@@ -800,7 +800,7 @@ func TestRunLifecycleCreatePersistsLifecycleState(t *testing.T) {
 	stateDir := t.TempDir()
 	cacheDir := t.TempDir()
 	configDir := t.TempDir()
-	if err := storefs.WriteWorkspaceState(stateDir, devcontainer.State{ContainerID: "container-123", ContainerKey: "container-key"}); err != nil {
+	if err := storefs.WriteWorkspaceState(stateDir, storefs.WorkspaceState{ContainerID: "container-123", ContainerKey: "container-key"}); err != nil {
 		t.Fatalf("write state: %v", err)
 	}
 
