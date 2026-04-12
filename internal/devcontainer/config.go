@@ -190,7 +190,7 @@ func buildResolvedConfig(workspaceSpec WorkspaceSpec, stateDir string, cacheDir 
 		ContainerName:   storefs.ContainerName(workspaceSpec.WorkspaceFolder, workspaceSpec.ConfigPath),
 		ComposeFiles:    workspaceSpec.ComposeFiles,
 		ComposeService:  workspaceSpec.ComposeService,
-		ComposeProject:  ComposeProjectName(workspaceSpec.WorkspaceFolder, workspaceSpec.ConfigPath),
+		ComposeProject:  spec.ComposeProjectName(workspaceSpec.WorkspaceFolder, workspaceSpec.ConfigPath),
 		Labels: map[string]string{
 			HostFolderLabel: workspaceSpec.WorkspaceFolder,
 			ConfigFileLabel: workspaceSpec.ConfigPath,
@@ -223,15 +223,7 @@ func resolveWorkspace(workspaceArg string) (string, error) {
 	return spec.ResolveWorkspacePath(workspaceArg)
 }
 
-func ResolveWorkspacePath(workspaceArg string) (string, error) {
-	return spec.ResolveWorkspacePath(workspaceArg)
-}
-
 func resolveConfigPath(workspace string, configArg string) (string, error) {
-	return spec.ResolveConfigPath(workspace, configArg)
-}
-
-func ResolveConfigPath(workspace string, configArg string) (string, error) {
 	return spec.ResolveConfigPath(workspace, configArg)
 }
 
@@ -241,28 +233,4 @@ func EffectiveDockerfile(config Config) string {
 
 func EffectiveContext(config Config) string {
 	return spec.EffectiveContext(config)
-}
-
-func ContainerCommand(config Config) []string {
-	return spec.ContainerCommand(config)
-}
-
-func KeepAliveCommand() string {
-	return spec.KeepAliveCommand()
-}
-
-func RemoteExecUser(config Config) string {
-	return spec.RemoteExecUser(config)
-}
-
-func ShellQuote(value string) string {
-	return spec.ShellQuote(value)
-}
-
-func NormalizeForwardPorts(raw []any) (ForwardPorts, error) {
-	return spec.NormalizeForwardPorts(raw)
-}
-
-func MergeForwardPorts(entries ...ForwardPorts) ForwardPorts {
-	return spec.MergeForwardPorts(entries...)
 }

@@ -12,6 +12,7 @@ import (
 	"sort"
 
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
+	"github.com/lauritsk/hatchctl/internal/spec"
 )
 
 func ManagedImageKey(resolved devcontainer.ResolvedConfig, targetImage string) (string, error) {
@@ -83,7 +84,7 @@ func ContainerKey(resolved devcontainer.ResolvedConfig, imageIdentity string, br
 	for _, arg := range resolved.Config.RunArgs {
 		writeKeyValue(h, "run-arg", arg)
 	}
-	for _, part := range devcontainer.ContainerCommand(resolved.Config) {
+	for _, part := range spec.ContainerCommand(resolved.Config) {
 		writeKeyValue(h, "command", part)
 	}
 	writeKeyValue(h, "init", fmt.Sprintf("%t", resolved.Merged.Init))

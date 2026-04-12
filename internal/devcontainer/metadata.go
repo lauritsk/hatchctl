@@ -17,14 +17,6 @@ func MetadataLabelValue(entries []MetadataEntry) (string, error) {
 	return spec.MetadataLabelValue(entries)
 }
 
-func ConfigMetadata(config Config) MetadataEntry {
-	return spec.ConfigMetadata(config)
-}
-
 func MergeMetadata(config Config, metadata []MetadataEntry) MergedConfig {
 	return spec.MergeMetadata(config, metadata)
-}
-
-func SortedMapKeys(values map[string]string) []string {
-	return spec.SortedMapKeys(values)
 }

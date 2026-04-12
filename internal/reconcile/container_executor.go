@@ -14,6 +14,7 @@ import (
 	ui "github.com/lauritsk/hatchctl/internal/display"
 	"github.com/lauritsk/hatchctl/internal/docker"
 	"github.com/lauritsk/hatchctl/internal/engine/dockercli"
+	"github.com/lauritsk/hatchctl/internal/spec"
 	storefs "github.com/lauritsk/hatchctl/internal/store/fs"
 	"go.yaml.in/yaml/v3"
 )
@@ -303,7 +304,7 @@ func (e *Executor) createManagedContainer(ctx context.Context, resolved devconta
 	for key, value := range resolved.Merged.ContainerEnv {
 		env[key] = value
 	}
-	return e.engine.RunDetachedContainer(ctx, dockercli.RunDetachedContainerRequest{Name: resolved.ContainerName, Labels: labels, Mounts: append([]string{resolved.WorkspaceMount, stateMount}, resolved.Merged.Mounts...), Init: resolved.Merged.Init, Privileged: resolved.Merged.Privileged, CapAdd: resolved.Merged.CapAdd, SecurityOpt: resolved.Merged.SecurityOpt, Env: env, ExtraArgs: resolved.Config.RunArgs, Image: image, Command: devcontainer.ContainerCommand(resolved.Config)})
+	return e.engine.RunDetachedContainer(ctx, dockercli.RunDetachedContainerRequest{Name: resolved.ContainerName, Labels: labels, Mounts: append([]string{resolved.WorkspaceMount, stateMount}, resolved.Merged.Mounts...), Init: resolved.Merged.Init, Privileged: resolved.Merged.Privileged, CapAdd: resolved.Merged.CapAdd, SecurityOpt: resolved.Merged.SecurityOpt, Env: env, ExtraArgs: resolved.Config.RunArgs, Image: image, Command: spec.ContainerCommand(resolved.Config)})
 }
 
 func (e *Executor) readComposeConfig(ctx context.Context, resolved *devcontainer.ResolvedConfig) (composeConfig, error) {
@@ -369,10 +370,10 @@ func renderComposeOverride(resolved devcontainer.ResolvedConfig, image string, c
 	if containerKey != "" {
 		labels[ContainerKeyLabel] = containerKey
 	}
-	for _, key := range devcontainer.SortedMapKeys(labels) {
+	for _, key := range spec.SortedMapKeys(labels) {
 		service.Labels = append(service.Labels, key+"="+labels[key])
 	}
-	for _, key := range devcontainer.SortedMapKeys(resolved.Merged.ContainerEnv) {
+	for _, key := range spec.SortedMapKeys(resolved.Merged.ContainerEnv) {
 		service.Environment = append(service.Environment, key+"="+resolved.Merged.ContainerEnv[key])
 	}
 	allMounts := append([]string{resolved.WorkspaceMount}, resolved.Merged.Mounts...)
@@ -395,7 +396,7 @@ func renderComposeOverride(resolved devcontainer.ResolvedConfig, image string, c
 		service.User = user
 	}
 	if overrideCommandEnabled(resolved.Config.OverrideCommand) {
-		service.Command = []string{"/bin/sh", "-lc", devcontainer.KeepAliveCommand()}
+		service.Command = []string{"/bin/sh", "-lc", spec.KeepAliveCommand()}
 	}
 	if len(resolved.Merged.CapAdd) > 0 {
 		service.CapAdd = append([]string(nil), resolved.Merged.CapAdd...)
@@ -428,33 +429,33 @@ func overrideCommandEnabled(value *bool) bool {
 }
 
 func composeMountValue(raw string) (composeServiceMount, bool) {
-	spec, ok := devcontainer.ParseMountSpec(raw)
+	mountSpec, ok := spec.ParseMountSpec(raw)
 	if !ok {
 		return composeServiceMount{}, false
 	}
-	switch spec.Type {
+	switch mountSpec.Type {
 	case "bind", "volume":
-		if spec.Source == "" {
+		if mountSpec.Source == "" {
 			return composeServiceMount{}, false
 		}
-		mount := composeServiceMount{Type: spec.Type, Source: spec.Source, Target: spec.Target}
-		if spec.ReadOnly {
+		mount := composeServiceMount{Type: mountSpec.Type, Source: mountSpec.Source, Target: mountSpec.Target}
+		if mountSpec.ReadOnly {
 			mount.ReadOnly = true
 		}
-		if spec.Consistency != "" {
-			mount.Consistency = spec.Consistency
+		if mountSpec.Consistency != "" {
+			mount.Consistency = mountSpec.Consistency
 		}
 		if mount.Type == "bind" {
 			bind := &composeBindMountOptions{}
-			if spec.BindPropagation != "" {
-				bind.Propagation = spec.BindPropagation
+			if mountSpec.BindPropagation != "" {
+				bind.Propagation = mountSpec.BindPropagation
 			}
-			if spec.CreateHostPath != nil {
-				value := *spec.CreateHostPath
+			if mountSpec.CreateHostPath != nil {
+				value := *mountSpec.CreateHostPath
 				bind.CreateHostPath = &value
 			}
-			if spec.SELinux != "" {
-				bind.SELinux = spec.SELinux
+			if mountSpec.SELinux != "" {
+				bind.SELinux = mountSpec.SELinux
 			}
 			if bind.Propagation != "" || bind.CreateHostPath != nil || bind.SELinux != "" {
 				mount.Bind = bind
@@ -462,11 +463,11 @@ func composeMountValue(raw string) (composeServiceMount, bool) {
 		}
 		if mount.Type == "volume" {
 			volume := &composeVolumeMountOptions{}
-			if spec.NoCopy {
+			if mountSpec.NoCopy {
 				volume.NoCopy = true
 			}
-			if spec.Subpath != "" {
-				volume.Subpath = spec.Subpath
+			if mountSpec.Subpath != "" {
+				volume.Subpath = mountSpec.Subpath
 			}
 			if volume.NoCopy || volume.Subpath != "" {
 				mount.Volume = volume
@@ -479,11 +480,11 @@ func composeMountValue(raw string) (composeServiceMount, bool) {
 }
 
 func composeNamedVolume(raw string) (string, bool) {
-	spec, ok := devcontainer.ParseMountSpec(raw)
-	if !ok || spec.Type != "volume" || spec.Source == "" {
+	mountSpec, ok := spec.ParseMountSpec(raw)
+	if !ok || mountSpec.Type != "volume" || mountSpec.Source == "" {
 		return "", false
 	}
-	return spec.Source, true
+	return mountSpec.Source, true
 }
 
 func sortedVolumeNames(values map[string]struct{}) []string {

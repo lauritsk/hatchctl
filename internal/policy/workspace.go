@@ -69,8 +69,8 @@ func workspaceTrustIssues(workspaceSpec spec.WorkspaceSpec) []string {
 func riskyBindMounts(mounts []string) []string {
 	result := make([]string, 0)
 	for _, mount := range mounts {
-		spec, ok := devcontainer.ParseMountSpec(mount)
-		if ok && spec.Type == "bind" {
+		mountSpec, ok := spec.ParseMountSpec(mount)
+		if ok && mountSpec.Type == "bind" {
 			result = append(result, mount)
 		}
 	}

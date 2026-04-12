@@ -14,6 +14,7 @@ import (
 	"github.com/lauritsk/hatchctl/internal/docker"
 	"github.com/lauritsk/hatchctl/internal/engine/dockercli"
 	workspaceplan "github.com/lauritsk/hatchctl/internal/plan"
+	"github.com/lauritsk/hatchctl/internal/spec"
 	storefs "github.com/lauritsk/hatchctl/internal/store/fs"
 )
 
@@ -250,7 +251,7 @@ func writeFeatureBuildContext(buildDir string, baseImage string, features []devc
 		}
 		dockerfile.WriteString("COPY " + rel + " /tmp/hatchctl-features/" + rel + "\n")
 		if len(feature.Metadata.ContainerEnv) > 0 {
-			for _, key := range devcontainer.SortedMapKeys(feature.Metadata.ContainerEnv) {
+			for _, key := range spec.SortedMapKeys(feature.Metadata.ContainerEnv) {
 				dockerfile.WriteString("ENV " + key + "=" + dockerfileQuotedValue(feature.Metadata.ContainerEnv[key]) + "\n")
 			}
 		}
@@ -270,8 +271,8 @@ func shellEnvFile(values map[string]string) string {
 		return ""
 	}
 	var lines []string
-	for _, key := range devcontainer.SortedMapKeys(values) {
-		lines = append(lines, key+"="+devcontainer.ShellQuote(values[key]))
+	for _, key := range spec.SortedMapKeys(values) {
+		lines = append(lines, key+"="+spec.ShellQuote(values[key]))
 	}
 	return strings.Join(lines, "\n") + "\n"
 }
