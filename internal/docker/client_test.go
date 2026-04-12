@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -41,12 +40,15 @@ func TestErrorExitCodeAndNotFound(t *testing.T) {
 func TestOutputOptionsCapturesStderrOnFailure(t *testing.T) {
 	t.Parallel()
 
-	client := NewClient(fakeDockerBinary(t, `
-if [ "$1" = "failing" ]; then
-  echo "bad things happened" >&2
-  exit 23
-fi
-`))
+	client := &Client{Binary: "docker", runner: stubCommandRunner{
+		output: func(_ context.Context, cmd command.Command) (string, string, error) {
+			if len(cmd.Args) != 1 || cmd.Args[0] != "failing" {
+				t.Fatalf("unexpected output args %#v", cmd.Args)
+			}
+			exitErr := exec.Command("sh", "-lc", "exit 23").Run()
+			return "", "bad things happened\n", &Error{Args: append([]string(nil), cmd.Args...), Err: exitErr}
+		},
+	}}
 
 	_, err := client.OutputOptions(context.Background(), RunOptions{Args: []string{"failing"}})
 	var dockerErr *Error
@@ -65,26 +67,19 @@ fi
 func TestInspectImageAndContainerParsingErrors(t *testing.T) {
 	t.Parallel()
 
-	client := NewClient(fakeDockerBinary(t, `
-if [ "$1" = "image" ] && [ "$2" = "inspect" ] && [ "$3" = "broken-image" ]; then
-  printf '{'
-  exit 0
-fi
-if [ "$1" = "inspect" ] && [ "$2" = "broken-container" ]; then
-  printf '{'
-  exit 0
-fi
-if [ "$1" = "image" ] && [ "$2" = "inspect" ] && [ "$3" = "empty-image" ]; then
-  printf '[]'
-  exit 0
-fi
-if [ "$1" = "inspect" ] && [ "$2" = "empty-container" ]; then
-  printf '[]'
-  exit 0
-fi
-printf 'unexpected args: %s\n' "$*" >&2
-exit 99
-`))
+	client := &Client{Binary: "docker", runner: stubCommandRunner{
+		combinedOutput: func(_ context.Context, cmd command.Command) (string, error) {
+			switch strings.Join(cmd.Args, " ") {
+			case "image inspect broken-image", "inspect broken-container":
+				return "{", nil
+			case "image inspect empty-image", "inspect empty-container":
+				return "[]", nil
+			default:
+				t.Fatalf("unexpected inspect args %#v", cmd.Args)
+				return "", nil
+			}
+		},
+	}}
 
 	if _, err := client.InspectImage(context.Background(), "broken-image"); err == nil || !strings.Contains(err.Error(), "parse docker image inspect") {
 		t.Fatalf("expected parse image inspect error, got %v", err)
@@ -192,14 +187,4 @@ func (s stubCommandRunner) CombinedOutput(ctx context.Context, cmd command.Comma
 
 func (s stubCommandRunner) Start(command.StartOptions) (*os.Process, error) {
 	return nil, errors.New("not implemented")
-}
-
-func fakeDockerBinary(t *testing.T, body string) string {
-	t.Helper()
-	path := filepath.Join(t.TempDir(), "docker")
-	script := "#!/bin/sh\nset -eu\n" + body + "\n"
-	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
-		t.Fatalf("write fake docker binary: %v", err)
-	}
-	return path
 }
