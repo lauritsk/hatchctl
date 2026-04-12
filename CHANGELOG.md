@@ -2,6 +2,13 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## [v0.6.17](https://github.com/lauritsk/hatchctl/compare/e0c51207336287928c65b9aaea91c33f4eba3cae..v0.6.17) - 2026-04-12
+#### Bug Fixes
+- (**devcontainer**) Mount mise volumes in dev home - ([3143c75](https://github.com/lauritsk/hatchctl/commit/3143c75897ae5d87e46b1c96c7537ea03cae0fc7)) - Karl Hans Laurits
+- (**runtime**) Reduce failures around mutable workspace state - ([e0c5120](https://github.com/lauritsk/hatchctl/commit/e0c51207336287928c65b9aaea91c33f4eba3cae)) - Karl Hans Laurits
+
+- - -
+
 ## [v0.6.16](https://github.com/lauritsk/hatchctl/compare/1c5c8be56e971febada613036ba11a44eaf0d190..v0.6.16) - 2026-04-12
 #### Bug Fixes
 - Harden workspace locking and feature resolution - ([3469db4](https://github.com/lauritsk/hatchctl/commit/3469db41daeb402d96d295092b69bcc019b6a52d)) - Karl Hans Laurits
