@@ -2,6 +2,17 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## [v0.7.0](https://github.com/lauritsk/hatchctl/compare/af8aa53ee58bd14a826412d6f34e95502d7da016..v0.7.0) - 2026-04-13
+#### Features
+- (**runtime**) Support Containerfile defaults - ([033b0bc](https://github.com/lauritsk/hatchctl/commit/033b0bcfdd1359b23bcca1b57a5d1d439c6d0576)) - Karl Hans Laurits
+- (**runtime**) Add podman backend support - ([f27c1e0](https://github.com/lauritsk/hatchctl/commit/f27c1e07dcf25c1419cef0b4e66ea183efc219e5)) - Karl Hans Laurits
+#### Refactoring
+- (**runtime**) Introduce backend-neutral runtime - ([b4b3b00](https://github.com/lauritsk/hatchctl/commit/b4b3b0085988817ce2c46d1c2b32c11066fedda9)) - Karl Hans Laurits
+#### Miscellaneous Chores
+- (**mise**) Update hatchctl tool version - ([af8aa53](https://github.com/lauritsk/hatchctl/commit/af8aa53ee58bd14a826412d6f34e95502d7da016)) - Karl Hans Laurits
+
+- - -
+
 ## [v0.6.17](https://github.com/lauritsk/hatchctl/compare/e0c51207336287928c65b9aaea91c33f4eba3cae..v0.6.17) - 2026-04-12
 #### Bug Fixes
 - (**devcontainer**) Mount mise volumes in dev home - ([3143c75](https://github.com/lauritsk/hatchctl/commit/3143c75897ae5d87e46b1c96c7537ea03cae0fc7)) - Karl Hans Laurits
