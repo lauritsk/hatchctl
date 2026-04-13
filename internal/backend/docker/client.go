@@ -137,7 +137,7 @@ func (e *Error) ExitCode() (int, bool) {
 
 func (e *Error) NotFound() bool {
 	message := strings.ToLower(e.Stderr)
-	return strings.Contains(message, "no such") || strings.Contains(message, "not found")
+	return strings.Contains(message, "no such") || strings.Contains(message, "not found") || strings.Contains(message, "not known")
 }
 
 func (c *Client) InspectImage(ctx context.Context, image string) (backend.ImageInspect, error) {

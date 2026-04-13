@@ -156,3 +156,12 @@ func TestProjectConfigUsesExternalComposeBinary(t *testing.T) {
 		t.Fatalf("unexpected config %#v", config)
 	}
 }
+
+func TestErrorNotFoundMatchesPodmanMessage(t *testing.T) {
+	t.Parallel()
+
+	err := &Error{Binary: "podman", Stderr: "[]\nError: alpine:3.23: image not known", Err: errors.New("exit status 125")}
+	if !err.NotFound() {
+		t.Fatal("expected podman image not known error to count as not found")
+	}
+}
