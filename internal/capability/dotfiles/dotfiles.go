@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/lauritsk/hatchctl/internal/capability"
+	"github.com/lauritsk/hatchctl/internal/spec"
 	storefs "github.com/lauritsk/hatchctl/internal/store/fs"
 )
 
@@ -166,9 +167,9 @@ func StatusFor(state storefs.WorkspaceState, cfg Config) *Status {
 		Configured:     cfg.Enabled(),
 		Applied:        state.DotfilesReady && state.DotfilesTransition == nil,
 		NeedsInstall:   cfg.Enabled() && !StateMatches(state, cfg),
-		Repository:     firstNonEmpty(cfg.Repository, state.DotfilesRepo),
-		InstallCommand: firstNonEmpty(cfg.InstallCommand, state.DotfilesInstall),
-		TargetPath:     firstNonEmpty(cfg.TargetPath, state.DotfilesTarget),
+		Repository:     spec.FirstNonEmptyString(cfg.Repository, state.DotfilesRepo),
+		InstallCommand: spec.FirstNonEmptyString(cfg.InstallCommand, state.DotfilesInstall),
+		TargetPath:     spec.FirstNonEmptyString(cfg.TargetPath, state.DotfilesTarget),
 	}
 }
 
@@ -181,13 +182,4 @@ func guessedRepository(host string, owner string, repo string) string {
 		host = "git.sr.ht"
 	}
 	return "https://" + host + "/" + owner + "/" + repo + ".git"
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if value != "" {
-			return value
-		}
-	}
-	return ""
 }

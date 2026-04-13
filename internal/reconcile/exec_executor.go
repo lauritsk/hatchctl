@@ -7,6 +7,7 @@ import (
 
 	"github.com/lauritsk/hatchctl/internal/backend"
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
+	"github.com/lauritsk/hatchctl/internal/spec"
 )
 
 const passwdFilePath = "/etc/passwd"
@@ -36,11 +37,11 @@ func (e *Executor) execCommand(ctx context.Context, observed ObservedState, user
 	if err != nil {
 		return nil, err
 	}
-	return []string{firstNonEmpty(shell, "/bin/sh")}, nil
+	return []string{spec.FirstNonEmptyString(shell, "/bin/sh")}, nil
 }
 
 func (e *Executor) effectiveExecUser(ctx context.Context, observed ObservedState) (string, error) {
-	if user := firstNonEmpty(observed.Resolved.Merged.RemoteUser, observed.Resolved.Merged.ContainerUser); user != "" {
+	if user := spec.FirstNonEmptyString(observed.Resolved.Merged.RemoteUser, observed.Resolved.Merged.ContainerUser); user != "" {
 		return user, nil
 	}
 	if observed.Container != nil {
@@ -104,7 +105,7 @@ func (e *Executor) lookupExecUserEntry(ctx context.Context, observed ObservedSta
 	containerID := observed.Target.PrimaryContainer
 	passwd, err := e.engine.ExecOutput(ctx, backend.ExecRequest{ContainerID: containerID, User: user, Command: []string{"cat", passwdFilePath}})
 	if err != nil {
-		return passwdEntry{}, false, fmt.Errorf("resolve passwd entry for container user %q: %w", firstNonEmpty(user, "default"), err)
+		return passwdEntry{}, false, fmt.Errorf("resolve passwd entry for container user %q: %w", spec.FirstNonEmptyString(user, "default"), err)
 	}
 	entry, found := passwdEntryFromPasswd(passwd, user)
 	return entry, found, nil
@@ -140,8 +141,8 @@ func passwdLookup(user string) (string, string) {
 	if before, _, ok := strings.Cut(user, ":"); ok {
 		name = before
 	}
-	name = firstNonEmpty(name, "root")
-	if isNumericUser(name) {
+	name = spec.FirstNonEmptyString(name, "root")
+	if spec.IsNumericString(name) {
 		return "", name
 	}
 	return name, ""
@@ -160,14 +161,14 @@ func fallbackExecHome(observed ObservedState, user string) string {
 	if uid == "0" || name == "root" {
 		return "/root"
 	}
-	if name != "" && !isNumericUser(name) {
+	if name != "" && !spec.IsNumericString(name) {
 		return "/home/" + name
 	}
 	return ""
 }
 
 func effectiveRemoteUserFromContainerInspect(inspect *backend.ContainerInspect, resolved devcontainer.ResolvedConfig) string {
-	if user := firstNonEmpty(resolved.Merged.RemoteUser, resolved.Merged.ContainerUser); user != "" {
+	if user := spec.FirstNonEmptyString(resolved.Merged.RemoteUser, resolved.Merged.ContainerUser); user != "" {
 		return user
 	}
 	if inspect != nil {

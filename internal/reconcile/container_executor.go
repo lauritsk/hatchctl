@@ -132,7 +132,7 @@ func (e *Executor) readManagedContainerState(ctx context.Context, prepared prepa
 		return nil, err
 	}
 	merged := mergedConfigWithRuntimeMetadata(prepared.resolved, inspect.Image, metadata)
-	effectiveUser := firstNonEmpty(merged.RemoteUser, merged.ContainerUser, inspect.Config.User)
+	effectiveUser := spec.FirstNonEmptyString(merged.RemoteUser, merged.ContainerUser, inspect.Config.User)
 	return &ManagedContainer{
 		ID:            inspect.ID,
 		Name:          strings.TrimPrefix(inspect.Name, "/"),
@@ -166,33 +166,12 @@ func envListToMap(values []string) map[string]string {
 	return result
 }
 
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if value != "" {
-			return value
-		}
-	}
-	return ""
-}
-
 func (e *Executor) selectBestContainerID(ctx context.Context, output string) (string, error) {
 	best, err := selectBestContainer(ctx, output, inspectContainerWithEngine(e.engine))
 	if err != nil {
 		return "", err
 	}
 	return best.ID, nil
-}
-
-func isNumericUser(value string) bool {
-	if value == "" {
-		return false
-	}
-	for _, r := range value {
-		if r < '0' || r > '9' {
-			return false
-		}
-	}
-	return true
 }
 
 func (e *Executor) createContainer(ctx context.Context, resolved devcontainer.ResolvedConfig, image string, containerKey string, bridgeEnabled bool, sshAgent bool, events ui.Sink) (string, error) {
@@ -235,7 +214,7 @@ func (e *Executor) readComposeConfig(ctx context.Context, resolved *devcontainer
 	if resolved == nil {
 		return backend.ProjectConfig{}, nil
 	}
-	config, err := e.engine.ProjectConfig(ctx, backend.ProjectConfigRequest{Target: backend.ProjectTarget{Files: resolved.ComposeFiles, Project: resolved.ComposeProject, Service: resolved.ComposeService, Dir: resolved.ConfigDir}})
+	config, err := e.engine.ProjectConfig(ctx, backend.ProjectConfigRequest{Target: composeTarget(*resolved)})
 	if err != nil {
 		return backend.ProjectConfig{}, err
 	}
@@ -246,7 +225,7 @@ func (e *Executor) readComposeConfig(ctx context.Context, resolved *devcontainer
 }
 
 func (e *Executor) findComposeContainer(ctx context.Context, resolved devcontainer.ResolvedConfig) (string, error) {
-	_, primary, err := e.engine.ProjectContainers(ctx, backend.ProjectContainersRequest{Target: backend.ProjectTarget{Files: resolved.ComposeFiles, Project: resolved.ComposeProject, Service: resolved.ComposeService, Dir: resolved.ConfigDir}})
+	_, primary, err := e.engine.ProjectContainers(ctx, backend.ProjectContainersRequest{Target: composeTarget(resolved)})
 	if err != nil {
 		return "", err
 	}

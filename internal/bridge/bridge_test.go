@@ -35,6 +35,19 @@ func TestReportFromSession(t *testing.T) {
 	if report == nil || report.ID != session.ID || report.Backend != session.Backend || report.HelperPath != session.HelperPath || report.Status != "running" {
 		t.Fatalf("unexpected report %#v", report)
 	}
+	restored := SessionFromReport(report)
+	if restored == nil || restored.ID != session.ID || restored.Backend != session.Backend || restored.HelperPath != session.HelperPath || restored.Status != session.Status {
+		t.Fatalf("unexpected restored session %#v", restored)
+	}
+}
+
+func TestNormalizeHostsDeduplicatesAndTrims(t *testing.T) {
+	t.Parallel()
+
+	hosts := NormalizeHosts([]string{" host.docker.internal ", ""}, []string{"host.containers.internal", "host.docker.internal"})
+	if got := strings.Join(hosts, ","); got != "host.docker.internal,host.containers.internal" {
+		t.Fatalf("unexpected normalized hosts %q", got)
+	}
 }
 
 func TestPreviewReturnsNilWhenDisabledOrMissing(t *testing.T) {

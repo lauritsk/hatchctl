@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"strings"
 
 	"github.com/lauritsk/hatchctl/internal/backend"
 	"github.com/lauritsk/hatchctl/internal/bridge"
@@ -73,27 +72,10 @@ func (e *Executor) ensureBackendSupport(resolved devcontainer.ResolvedConfig, br
 func bridgeHostsForBackend(backendID string, primary string) []string {
 	switch backendID {
 	case "podman":
-		return uniqueBridgeHosts(primary, "host.containers.internal", "host.docker.internal")
+		return bridge.NormalizeHosts([]string{primary}, []string{"host.containers.internal", "host.docker.internal"})
 	default:
-		return uniqueBridgeHosts(primary, "host.docker.internal", "host.containers.internal")
+		return bridge.NormalizeHosts([]string{primary}, []string{"host.docker.internal", "host.containers.internal"})
 	}
-}
-
-func uniqueBridgeHosts(hosts ...string) []string {
-	seen := map[string]struct{}{}
-	result := make([]string, 0, len(hosts))
-	for _, host := range hosts {
-		host = strings.TrimSpace(host)
-		if host == "" {
-			continue
-		}
-		if _, ok := seen[host]; ok {
-			continue
-		}
-		seen[host] = struct{}{}
-		result = append(result, host)
-	}
-	return result
 }
 
 func (e *Executor) Up(ctx context.Context, workspacePlan workspaceplan.WorkspacePlan, opts UpOptions) (UpResult, error) {
@@ -395,7 +377,7 @@ func (e *Executor) ReadConfig(ctx context.Context, workspacePlan workspaceplan.W
 		if err != nil {
 			return ReadConfigResult{}, err
 		}
-		resolved.Merged = bridgecap.Inject(reportSession(report), resolved.Merged)
+		resolved.Merged = bridgecap.Inject(bridge.SessionFromReport(&report), resolved.Merged)
 		bridgeReport = &report
 	}
 	session.SetResolved(resolved)
@@ -478,26 +460,4 @@ func (e *Executor) materializeWorkspace(ctx context.Context, workspacePlan works
 	}
 	workspacePlan = workspacePlan.WithResolved(resolved)
 	return workspacePlan, resolved, nil
-}
-
-func reportSession(report bridge.Report) *bridge.Session {
-	if !report.Enabled {
-		return nil
-	}
-	return &bridge.Session{
-		ID:         report.ID,
-		Backend:    report.Backend,
-		Enabled:    report.Enabled,
-		HelperArch: report.HelperArch,
-		Host:       report.Host,
-		Port:       report.Port,
-		StatePath:  report.StatePath,
-		ConfigPath: report.ConfigPath,
-		PIDPath:    report.PIDPath,
-		StatusPath: report.StatusPath,
-		HelperPath: report.HelperPath,
-		MountPath:  report.MountPath,
-		BinPath:    report.BinPath,
-		Status:     report.Status,
-	}
 }

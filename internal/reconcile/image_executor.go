@@ -324,8 +324,8 @@ func (e *Executor) ensureFeaturesImageFromBase(ctx context.Context, resolved dev
 	if err != nil {
 		return "", err
 	}
-	containerUser := firstNonEmpty(resolved.Merged.ContainerUser, imageUser, "root")
-	remoteUser := firstNonEmpty(resolved.Merged.RemoteUser, containerUser)
+	containerUser := spec.FirstNonEmptyString(resolved.Merged.ContainerUser, imageUser, "root")
+	remoteUser := spec.FirstNonEmptyString(resolved.Merged.RemoteUser, containerUser)
 	buildDir, err := storefs.ResetFeatureBuildDir(resolved.StateDir)
 	if err != nil {
 		return "", err
@@ -371,7 +371,7 @@ func (e *Executor) ensureComposeImage(ctx context.Context, resolved devcontainer
 	baseImage := service.Image
 	if service.Build.Enabled() {
 		stdout, stderr := e.progressWriters(events, phaseImage, fmt.Sprintf("Building compose service %s", resolved.ComposeService), e.stdout, e.stderr)
-		if err := e.engine.BuildProject(ctx, backend.ProjectBuildRequest{Target: backend.ProjectTarget{Files: resolved.ComposeFiles, Project: resolved.ComposeProject, Service: resolved.ComposeService, Dir: resolved.ConfigDir}, Services: []string{resolved.ComposeService}, Streams: backend.Streams{Stdout: stdout, Stderr: stderr}}); err != nil {
+		if err := e.engine.BuildProject(ctx, backend.ProjectBuildRequest{Target: composeTarget(resolved), Services: []string{resolved.ComposeService}, Streams: backend.Streams{Stdout: stdout, Stderr: stderr}}); err != nil {
 			return "", err
 		}
 		if baseImage == "" {

@@ -200,7 +200,7 @@ func (o *Observer) RevalidateReadToken(ctx context.Context, observed ObservedSta
 		return fmt.Errorf("%w: target container changed", ErrObservedStateStale)
 	}
 	if token.TargetKind == TargetKindComposeService {
-		_, primary, err := o.backend.ProjectContainers(ctx, backend.ProjectContainersRequest{Target: backend.ProjectTarget{Files: observed.Resolved.ComposeFiles, Project: observed.Resolved.ComposeProject, Service: observed.Resolved.ComposeService, Dir: observed.Resolved.ConfigDir}})
+		_, primary, err := o.backend.ProjectContainers(ctx, backend.ProjectContainersRequest{Target: composeTarget(observed.Resolved)})
 		if err != nil {
 			return err
 		}

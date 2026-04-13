@@ -5,6 +5,7 @@ import (
 
 	"github.com/lauritsk/hatchctl/internal/backend"
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
+	"github.com/lauritsk/hatchctl/internal/spec"
 )
 
 const UpdateScript = `set -eu
@@ -71,8 +72,8 @@ func Eligible(resolved devcontainer.ResolvedConfig, image backend.ImageInspect) 
 	if imageUser == "" {
 		imageUser = "root"
 	}
-	remoteUser := firstNonEmpty(resolved.Merged.RemoteUser, resolved.Merged.ContainerUser, imageUser)
-	if remoteUser == "" || remoteUser == "root" || isNumericUser(remoteUser) {
+	remoteUser := spec.FirstNonEmptyString(resolved.Merged.RemoteUser, resolved.Merged.ContainerUser, imageUser)
+	if remoteUser == "" || remoteUser == "root" || spec.IsNumericString(remoteUser) {
 		return "", false
 	}
 	return remoteUser, true
@@ -80,25 +81,4 @@ func Eligible(resolved devcontainer.ResolvedConfig, image backend.ImageInspect) 
 
 func ExecArgs(containerID string, remoteUser string, uid int, gid int) []string {
 	return []string{"exec", "-i", "-u", "root", containerID, "sh", "-s", "--", remoteUser, fmt.Sprintf("%d", uid), fmt.Sprintf("%d", gid)}
-}
-
-func isNumericUser(value string) bool {
-	if value == "" {
-		return false
-	}
-	for _, r := range value {
-		if r < '0' || r > '9' {
-			return false
-		}
-	}
-	return true
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if value != "" {
-			return value
-		}
-	}
-	return ""
 }
