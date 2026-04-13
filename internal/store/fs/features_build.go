@@ -3,8 +3,6 @@ package fs
 import (
 	"os"
 	"path/filepath"
-
-	"github.com/lauritsk/hatchctl/internal/fileutil"
 )
 
 func FeatureBuildDir(stateDir string) string {
@@ -23,10 +21,7 @@ func ResetFeatureBuildDir(stateDir string) (string, error) {
 }
 
 func WriteFeatureBuildFile(path string, data []byte, mode os.FileMode) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	return fileutil.WriteFile(path, data, mode)
+	return writeFile(path, data, 0o755, mode)
 }
 
 func CopyFeatureSource(src string, dst string) error {

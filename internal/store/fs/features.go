@@ -69,36 +69,10 @@ func ReadFeatureLockFile(configPath string) (FeatureLockFile, bool, error) {
 
 func WriteFeatureLockFile(configPath string, lock FeatureLockFile) error {
 	path := FeatureLockFilePath(configPath)
-	if len(lock) == 0 {
-		if err := fileutil.RemoveFile(path); err != nil {
-			return err
-		}
-		return nil
-	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	data, err := json.MarshalIndent(lock, "", "  ")
-	if err != nil {
-		return err
-	}
-	return fileutil.WriteFile(path, data, 0o644)
+	return writeOptionalJSON(path, len(lock) == 0, lock, 0o755, 0o644)
 }
 
 func WriteFeatureStateFile(stateDir string, state FeatureStateFile) error {
 	path := filepath.Join(stateDir, "features-lock.json")
-	if len(state.Features) == 0 {
-		if err := fileutil.RemoveFile(path); err != nil {
-			return err
-		}
-		return nil
-	}
-	if err := os.MkdirAll(stateDir, 0o700); err != nil {
-		return err
-	}
-	data, err := json.MarshalIndent(state, "", "  ")
-	if err != nil {
-		return err
-	}
-	return fileutil.WriteFile(path, data, 0o600)
+	return writeOptionalJSON(path, len(state.Features) == 0, state, 0o700, 0o600)
 }

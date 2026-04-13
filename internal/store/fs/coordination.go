@@ -10,8 +10,6 @@ import (
 	"sync"
 	"syscall"
 	"time"
-
-	"github.com/lauritsk/hatchctl/internal/fileutil"
 )
 
 const (
@@ -235,14 +233,7 @@ func readCoordination(stateDir string) (CoordinationRecord, error) {
 }
 
 func writeCoordination(stateDir string, record CoordinationRecord) error {
-	if err := os.MkdirAll(stateDir, 0o700); err != nil {
-		return err
-	}
-	data, err := json.MarshalIndent(record, "", "  ")
-	if err != nil {
-		return err
-	}
-	return fileutil.WriteFile(filepath.Join(stateDir, "coordination.json"), data, 0o600)
+	return writeJSON(filepath.Join(stateDir, "coordination.json"), record, 0o700, 0o600)
 }
 
 func activeWorkspaceOwner(stateDir string) (*ActiveOwner, error) {

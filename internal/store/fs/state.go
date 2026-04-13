@@ -62,16 +62,8 @@ func ReadWorkspaceState(stateDir string) (WorkspaceState, error) {
 }
 
 func WriteWorkspaceState(stateDir string, state WorkspaceState) error {
-	if err := EnsureWorkspaceStateDir(stateDir); err != nil {
-		return err
-	}
-	path := filepath.Join(stateDir, "state.json")
 	if state.Version == 0 {
 		state.Version = workspaceStateSchemaVersion
 	}
-	data, err := json.MarshalIndent(state, "", "  ")
-	if err != nil {
-		return err
-	}
-	return fileutil.WriteFile(path, data, 0o600)
+	return writeJSON(filepath.Join(stateDir, "state.json"), state, 0o700, 0o600)
 }

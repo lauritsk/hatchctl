@@ -42,10 +42,7 @@ func EnsureWorkspaceBridgePaths(stateDir string) (BridgePaths, error) {
 }
 
 func WriteBridgeExecutable(path string, data []byte) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	return fileutil.WriteFile(path, data, 0o755)
+	return writeFile(path, data, 0o755, 0o755)
 }
 
 func ReadBridgeSession[T any](bridgeDir string) (*T, error) {
@@ -61,11 +58,7 @@ func ReadBridgeSession[T any](bridgeDir string) (*T, error) {
 }
 
 func WriteBridgeSession(bridgeDir string, session any) error {
-	data, err := json.MarshalIndent(session, "", "  ")
-	if err != nil {
-		return err
-	}
-	return fileutil.WriteFile(filepath.Join(bridgeDir, "session.json"), data, 0o600)
+	return writeJSON(filepath.Join(bridgeDir, "session.json"), session, 0o700, 0o600)
 }
 
 func ReadBridgePID(pidPath string) (int, error) {
@@ -81,26 +74,15 @@ func ReadBridgePID(pidPath string) (int, error) {
 }
 
 func WriteBridgePID(pidPath string, pid int) error {
-	return fileutil.WriteFile(pidPath, []byte(strconv.Itoa(pid)), 0o600)
+	return writeFile(pidPath, []byte(strconv.Itoa(pid)), 0o700, 0o600)
 }
 
 func WriteBridgeConfig(configPath string, config any) error {
-	data, err := json.MarshalIndent(config, "", "  ")
-	if err != nil {
-		return err
-	}
-	return fileutil.WriteFile(configPath, data, 0o600)
+	return writeJSON(configPath, config, 0o700, 0o600)
 }
 
 func WriteBridgeStatus(statusPath string, status any) error {
-	data, err := json.MarshalIndent(status, "", "  ")
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(filepath.Dir(statusPath), 0o700); err != nil {
-		return err
-	}
-	return fileutil.WriteFile(statusPath, data, 0o600)
+	return writeJSON(statusPath, status, 0o700, 0o600)
 }
 
 func ReadBridgeStatus(statusPath string) ([]byte, error) {

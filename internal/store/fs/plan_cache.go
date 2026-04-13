@@ -39,12 +39,5 @@ func ReadResolvedPlanCache[T any](cacheDir string, key string, version int, vali
 }
 
 func WriteResolvedPlanCache[T any](cacheDir string, key string, version int, resolved T) error {
-	if err := os.MkdirAll(cacheDir, 0o700); err != nil {
-		return err
-	}
-	data, err := json.MarshalIndent(resolvedPlanCache[T]{Version: version, Key: key, Resolved: resolved}, "", "  ")
-	if err != nil {
-		return err
-	}
-	return fileutil.WriteFile(filepath.Join(cacheDir, "resolved-plan.json"), data, 0o600)
+	return writeJSON(filepath.Join(cacheDir, "resolved-plan.json"), resolvedPlanCache[T]{Version: version, Key: key, Resolved: resolved}, 0o700, 0o600)
 }
