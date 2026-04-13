@@ -97,6 +97,10 @@ func (c *Client) ID() string {
 	return c.runtimeID
 }
 
+func (c *Client) Capabilities() backend.Capabilities {
+	return backend.Capabilities{Bridge: true, ProjectServices: true}
+}
+
 func (c *Client) BuildDefinitionFileName() string {
 	if c.buildDefinitionFile == "" {
 		return "Dockerfile"

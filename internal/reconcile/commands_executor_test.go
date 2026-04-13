@@ -26,6 +26,7 @@ import (
 )
 
 type fakeExecutorEngine struct {
+	capabilities         backend.Capabilities
 	inspectImageFunc     func(context.Context, dockercli.InspectImageRequest) (docker.ImageInspect, error)
 	inspectContainerFunc func(context.Context, dockercli.InspectContainerRequest) (docker.ContainerInspect, error)
 	buildImageFunc       func(context.Context, dockercli.BuildImageRequest) error
@@ -42,6 +43,13 @@ type fakeExecutorEngine struct {
 }
 
 func (f *fakeExecutorEngine) ID() string { return "docker" }
+
+func (f *fakeExecutorEngine) Capabilities() backend.Capabilities {
+	if f.capabilities == (backend.Capabilities{}) {
+		return backend.Capabilities{Bridge: true, ProjectServices: true}
+	}
+	return f.capabilities
+}
 
 func (f *fakeExecutorEngine) BridgeHost() string { return "host.docker.internal" }
 
@@ -784,6 +792,50 @@ func TestBuildPersistsTrustedRefsToWorkspaceState(t *testing.T) {
 	}
 	if len(state.TrustedRefs) != 1 || state.TrustedRefs[0] != trustedRef {
 		t.Fatalf("expected trusted refs to persist, got %#v", state.TrustedRefs)
+	}
+}
+
+func TestBuildRejectsUnsupportedComposeBackend(t *testing.T) {
+	t.Parallel()
+
+	resolvedConfig := testResolvedConfig(testResolvedConfigOptions{
+		configDir:  t.TempDir(),
+		stateDir:   t.TempDir(),
+		cacheDir:   t.TempDir(),
+		config:     spec.Config{Service: "app", WorkspaceFolder: "/workspaces/demo"},
+		sourceKind: "compose",
+	})
+	resolvedConfig.ComposeFiles = []string{"compose.yml"}
+	resolvedConfig.ComposeProject = "demo"
+	resolvedConfig.ComposeService = "app"
+
+	executor := NewExecutorWithIO(nil, nil, io.Discard, io.Discard)
+	executor.engine = &fakeExecutorEngine{capabilities: backend.Capabilities{Bridge: true, ProjectServices: false}}
+	executor.planner = writableResolvedResolver(resolvedConfig)
+
+	_, err := executor.Build(context.Background(), workspaceplan.WorkspacePlan{Trust: workspaceplan.TrustPlan{WorkspaceAllowed: true}}, BuildOptions{})
+	var unsupported backend.UnsupportedCapabilityError
+	if !errors.As(err, &unsupported) {
+		t.Fatalf("expected unsupported capability error, got %v", err)
+	}
+	if unsupported.Capability != "compose-based devcontainers" {
+		t.Fatalf("unexpected capability %#v", unsupported)
+	}
+}
+
+func TestEnsureBackendSupportRejectsUnsupportedBridge(t *testing.T) {
+	t.Parallel()
+
+	executor := NewExecutorWithIO(nil, nil, io.Discard, io.Discard)
+	executor.engine = &fakeExecutorEngine{capabilities: backend.Capabilities{Bridge: false, ProjectServices: true}}
+
+	err := executor.ensureBackendSupport(testResolvedConfig(testResolvedConfigOptions{configDir: t.TempDir(), stateDir: t.TempDir(), cacheDir: t.TempDir(), config: spec.Config{Image: "alpine:3.23"}}), true)
+	var unsupported backend.UnsupportedCapabilityError
+	if !errors.As(err, &unsupported) {
+		t.Fatalf("expected unsupported capability error, got %v", err)
+	}
+	if unsupported.Capability != "bridge integration" {
+		t.Fatalf("unexpected capability %#v", unsupported)
 	}
 }
 

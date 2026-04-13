@@ -193,8 +193,14 @@ type ProjectVolumeMount struct {
 	Subpath string
 }
 
+type Capabilities struct {
+	Bridge          bool
+	ProjectServices bool
+}
+
 type Client interface {
 	ID() string
+	Capabilities() Capabilities
 	BridgeHost() string
 	BuildDefinitionFileName() string
 	InspectImage(context.Context, string) (ImageInspect, error)
@@ -249,4 +255,13 @@ type UnsupportedBackendError struct {
 
 func (e UnsupportedBackendError) Error() string {
 	return fmt.Sprintf("unsupported backend %q", e.Name)
+}
+
+type UnsupportedCapabilityError struct {
+	Backend    string
+	Capability string
+}
+
+func (e UnsupportedCapabilityError) Error() string {
+	return fmt.Sprintf("backend %q does not support %s", e.Backend, e.Capability)
 }

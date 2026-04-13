@@ -58,6 +58,17 @@ type BridgeDoctorOptions struct {
 	IO    CommandStreams
 }
 
+func (e *Executor) ensureBackendSupport(resolved devcontainer.ResolvedConfig, bridgeEnabled bool) error {
+	caps := e.engine.Capabilities()
+	if resolved.SourceKind == "compose" && !caps.ProjectServices {
+		return backend.UnsupportedCapabilityError{Backend: e.engine.ID(), Capability: "compose-based devcontainers"}
+	}
+	if bridgeEnabled && !caps.Bridge {
+		return backend.UnsupportedCapabilityError{Backend: e.engine.ID(), Capability: "bridge integration"}
+	}
+	return nil
+}
+
 func (e *Executor) Up(ctx context.Context, workspacePlan workspaceplan.WorkspacePlan, opts UpOptions) (UpResult, error) {
 	executor := e.cloneWithIO(opts.IO.Stdin, opts.IO.Stdout, opts.IO.Stderr)
 	session, resolved, dotfiles, tracker, workspacePlan, err := executor.prepareUp(ctx, workspacePlan, opts)
@@ -107,6 +118,9 @@ func (e *Executor) prepareUp(ctx context.Context, workspacePlan workspaceplan.Wo
 	}
 	resolved = session.Resolved()
 	if err := policy.EnsureWorkspaceTrust(resolved, workspacePlan.Trust.WorkspaceAllowed); err != nil {
+		return nil, devcontainer.ResolvedConfig{}, capdot.Config{}, nil, workspaceplan.WorkspacePlan{}, err
+	}
+	if err := e.ensureBackendSupport(resolved, workspacePlan.Capabilities.Bridge.Enabled); err != nil {
 		return nil, devcontainer.ResolvedConfig{}, capdot.Config{}, nil, workspaceplan.WorkspacePlan{}, err
 	}
 	if err := storefs.EnsureWorkspaceStateDir(resolved.StateDir); err != nil {
@@ -227,6 +241,9 @@ func (e *Executor) Build(ctx context.Context, workspacePlan workspaceplan.Worksp
 	if err := policy.EnsureWorkspaceTrust(resolved, workspacePlan.Trust.WorkspaceAllowed); err != nil {
 		return BuildResult{}, err
 	}
+	if err := executor.ensureBackendSupport(resolved, false); err != nil {
+		return BuildResult{}, err
+	}
 	executor.emitPhaseProgress(opts.IO.Events, phaseImage, "Reconciling container image")
 	image, _, err := executor.ReconcileImage(ctx, workspacePlan, resolved, opts.IO.Events)
 	if err != nil {
@@ -246,6 +263,9 @@ func (e *Executor) Exec(ctx context.Context, workspacePlan workspaceplan.Workspa
 	executor := e.cloneWithIO(opts.IO.Stdin, opts.IO.Stdout, opts.IO.Stderr)
 	workspacePlan, resolved, err := executor.materializeWorkspace(ctx, workspacePlan, opts.Debug, opts.IO.Events, phaseResolve, "Resolving development container")
 	if err != nil {
+		return 0, err
+	}
+	if err := executor.ensureBackendSupport(resolved, false); err != nil {
 		return 0, err
 	}
 	session, err := executor.PrepareObservedSession(ctx, ObservedSessionOptions{Plan: workspacePlan, Resolved: resolved, Debug: opts.Debug, Events: opts.IO.Events, FindContainer: true, InspectContainer: true})
@@ -327,6 +347,9 @@ func (e *Executor) ReadConfig(ctx context.Context, workspacePlan workspaceplan.W
 	if err != nil {
 		return ReadConfigResult{}, err
 	}
+	if err := executor.ensureBackendSupport(resolved, false); err != nil {
+		return ReadConfigResult{}, err
+	}
 	session, err := executor.PrepareObservedSession(ctx, ObservedSessionOptions{Plan: workspacePlan, Resolved: resolved, Debug: opts.Debug, Events: opts.IO.Events, LoadState: true, FindContainer: true, AllowMissingContainer: true, InspectContainer: true})
 	if err != nil {
 		return ReadConfigResult{}, err
@@ -390,6 +413,9 @@ func (e *Executor) RunLifecycle(ctx context.Context, workspacePlan workspaceplan
 	}
 	workspacePlan, resolved, err := executor.materializeWorkspace(ctx, workspacePlan, opts.Debug, opts.IO.Events, phaseResolve, "Resolving development container")
 	if err != nil {
+		return RunLifecycleResult{}, err
+	}
+	if err := executor.ensureBackendSupport(resolved, false); err != nil {
 		return RunLifecycleResult{}, err
 	}
 	session, err := executor.PrepareObservedSession(ctx, ObservedSessionOptions{Plan: workspacePlan, Resolved: resolved, Debug: opts.Debug, Events: opts.IO.Events, Enrich: true, FindContainer: true, LoadState: true})
