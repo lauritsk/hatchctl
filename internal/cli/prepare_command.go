@@ -15,6 +15,9 @@ func (a *App) newRenderer(jsonOut bool) *ui.Renderer {
 }
 
 func (a *App) resolveDefaults(cmd *cobra.Command, workspace string, configPath string, featureTimeout time.Duration, lockfilePolicy string, bridgeEnabled *bool, trustWorkspace *bool, sshAgent *bool, dotfiles appcore.DotfilesOptions) (appcore.CommandDefaults, error) {
+	if globalBackend := cmd.Flag("backend"); globalBackend != nil && globalBackend.Value.String() != "" {
+		_ = cmd.Flags().Set("backend", globalBackend.Value.String())
+	}
 	return appcore.ResolveDefaults(resolveDefaultsRequest(cmd, workspace, configPath, featureTimeout, lockfilePolicy, bridgeEnabled, trustWorkspace, sshAgent, dotfiles))
 }
 

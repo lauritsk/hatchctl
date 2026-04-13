@@ -3,8 +3,8 @@ package uidremap
 import (
 	"fmt"
 
+	"github.com/lauritsk/hatchctl/internal/backend"
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
-	"github.com/lauritsk/hatchctl/internal/docker"
 )
 
 const UpdateScript = `set -eu
@@ -63,7 +63,7 @@ func Desired(resolved devcontainer.ResolvedConfig) bool {
 	return resolved.Merged.UpdateRemoteUserUID == nil || *resolved.Merged.UpdateRemoteUserUID
 }
 
-func Eligible(resolved devcontainer.ResolvedConfig, image docker.ImageInspect) (string, bool) {
+func Eligible(resolved devcontainer.ResolvedConfig, image backend.ImageInspect) (string, bool) {
 	if !Desired(resolved) {
 		return "", false
 	}

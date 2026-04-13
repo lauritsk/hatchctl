@@ -21,6 +21,7 @@ import (
 
 type Session struct {
 	ID         string `json:"id"`
+	Backend    string `json:"backend,omitempty"`
 	Enabled    bool   `json:"enabled"`
 	HelperArch string `json:"helperArch,omitempty"`
 	Host       string `json:"host,omitempty"`
@@ -38,6 +39,7 @@ type Session struct {
 
 type Report struct {
 	ID         string `json:"id"`
+	Backend    string `json:"backend,omitempty"`
 	Enabled    bool   `json:"enabled"`
 	HelperArch string `json:"helperArch,omitempty"`
 	Host       string `json:"host,omitempty"`
@@ -58,6 +60,7 @@ func ReportFromSession(session *Session) *Report {
 	}
 	return &Report{
 		ID:         session.ID,
+		Backend:    session.Backend,
 		Enabled:    session.Enabled,
 		HelperArch: session.HelperArch,
 		Host:       session.Host,
@@ -76,10 +79,10 @@ func ReportFromSession(session *Session) *Report {
 const (
 	containerBridgeMountPath = "/var/run/hatchctl/bridge"
 	helperBinaryEnvVar       = "HATCHCTL_BRIDGE_HELPER"
-	containerBridgeHost      = "host.docker.internal"
+	defaultBridgeHost        = "host.docker.internal"
 )
 
-func Prepare(stateDir string, enabled bool, helperArch string) (*Session, error) {
+func Prepare(stateDir string, enabled bool, helperArch string, backendID string, bridgeHost string) (*Session, error) {
 	paths, err := storefs.EnsureWorkspaceBridgePaths(stateDir)
 	if err != nil {
 		return nil, err
@@ -92,7 +95,10 @@ func Prepare(stateDir string, enabled bool, helperArch string) (*Session, error)
 	binPath := paths.BinDir
 	helperPath := filepath.Join(binPath, "devcontainer-open")
 	if session.Host == "" {
-		session.Host = containerBridgeHost
+		session.Host = valueOrDefault(bridgeHost, defaultBridgeHost)
+	}
+	if backendID != "" {
+		session.Backend = backendID
 	}
 	if session.Port == 0 {
 		port, err := reserveBridgePort()
@@ -195,6 +201,7 @@ func Doctor(stateDir string) (Report, error) {
 	}
 	return Report{
 		ID:         valueOrDefault(sessionID(session), storefs.ContainerName(stateDir, helperPath)),
+		Backend:    sessionBackend(session),
 		Enabled:    enabled,
 		HelperArch: sessionHelperArch(session),
 		Host:       sessionHost(session),
@@ -332,6 +339,13 @@ func sessionHost(session *Session) string {
 		return ""
 	}
 	return session.Host
+}
+
+func sessionBackend(session *Session) string {
+	if session == nil {
+		return ""
+	}
+	return session.Backend
 }
 
 func sessionPort(session *Session) int {

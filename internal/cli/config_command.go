@@ -107,9 +107,9 @@ func formatSourceKind(value string) string {
 	case "image":
 		return "Image"
 	case "dockerfile":
-		return "Dockerfile"
+		return "Build File"
 	case "compose":
-		return "Compose"
+		return "Project Service"
 	default:
 		return value
 	}

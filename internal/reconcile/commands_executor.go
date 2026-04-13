@@ -2,17 +2,15 @@ package reconcile
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 
+	"github.com/lauritsk/hatchctl/internal/backend"
 	"github.com/lauritsk/hatchctl/internal/bridge"
 	bridgecap "github.com/lauritsk/hatchctl/internal/capability/bridge"
 	capdot "github.com/lauritsk/hatchctl/internal/capability/dotfiles"
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	ui "github.com/lauritsk/hatchctl/internal/display"
-	"github.com/lauritsk/hatchctl/internal/docker"
-	"github.com/lauritsk/hatchctl/internal/engine/dockercli"
 	workspaceplan "github.com/lauritsk/hatchctl/internal/plan"
 	"github.com/lauritsk/hatchctl/internal/policy"
 	"github.com/lauritsk/hatchctl/internal/spec"
@@ -152,7 +150,7 @@ func (e *Executor) prepareUpBridge(ctx context.Context, stateDir string, image s
 	if err != nil {
 		return nil, err
 	}
-	return bridgecap.Prepare(stateDir, helperArch)
+	return bridgecap.Prepare(stateDir, helperArch, e.engine.ID(), e.engine.BridgeHost())
 }
 
 func (e *Executor) reconcileUpContainer(ctx context.Context, session *Session, tracker *StateTracker, workspacePlan workspaceplan.WorkspacePlan, resolved devcontainer.ResolvedConfig, image string, imagePlan ImagePlan, recreate bool, events ui.Sink) (string, string, bool, error) {
@@ -167,7 +165,7 @@ func (e *Executor) reconcileUpContainer(ctx context.Context, session *Session, t
 	}
 	session.SetState(tracker.State())
 	session.SetContainerID(containerID)
-	inspect, err := e.engine.InspectContainer(ctx, dockercli.InspectContainerRequest{ContainerID: containerID})
+	inspect, err := e.engine.InspectContainer(ctx, containerID)
 	if err != nil {
 		return "", "", false, err
 	}
@@ -272,7 +270,7 @@ func (e *Executor) Exec(ctx context.Context, workspacePlan workspaceplan.Workspa
 		}
 	}
 	interactive := ShouldAllocateTTY(opts.IO.Stdin, opts.IO.Stdout)
-	req, err := executor.DockerExecRequest(ctx, session.Observed(), opts.IO.Stdin != nil, interactive, opts.RemoteEnv, opts.Args, dockercli.Streams{Stdin: opts.IO.Stdin, Stdout: opts.IO.Stdout, Stderr: opts.IO.Stderr})
+	req, err := executor.ExecRequest(ctx, session.Observed(), opts.IO.Stdin != nil, interactive, opts.RemoteEnv, opts.Args, backend.Streams{Stdin: opts.IO.Stdin, Stdout: opts.IO.Stdout, Stderr: opts.IO.Stderr})
 	if err != nil {
 		return 0, err
 	}
@@ -288,11 +286,8 @@ func (e *Executor) Exec(ctx context.Context, workspacePlan workspaceplan.Workspa
 	if err == nil {
 		return 0, nil
 	}
-	var dockerErr *docker.Error
-	if errors.As(err, &dockerErr) {
-		if code, ok := dockerErr.ExitCode(); ok {
-			return code, nil
-		}
+	if code, ok := backend.ExitCode(err); ok {
+		return code, nil
 	}
 	return 0, err
 }
@@ -340,7 +335,7 @@ func (e *Executor) ReadConfig(ctx context.Context, workspacePlan workspaceplan.W
 	image := session.Image()
 	state := session.State()
 	if err := executor.EnrichMergedConfig(ctx, &resolved, image); err != nil {
-		if !docker.IsNotFound(err) {
+		if !backend.IsNotFound(err) {
 			return ReadConfigResult{}, err
 		}
 		resolved.Merged = spec.MergeMetadata(resolved.Config, featureMetadata(resolved.Features))
@@ -457,6 +452,7 @@ func reportSession(report bridge.Report) *bridge.Session {
 	}
 	return &bridge.Session{
 		ID:         report.ID,
+		Backend:    report.Backend,
 		Enabled:    report.Enabled,
 		HelperArch: report.HelperArch,
 		Host:       report.Host,

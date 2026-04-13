@@ -29,6 +29,7 @@ type DotfilesOptionValues struct {
 }
 
 type CommandDefaults struct {
+	Backend        string
 	Workspace      string
 	ConfigPath     string
 	StateDir       string
@@ -43,6 +44,7 @@ type CommandDefaults struct {
 }
 
 type ResolveDefaultsRequest struct {
+	Backend        FlagValue[string]
 	Workspace      FlagValue[string]
 	ConfigPath     FlagValue[string]
 	FeatureTimeout FlagValue[time.Duration]
@@ -92,6 +94,7 @@ func ResolveDefaults(req ResolveDefaultsRequest) (CommandDefaults, error) {
 	}
 
 	resolved := CommandDefaults{
+		Backend:        firstConfigured(req.Backend.Changed, req.Backend.Value, config.Backend),
 		Workspace:      resolveStringDefault(req.Workspace, loaded.User.Workspace, loaded.Workspace.Workspace, trustedWorkspace),
 		ConfigPath:     firstConfigured(req.ConfigPath.Changed, req.ConfigPath.Value, config.ConfigPath),
 		StateDir:       resolveStringDefault(FlagValue[string]{}, loaded.User.StateDir, loaded.Workspace.StateDir, trustedWorkspace),

@@ -57,7 +57,7 @@ func (a *App) newBuildCommand(global *globalOptions) *cobra.Command {
 	}
 	addWorkspaceFlags(cmd, &workspace, &configPath)
 	addResolutionFlags(cmd, &featureTimeout, &lockfilePolicy, "auto")
-	cmd.Flags().BoolVar(&trustWorkspace, "trust-workspace", trustWorkspace, "trust repo-controlled Docker mounts, privilege, and build settings")
+	cmd.Flags().BoolVar(&trustWorkspace, "trust-workspace", trustWorkspace, "trust repo-controlled backend mounts, privilege, and build settings")
 	addJSONFlag(cmd, &jsonOut)
 	return cmd
 }

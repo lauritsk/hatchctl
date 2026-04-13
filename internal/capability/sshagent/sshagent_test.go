@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/lauritsk/hatchctl/internal/backend"
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
-	"github.com/lauritsk/hatchctl/internal/docker"
 	"github.com/lauritsk/hatchctl/internal/spec"
 )
 
@@ -62,15 +62,15 @@ func TestMountSourceRequiresReadableSocket(t *testing.T) {
 func TestEnsureAttachedAcceptsLabelOrMount(t *testing.T) {
 	t.Parallel()
 
-	inspect := &docker.ContainerInspect{Config: docker.InspectConfig{Labels: map[string]string{devcontainer.SSHAgentLabel: "true"}}}
+	inspect := &backend.ContainerInspect{Config: backend.InspectConfig{Labels: map[string]string{devcontainer.SSHAgentLabel: "true"}}}
 	if err := EnsureAttached(inspect); err != nil {
 		t.Fatalf("expected labeled container to pass: %v", err)
 	}
-	inspect = &docker.ContainerInspect{Mounts: []docker.ContainerMount{{Destination: ContainerSocketPath}}}
+	inspect = &backend.ContainerInspect{Mounts: []backend.ContainerMount{{Destination: ContainerSocketPath}}}
 	if err := EnsureAttached(inspect); err != nil {
 		t.Fatalf("expected mounted container to pass: %v", err)
 	}
-	if err := EnsureAttached(&docker.ContainerInspect{}); err == nil {
+	if err := EnsureAttached(&backend.ContainerInspect{}); err == nil {
 		t.Fatal("expected missing ssh-agent passthrough to fail")
 	}
 }

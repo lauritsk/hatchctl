@@ -5,9 +5,10 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/lauritsk/hatchctl/internal/backend"
+	docker "github.com/lauritsk/hatchctl/internal/backend/testdocker"
+	dockercli "github.com/lauritsk/hatchctl/internal/backend/testdockercli"
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
-	"github.com/lauritsk/hatchctl/internal/docker"
-	"github.com/lauritsk/hatchctl/internal/engine/dockercli"
 	"github.com/lauritsk/hatchctl/internal/spec"
 )
 
@@ -66,7 +67,7 @@ func TestEffectiveExecUserPrefersMergedContainerAndInspect(t *testing.T) {
 	}
 
 	observed.Resolved.Merged.ContainerUser = ""
-	observed.Container = &docker.ContainerInspect{Config: docker.InspectConfig{User: "observed-user"}}
+	observed.Container = &backend.ContainerInspect{Config: backend.InspectConfig{User: "observed-user"}}
 	user, err = executor.effectiveExecUser(context.Background(), observed)
 	if err != nil || user != "observed-user" {
 		t.Fatalf("unexpected observed container user %q err=%v", user, err)
@@ -111,7 +112,7 @@ func TestExecCommandAndRemoteEnvUsePasswdFallbacks(t *testing.T) {
 	}
 }
 
-func TestExecRemoteEnvPreservesExplicitHomeAndDockerExecRequest(t *testing.T) {
+func TestExecRemoteEnvPreservesExplicitHomeAndExecRequest(t *testing.T) {
 	t.Parallel()
 
 	executor := &Executor{engine: &fakeExecutorEngine{execOutputFunc: func(_ context.Context, req dockercli.ExecRequest) (string, error) {
@@ -126,7 +127,7 @@ func TestExecRemoteEnvPreservesExplicitHomeAndDockerExecRequest(t *testing.T) {
 	if !reflect.DeepEqual(env, map[string]string{"HOME": "/custom", "REMOTE": "1", "EXTRA": "2"}) {
 		t.Fatalf("unexpected env with explicit HOME %#v", env)
 	}
-	req, err := executor.DockerExecRequest(context.Background(), observed, true, true, map[string]string{"EXTRA": "2"}, nil, dockercli.Streams{})
+	req, err := executor.ExecRequest(context.Background(), observed, true, true, map[string]string{"EXTRA": "2"}, nil, backend.Streams{})
 	if err != nil {
 		t.Fatalf("docker exec request: %v", err)
 	}
@@ -150,7 +151,7 @@ func TestExecFallsBackWhenPasswdEntryMissing(t *testing.T) {
 	observed := ObservedState{
 		Resolved:  devcontainer.ResolvedConfig{RemoteWorkspace: "/workspaces/demo", Merged: spec.MergedConfig{RemoteEnv: map[string]string{"REMOTE": "1"}}},
 		Target:    RuntimeTarget{PrimaryContainer: "container-123"},
-		Container: &docker.ContainerInspect{Config: docker.InspectConfig{Env: []string{"HOME=/fallback-home"}}},
+		Container: &backend.ContainerInspect{Config: backend.InspectConfig{Env: []string{"HOME=/fallback-home"}}},
 	}
 
 	command, err := executor.execCommand(context.Background(), observed, "vscode", nil)
@@ -169,19 +170,15 @@ func TestExecFallsBackWhenPasswdEntryMissing(t *testing.T) {
 	}
 }
 
-func TestExecArgsAndEffectiveRemoteUserHelpers(t *testing.T) {
+func TestEffectiveRemoteUserHelpers(t *testing.T) {
 	t.Parallel()
 
-	args := execArgs(dockercli.ExecRequest{ContainerID: "container-123", User: "vscode", Workdir: "/workspaces/demo", Interactive: true, TTY: true, Env: map[string]string{"B": "2", "A": "1"}, Command: []string{"pwd"}})
-	if !reflect.DeepEqual(args, []string{"exec", "-i", "-t", "-u", "vscode", "--workdir", "/workspaces/demo", "-e", "A=1", "-e", "B=2", "container-123", "pwd"}) {
-		t.Fatalf("unexpected exec args %#v", args)
-	}
 	resolved := devcontainer.ResolvedConfig{Merged: spec.MergedConfig{ContainerUser: "container-user"}}
-	if got := effectiveRemoteUserFromContainerInspect(&docker.ContainerInspect{Config: docker.InspectConfig{User: "inspect-user"}}, resolved); got != "container-user" {
+	if got := effectiveRemoteUserFromContainerInspect(&backend.ContainerInspect{Config: backend.InspectConfig{User: "inspect-user"}}, resolved); got != "container-user" {
 		t.Fatalf("unexpected effective remote user %q", got)
 	}
 	resolved.Merged.ContainerUser = ""
-	if got := effectiveRemoteUserFromContainerInspect(&docker.ContainerInspect{Config: docker.InspectConfig{User: "inspect-user"}}, resolved); got != "inspect-user" {
+	if got := effectiveRemoteUserFromContainerInspect(&backend.ContainerInspect{Config: backend.InspectConfig{User: "inspect-user"}}, resolved); got != "inspect-user" {
 		t.Fatalf("unexpected fallback remote user %q", got)
 	}
 	if got := effectiveRemoteUserFromContainerInspect(nil, devcontainer.ResolvedConfig{}); got != "" {

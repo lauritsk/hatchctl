@@ -519,7 +519,7 @@ func TestPrepareAndRuntimeFilesUseOwnerOnlyPermissions(t *testing.T) {
 	t.Setenv(helperBinaryEnvVar, helperPath)
 
 	stateDir := t.TempDir()
-	session, err := Prepare(stateDir, true, "amd64")
+	session, err := Prepare(stateDir, true, "amd64", "docker", defaultBridgeHost)
 	if err != nil {
 		t.Fatalf("prepare bridge session: %v", err)
 	}
@@ -567,7 +567,7 @@ func TestStartUpdatesSessionStatusInTestProcess(t *testing.T) {
 	t.Setenv(helperBinaryEnvVar, helperPath)
 
 	stateDir := t.TempDir()
-	session, err := Prepare(stateDir, true, "amd64")
+	session, err := Prepare(stateDir, true, "amd64", "docker", defaultBridgeHost)
 	if err != nil {
 		t.Fatalf("prepare bridge session: %v", err)
 	}
@@ -605,7 +605,7 @@ func TestServeRespondsToPingAndStopsOnCancel(t *testing.T) {
 	t.Setenv(helperBinaryEnvVar, helperPath)
 
 	stateDir := t.TempDir()
-	session, err := Prepare(stateDir, true, "amd64")
+	session, err := Prepare(stateDir, true, "amd64", "docker", defaultBridgeHost)
 	if err != nil {
 		t.Fatalf("prepare bridge session: %v", err)
 	}

@@ -10,10 +10,12 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/lauritsk/hatchctl/internal/backend"
+	backenddocker "github.com/lauritsk/hatchctl/internal/backend/docker"
+	docker "github.com/lauritsk/hatchctl/internal/backend/testdocker"
+	dockercli "github.com/lauritsk/hatchctl/internal/backend/testdockercli"
 	capuid "github.com/lauritsk/hatchctl/internal/capability/uidremap"
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
-	"github.com/lauritsk/hatchctl/internal/docker"
-	"github.com/lauritsk/hatchctl/internal/engine/dockercli"
 	"github.com/lauritsk/hatchctl/internal/spec"
 )
 
@@ -50,7 +52,7 @@ func TestInspectImageArchitectureAndLocalImageHandling(t *testing.T) {
 	executor := &Executor{engine: &fakeExecutorEngine{inspectImageFunc: func(_ context.Context, req dockercli.InspectImageRequest) (docker.ImageInspect, error) {
 		switch req.Reference {
 		case "missing":
-			return docker.ImageInspect{}, &docker.Error{Args: []string{"image", "inspect", req.Reference}, Stderr: "No such image", Err: errors.New("not found")}
+			return docker.ImageInspect{}, &backenddocker.Error{Args: []string{"image", "inspect", req.Reference}, Stderr: "No such image", Err: errors.New("not found")}
 		case "empty-arch":
 			return docker.ImageInspect{}, nil
 		default:
@@ -180,7 +182,7 @@ func TestEnsureUpdatedUIDContainerSkipsAndExecutesEligibleUser(t *testing.T) {
 	if !called {
 		t.Fatal("expected eligible uid remap to exec update script")
 	}
-	if remoteUser, ok := capuid.Eligible(resolved, docker.ImageInspect{Config: docker.InspectConfig{User: "root"}}); !ok || remoteUser != "vscode" {
+	if remoteUser, ok := capuid.Eligible(resolved, backend.ImageInspect{Config: backend.InspectConfig{User: "root"}}); !ok || remoteUser != "vscode" {
 		t.Fatalf("unexpected capuid eligibility result %q ok=%v", remoteUser, ok)
 	}
 }

@@ -7,11 +7,10 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/lauritsk/hatchctl/internal/backend"
 	bridgecap "github.com/lauritsk/hatchctl/internal/capability/bridge"
 	capssh "github.com/lauritsk/hatchctl/internal/capability/sshagent"
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
-	"github.com/lauritsk/hatchctl/internal/docker"
-	"github.com/lauritsk/hatchctl/internal/engine/dockercli"
 	workspaceplan "github.com/lauritsk/hatchctl/internal/plan"
 	storefs "github.com/lauritsk/hatchctl/internal/store/fs"
 )
@@ -35,7 +34,7 @@ type RuntimeTarget struct {
 	ComposeProject   string
 	ComposeService   string
 	PrimaryContainer string
-	Containers       []docker.ContainerInspect
+	Containers       []backend.ContainerInspect
 }
 
 type ControlState struct {
@@ -60,8 +59,8 @@ type ObservedState struct {
 	Target     RuntimeTarget
 	Control    ControlState
 	Capability CapabilityState
-	Container  *docker.ContainerInspect
-	Image      *docker.ImageInspect
+	Container  *backend.ContainerInspect
+	Image      *backend.ImageInspect
 	ImageRef   string
 	ReadTarget ReadToken
 }
@@ -84,20 +83,21 @@ type ObserveRequest struct {
 	AllowMissingTarget bool
 }
 
-type backend interface {
-	InspectImage(context.Context, string) (docker.ImageInspect, error)
-	InspectContainer(context.Context, string) (docker.ContainerInspect, error)
-	ListContainers(context.Context, dockercli.ListContainersRequest) (string, error)
+type observerBackend interface {
+	InspectImage(context.Context, string) (backend.ImageInspect, error)
+	InspectContainer(context.Context, string) (backend.ContainerInspect, error)
+	ListContainers(context.Context, backend.ListContainersRequest) (string, error)
+	ProjectContainers(context.Context, backend.ProjectContainersRequest) ([]backend.ContainerInspect, *backend.ContainerInspect, error)
 }
 
 type Observer struct {
-	backend          backend
+	backend          observerBackend
 	readState        func(string) (storefs.WorkspaceState, error)
 	readCoordination func(string) (storefs.CoordinationRecord, error)
 }
 
-func NewObserver(backend backend) *Observer {
-	return (&Observer{backend: backend}).withDefaults()
+func NewObserver(runtime observerBackend) *Observer {
+	return (&Observer{backend: runtime}).withDefaults()
 }
 
 func (o *Observer) Observe(ctx context.Context, req ObserveRequest) (ObservedState, error) {
@@ -163,10 +163,10 @@ func (o *Observer) loadControlState(resolved devcontainer.ResolvedConfig, planCa
 	return control, nil
 }
 
-func (o *Observer) observeImage(ctx context.Context, imageRef string) (*docker.ImageInspect, error) {
+func (o *Observer) observeImage(ctx context.Context, imageRef string) (*backend.ImageInspect, error) {
 	inspect, err := o.backend.InspectImage(ctx, imageRef)
 	if err != nil {
-		if docker.IsNotFound(err) {
+		if backend.IsNotFound(err) {
 			return nil, nil
 		}
 		return nil, err
@@ -191,7 +191,7 @@ func (o *Observer) RevalidateReadToken(ctx context.Context, observed ObservedSta
 	}
 	inspect, err := o.backend.InspectContainer(ctx, token.PrimaryContainer)
 	if err != nil {
-		if docker.IsNotFound(err) {
+		if backend.IsNotFound(err) {
 			return fmt.Errorf("%w: container %s disappeared", ErrObservedStateStale, token.PrimaryContainer)
 		}
 		return err
@@ -199,26 +199,27 @@ func (o *Observer) RevalidateReadToken(ctx context.Context, observed ObservedSta
 	if inspect.ID != token.PrimaryContainer {
 		return fmt.Errorf("%w: target container changed", ErrObservedStateStale)
 	}
+	if token.TargetKind == TargetKindComposeService {
+		_, primary, err := o.backend.ProjectContainers(ctx, backend.ProjectContainersRequest{Target: backend.ProjectTarget{Files: observed.Resolved.ComposeFiles, Project: observed.Resolved.ComposeProject, Service: observed.Resolved.ComposeService, Dir: observed.Resolved.ConfigDir}})
+		if err != nil {
+			return err
+		}
+		if primary == nil || primary.ID != token.PrimaryContainer {
+			return fmt.Errorf("%w: target identity changed", ErrObservedStateStale)
+		}
+		return nil
+	}
 	if !readTokenMatchesInspect(token, inspect) {
 		return fmt.Errorf("%w: target identity changed", ErrObservedStateStale)
 	}
 	return nil
 }
 
-func readTokenMatchesInspect(token ReadToken, inspect docker.ContainerInspect) bool {
-	switch token.TargetKind {
-	case TargetKindComposeService:
-		if token.ComposeProject != "" && inspect.Config.Labels["com.docker.compose.project"] != token.ComposeProject {
-			return false
-		}
-		if token.ComposeService != "" && inspect.Config.Labels["com.docker.compose.service"] != token.ComposeService {
-			return false
-		}
-	}
+func readTokenMatchesInspect(token ReadToken, inspect backend.ContainerInspect) bool {
 	return true
 }
 
-func (o *Observer) observeTarget(ctx context.Context, resolved devcontainer.ResolvedConfig, state storefs.WorkspaceState, inspectTarget bool, allowMissing bool) (RuntimeTarget, storefs.WorkspaceState, *docker.ContainerInspect, error) {
+func (o *Observer) observeTarget(ctx context.Context, resolved devcontainer.ResolvedConfig, state storefs.WorkspaceState, inspectTarget bool, allowMissing bool) (RuntimeTarget, storefs.WorkspaceState, *backend.ContainerInspect, error) {
 	previousContainerID := state.ContainerID
 	target, container, err := o.lookupRuntimeTarget(ctx, resolved, state)
 	if err != nil {
@@ -237,14 +238,14 @@ func (o *Observer) observeTarget(ctx context.Context, resolved devcontainer.Reso
 	return target, state, container, nil
 }
 
-func (o *Observer) lookupRuntimeTarget(ctx context.Context, resolved devcontainer.ResolvedConfig, state storefs.WorkspaceState) (RuntimeTarget, *docker.ContainerInspect, error) {
+func (o *Observer) lookupRuntimeTarget(ctx context.Context, resolved devcontainer.ResolvedConfig, state storefs.WorkspaceState) (RuntimeTarget, *backend.ContainerInspect, error) {
 	if resolved.SourceKind == "compose" {
 		return o.lookupComposeTarget(ctx, resolved)
 	}
 	return o.lookupManagedTarget(ctx, resolved, state)
 }
 
-func (o *Observer) lookupComposeTarget(ctx context.Context, resolved devcontainer.ResolvedConfig) (RuntimeTarget, *docker.ContainerInspect, error) {
+func (o *Observer) lookupComposeTarget(ctx context.Context, resolved devcontainer.ResolvedConfig) (RuntimeTarget, *backend.ContainerInspect, error) {
 	inspects, primary, err := o.observeComposeProject(ctx, resolved)
 	if err != nil {
 		return RuntimeTarget{}, nil, err
@@ -254,14 +255,14 @@ func (o *Observer) lookupComposeTarget(ctx context.Context, resolved devcontaine
 	return target, primary, nil
 }
 
-func (o *Observer) lookupManagedTarget(ctx context.Context, resolved devcontainer.ResolvedConfig, state storefs.WorkspaceState) (RuntimeTarget, *docker.ContainerInspect, error) {
+func (o *Observer) lookupManagedTarget(ctx context.Context, resolved devcontainer.ResolvedConfig, state storefs.WorkspaceState) (RuntimeTarget, *backend.ContainerInspect, error) {
 	inspect, err := o.observeManagedContainer(ctx, resolved, state)
 	if err != nil {
 		return RuntimeTarget{}, nil, err
 	}
 	target := runtimeTargetFromResolved(resolved, resolved.ImageName)
 	if inspect != nil {
-		target.Containers = []docker.ContainerInspect{*inspect}
+		target.Containers = []backend.ContainerInspect{*inspect}
 	}
 	return target, inspect, nil
 }
@@ -276,7 +277,7 @@ func runtimeTargetFromResolved(resolved devcontainer.ResolvedConfig, image strin
 	}
 }
 
-func observedTargetState(state storefs.WorkspaceState, previousContainerID string, container *docker.ContainerInspect) storefs.WorkspaceState {
+func observedTargetState(state storefs.WorkspaceState, previousContainerID string, container *backend.ContainerInspect) storefs.WorkspaceState {
 	if container == nil {
 		return clearedState(state)
 	}
@@ -287,21 +288,17 @@ func observedTargetState(state storefs.WorkspaceState, previousContainerID strin
 	return state
 }
 
-func (o *Observer) observeManagedContainer(ctx context.Context, resolved devcontainer.ResolvedConfig, state storefs.WorkspaceState) (*docker.ContainerInspect, error) {
+func (o *Observer) observeManagedContainer(ctx context.Context, resolved devcontainer.ResolvedConfig, state storefs.WorkspaceState) (*backend.ContainerInspect, error) {
 	if state.ContainerID != "" {
 		inspect, err := o.backend.InspectContainer(ctx, state.ContainerID)
 		if err == nil {
 			return &inspect, nil
 		}
-		if !docker.IsNotFound(err) {
+		if !backend.IsNotFound(err) {
 			return nil, err
 		}
 	}
-	filters := make([]string, 0, len(resolved.Labels))
-	for key, value := range resolved.Labels {
-		filters = append(filters, "label="+key+"="+value)
-	}
-	inspects, err := o.inspectListedContainers(ctx, dockercli.ListContainersRequest{All: true, Quiet: true, Filters: filters})
+	inspects, err := o.inspectListedContainers(ctx, backend.ListContainersRequest{All: true, Quiet: true, Labels: resolved.Labels})
 	if err != nil {
 		return nil, err
 	}
@@ -312,31 +309,24 @@ func (o *Observer) observeManagedContainer(ctx context.Context, resolved devcont
 	return &best, nil
 }
 
-func (o *Observer) observeComposeProject(ctx context.Context, resolved devcontainer.ResolvedConfig) ([]docker.ContainerInspect, *docker.ContainerInspect, error) {
+func (o *Observer) observeComposeProject(ctx context.Context, resolved devcontainer.ResolvedConfig) ([]backend.ContainerInspect, *backend.ContainerInspect, error) {
 	if resolved.ComposeProject == "" {
 		return nil, nil, ErrObservedTargetNotFound
 	}
-	inspects, err := o.inspectListedContainers(ctx, dockercli.ListContainersRequest{All: true, Quiet: true, Filters: []string{"label=com.docker.compose.project=" + resolved.ComposeProject}})
+	inspects, primary, err := o.backend.ProjectContainers(ctx, backend.ProjectContainersRequest{Target: backend.ProjectTarget{Files: resolved.ComposeFiles, Project: resolved.ComposeProject, Service: resolved.ComposeService, Dir: resolved.ConfigDir}})
 	if err != nil {
 		return nil, nil, err
 	}
 	if len(inspects) == 0 {
 		return nil, nil, ErrObservedTargetNotFound
 	}
-	primaryCandidates := make([]docker.ContainerInspect, 0)
-	for _, inspect := range inspects {
-		if inspect.Config.Labels["com.docker.compose.service"] == resolved.ComposeService {
-			primaryCandidates = append(primaryCandidates, inspect)
-		}
-	}
-	if len(primaryCandidates) == 0 {
+	if primary == nil {
 		return inspects, nil, ErrObservedTargetNotFound
 	}
-	best := bestContainer(primaryCandidates)
-	return inspects, &best, nil
+	return inspects, primary, nil
 }
 
-func (o *Observer) inspectListedContainers(ctx context.Context, req dockercli.ListContainersRequest) ([]docker.ContainerInspect, error) {
+func (o *Observer) inspectListedContainers(ctx context.Context, req backend.ListContainersRequest) ([]backend.ContainerInspect, error) {
 	output, err := o.backend.ListContainers(ctx, req)
 	if err != nil {
 		return nil, err
@@ -366,7 +356,7 @@ func (o ObservedState) readToken() ReadToken {
 	}
 }
 
-func observeCapabilities(container *docker.ContainerInspect, state storefs.WorkspaceState, resolved devcontainer.ResolvedConfig) CapabilityState {
+func observeCapabilities(container *backend.ContainerInspect, state storefs.WorkspaceState, resolved devcontainer.ResolvedConfig) CapabilityState {
 	capabilityState := CapabilityState{
 		BridgeEnabled:   bridgecap.EnabledFromInspect(container, state),
 		DotfilesApplied: state.DotfilesReady && state.DotfilesTransition == nil,

@@ -18,8 +18,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/lauritsk/hatchctl/internal/backend"
 	"github.com/lauritsk/hatchctl/internal/command"
-	"github.com/lauritsk/hatchctl/internal/docker"
 	storefs "github.com/lauritsk/hatchctl/internal/store/fs"
 )
 
@@ -134,8 +134,13 @@ func Start(session *Session, containerID string) (*Session, error) {
 }
 
 func Serve(ctx context.Context, stateDir string, containerID string) error {
-	session, err := Prepare(stateDir, true, "")
+	session, err := Prepare(stateDir, true, "", "", "")
 	if err != nil {
+		return err
+	}
+	if deps, err := newBridgeRuntimeDeps(session.Backend); err == nil {
+		defaultBridgeRuntimeDeps = deps
+	} else {
 		return err
 	}
 	tcpListener, err := listenBridgeTCP(session.Port)
@@ -485,7 +490,7 @@ func Stop(stateDir string) error {
 	if err == nil && strings.HasSuffix(exe, ".test") {
 		return nil
 	}
-	session, err := Prepare(stateDir, true, "")
+	session, err := Prepare(stateDir, true, "", "", "")
 	if err != nil {
 		return err
 	}
@@ -525,18 +530,9 @@ func waitForBridgeTCPContext(ctx context.Context, port int) error {
 	}
 }
 
-func containerConnectWithDocker(client *docker.Client) containerConnectRunner {
+func containerConnectWithBackend(client backend.Client) containerConnectRunner {
 	return func(ctx context.Context, containerID string, port int, stdin io.Reader, stdout io.Writer) error {
-		var stderr strings.Builder
-		err := client.Run(ctx, docker.RunOptions{Args: []string{"exec", "-i", containerID, containerHelperBin, "bridge", "helper", "connect", "--port", strconv.Itoa(port)}, Stdin: stdin, Stdout: stdout, Stderr: &stderr})
-		if err != nil {
-			message := strings.TrimSpace(stderr.String())
-			if message == "" {
-				message = err.Error()
-			}
-			return fmt.Errorf("docker exec bridge helper connect: %s", message)
-		}
-		return nil
+		return client.ConnectContainer(ctx, containerID, port, stdin, stdout)
 	}
 }
 
@@ -668,6 +664,7 @@ func pollProcessWait(waitCh <-chan error) (bool, error) {
 func writeBridgeConfig(session *Session, containerID string) error {
 	config := map[string]any{
 		"sessionId":   session.ID,
+		"backend":     session.Backend,
 		"containerId": containerID,
 		"host":        session.Host,
 		"port":        session.Port,

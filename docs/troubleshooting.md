@@ -12,7 +12,7 @@
 
 Some `devcontainer.json` settings are blocked until you explicitly trust the repository.
 
-- rerun with `--trust-workspace` when the repo requests host-affecting Docker settings such as extra binds, privilege, or build contexts outside the workspace
+- rerun with `--trust-workspace` when the repo requests host-affecting container backend settings such as extra binds, privilege, or build contexts outside the workspace
 - rerun with `--allow-host-lifecycle` when the repo uses host-side `initializeCommand`
 - prefer user config for personal defaults; workspace-local `.hatchctl/config.toml` host-affecting settings and `verification.trusted_signers` only apply after `--trust-workspace`
 

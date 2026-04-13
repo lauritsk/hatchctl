@@ -1,15 +1,15 @@
 package bridgecap
 
 import (
+	"github.com/lauritsk/hatchctl/internal/backend"
 	"github.com/lauritsk/hatchctl/internal/bridge"
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
-	"github.com/lauritsk/hatchctl/internal/docker"
 	"github.com/lauritsk/hatchctl/internal/spec"
 	storefs "github.com/lauritsk/hatchctl/internal/store/fs"
 )
 
-func Prepare(stateDir string, helperArch string) (*bridge.Session, error) {
-	return bridge.Prepare(stateDir, true, helperArch)
+func Prepare(stateDir string, helperArch string, backendID string, bridgeHost string) (*bridge.Session, error) {
+	return bridge.Prepare(stateDir, true, helperArch, backendID, bridgeHost)
 }
 
 func Preview(stateDir string, enabled bool) (*bridge.Session, error) {
@@ -28,7 +28,7 @@ func Doctor(stateDir string) (bridge.Report, error) {
 	return bridge.Doctor(stateDir)
 }
 
-func EnabledFromInspect(inspect *docker.ContainerInspect, state storefs.WorkspaceState) bool {
+func EnabledFromInspect(inspect *backend.ContainerInspect, state storefs.WorkspaceState) bool {
 	if inspect != nil && inspect.Config.Labels[devcontainer.BridgeEnabledLabel] == "true" {
 		return true
 	}

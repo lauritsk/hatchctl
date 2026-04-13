@@ -50,7 +50,7 @@ func TestEnsureWorkspaceTrustRejectsRiskySettings(t *testing.T) {
 	if !errors.Is(err, ErrWorkspaceTrustRequired) {
 		t.Fatalf("expected trust-required error, got %v", err)
 	}
-	for _, fragment := range []string{"privileged container mode is enabled", "bind mounts requested", "docker run arguments request host-affecting settings", "dockerfile path resolves outside the workspace"} {
+	for _, fragment := range []string{"privileged container mode is enabled", "bind mounts requested", "container runtime arguments request host-affecting settings", "build definition path resolves outside the workspace"} {
 		if !strings.Contains(err.Error(), fragment) {
 			t.Fatalf("expected %q in error %q", fragment, err)
 		}

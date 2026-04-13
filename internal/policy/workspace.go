@@ -12,7 +12,7 @@ import (
 
 const TrustWorkspaceEnvVar = "HATCHCTL_TRUST_WORKSPACE"
 
-var ErrWorkspaceTrustRequired = errors.New("workspace requires explicit trust for repo-controlled Docker settings")
+var ErrWorkspaceTrustRequired = errors.New("workspace requires explicit trust for repo-controlled container backend settings")
 
 func EnsureWorkspaceTrust(resolved devcontainer.ResolvedConfig, trusted bool) error {
 	if trusted || envTruthy(TrustWorkspaceEnvVar) {
@@ -58,7 +58,7 @@ func workspaceTrustIssues(workspaceSpec spec.WorkspaceSpec) []string {
 		issues = append(issues, fmt.Sprintf("bind mounts requested (%s)", strings.Join(bindMounts, ", ")))
 	}
 	if risky := riskyRunArgs(workspaceSpec.Config.RunArgs); len(risky) > 0 {
-		issues = append(issues, fmt.Sprintf("docker run arguments request host-affecting settings (%s)", strings.Join(risky, ", ")))
+		issues = append(issues, fmt.Sprintf("container runtime arguments request host-affecting settings (%s)", strings.Join(risky, ", ")))
 	}
 	if buildIssue := riskyBuildSettings(workspaceSpec); buildIssue != "" {
 		issues = append(issues, buildIssue)
@@ -108,11 +108,11 @@ func riskyRunArgs(args []string) []string {
 
 func riskyBuildSettings(workspaceSpec spec.WorkspaceSpec) string {
 	if workspaceSpec.Config.Build != nil && len(workspaceSpec.Config.Build.Options) > 0 {
-		return fmt.Sprintf("docker build options requested (%s)", strings.Join(workspaceSpec.Config.Build.Options, ", "))
+		return fmt.Sprintf("container build options requested (%s)", strings.Join(workspaceSpec.Config.Build.Options, ", "))
 	}
 	dockerfilePath := resolveConfigRelativePath(workspaceSpec.ConfigDir, spec.EffectiveDockerfile(workspaceSpec.Config))
 	if outsideWorkspace(workspaceSpec.WorkspaceFolder, dockerfilePath) {
-		return fmt.Sprintf("dockerfile path resolves outside the workspace (%s)", dockerfilePath)
+		return fmt.Sprintf("build definition path resolves outside the workspace (%s)", dockerfilePath)
 	}
 	contextPath := resolveConfigRelativePath(workspaceSpec.ConfigDir, spec.EffectiveContext(workspaceSpec.Config))
 	if outsideWorkspace(workspaceSpec.WorkspaceFolder, contextPath) {

@@ -2,20 +2,23 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"io"
 
+	"github.com/lauritsk/hatchctl/internal/backend"
+	backendfactory "github.com/lauritsk/hatchctl/internal/backend/factory"
 	"github.com/lauritsk/hatchctl/internal/bridge"
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	ui "github.com/lauritsk/hatchctl/internal/display"
-	"github.com/lauritsk/hatchctl/internal/docker"
 	workspaceplan "github.com/lauritsk/hatchctl/internal/plan"
 	"github.com/lauritsk/hatchctl/internal/reconcile"
 	storefs "github.com/lauritsk/hatchctl/internal/store/fs"
 )
 
 type Service struct {
-	executor      *reconcile.Executor
-	lockMutations bool
+	executor        *reconcile.Executor
+	executorFactory func(string) (*reconcile.Executor, error)
+	lockMutations   bool
 }
 
 type GlobalOptions struct {
@@ -103,12 +106,40 @@ func NewWithExecutorWithoutMutationLock(executor *reconcile.Executor) *Service {
 }
 
 func NewDefault() *Service {
-	engine := docker.NewClient("docker")
-	return NewWithExecutor(reconcile.NewExecutor(engine))
+	return &Service{executorFactory: newExecutorForBackend, lockMutations: true}
+}
+
+func newExecutorForBackend(name string) (*reconcile.Executor, error) {
+	client, err := newBackendClient(name)
+	if err != nil {
+		return nil, err
+	}
+	return reconcile.NewExecutor(client), nil
+}
+
+func newBackendClient(name string) (backend.Client, error) {
+	return backendfactory.New(name)
+}
+
+func (s *Service) commandExecutor(defaults CommandDefaults) (*reconcile.Executor, error) {
+	if s.executor != nil {
+		return s.executor.WithTrustedSigners(defaults.TrustedSigners), nil
+	}
+	if s.executorFactory == nil {
+		return nil, fmt.Errorf("executor factory is not configured")
+	}
+	executor, err := s.executorFactory(defaults.Backend)
+	if err != nil {
+		return nil, err
+	}
+	return executor.WithTrustedSigners(defaults.TrustedSigners), nil
 }
 
 func (s *Service) Up(ctx context.Context, req UpRequest) (UpResult, error) {
-	executor := s.executor.WithTrustedSigners(req.Defaults.TrustedSigners)
+	executor, err := s.commandExecutor(req.Defaults)
+	if err != nil {
+		return UpResult{}, err
+	}
 	buildPlan, err := s.workspacePlanBuilder(req.Defaults, workspacePlanOptions{
 		BridgeEnabled:      req.Defaults.BridgeEnabled,
 		SSHAgent:           req.Defaults.SSHAgent,
@@ -127,7 +158,10 @@ func (s *Service) Up(ctx context.Context, req UpRequest) (UpResult, error) {
 }
 
 func (s *Service) Build(ctx context.Context, req BuildRequest) (BuildResult, error) {
-	executor := s.executor.WithTrustedSigners(req.Defaults.TrustedSigners)
+	executor, err := s.commandExecutor(req.Defaults)
+	if err != nil {
+		return BuildResult{}, err
+	}
 	buildPlan, err := s.workspacePlanBuilder(req.Defaults, workspacePlanOptions{
 		TrustWorkspace: req.Defaults.TrustWorkspace,
 	})
@@ -142,7 +176,10 @@ func (s *Service) Build(ctx context.Context, req BuildRequest) (BuildResult, err
 }
 
 func (s *Service) Exec(ctx context.Context, req ExecRequest) (int, error) {
-	executor := s.executor.WithTrustedSigners(req.Defaults.TrustedSigners)
+	executor, err := s.commandExecutor(req.Defaults)
+	if err != nil {
+		return 0, err
+	}
 	buildPlan, err := s.workspacePlanBuilder(req.Defaults, workspacePlanOptions{ReadOnly: true, SSHAgent: req.Defaults.SSHAgent})
 	if err != nil {
 		return 0, err
@@ -158,7 +195,10 @@ func (s *Service) Exec(ctx context.Context, req ExecRequest) (int, error) {
 }
 
 func (s *Service) ReadConfig(ctx context.Context, req ReadConfigRequest) (ReadConfigResult, error) {
-	executor := s.executor.WithTrustedSigners(req.Defaults.TrustedSigners)
+	executor, err := s.commandExecutor(req.Defaults)
+	if err != nil {
+		return ReadConfigResult{}, err
+	}
 	buildPlan, err := s.workspacePlanBuilder(req.Defaults, workspacePlanOptions{ReadOnly: true, SSHAgent: req.Defaults.SSHAgent, Dotfiles: req.Defaults.Dotfiles})
 	if err != nil {
 		return ReadConfigResult{}, err
@@ -171,7 +211,10 @@ func (s *Service) ReadConfig(ctx context.Context, req ReadConfigRequest) (ReadCo
 }
 
 func (s *Service) RunLifecycle(ctx context.Context, req RunLifecycleRequest) (RunLifecycleResult, error) {
-	executor := s.executor.WithTrustedSigners(req.Defaults.TrustedSigners)
+	executor, err := s.commandExecutor(req.Defaults)
+	if err != nil {
+		return RunLifecycleResult{}, err
+	}
 	buildPlan, err := s.workspacePlanBuilder(req.Defaults, workspacePlanOptions{ReadOnly: true, Dotfiles: req.Defaults.Dotfiles, AllowHostLifecycle: req.AllowHostLifecycle})
 	if err != nil {
 		return RunLifecycleResult{}, err
@@ -189,7 +232,10 @@ func (s *Service) RunLifecycle(ctx context.Context, req RunLifecycleRequest) (Ru
 }
 
 func (s *Service) BridgeDoctor(ctx context.Context, req BridgeDoctorRequest) (bridge.Report, error) {
-	executor := s.executor.WithTrustedSigners(req.Defaults.TrustedSigners)
+	executor, err := s.commandExecutor(req.Defaults)
+	if err != nil {
+		return bridge.Report{}, err
+	}
 	buildPlan, err := s.workspacePlanBuilder(req.Defaults, workspacePlanOptions{ReadOnly: true})
 	if err != nil {
 		return bridge.Report{}, err

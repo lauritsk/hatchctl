@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/lauritsk/hatchctl/internal/backend"
 	"github.com/lauritsk/hatchctl/internal/capability"
-	"github.com/lauritsk/hatchctl/internal/docker"
 	storefs "github.com/lauritsk/hatchctl/internal/store/fs"
 )
 
@@ -27,9 +27,9 @@ type ImageBuildMode string
 
 const (
 	ImageBuildModeNone     ImageBuildMode = "none"
-	ImageBuildModeDocker   ImageBuildMode = "dockerfile"
+	ImageBuildModeBuild    ImageBuildMode = "build"
 	ImageBuildModeFeatures ImageBuildMode = "features"
-	ImageBuildModeCompose  ImageBuildMode = "compose"
+	ImageBuildModeProject  ImageBuildMode = "project"
 )
 
 type DesiredImage struct {
@@ -64,7 +64,7 @@ type DesiredContainer struct {
 type ContainerPlan struct {
 	Action       ContainerAction
 	ContainerID  string
-	Observed     *docker.ContainerInspect
+	Observed     *backend.ContainerInspect
 	DesiredKey   string
 	Reused       bool
 	NeedsCleanup bool
@@ -100,7 +100,7 @@ var ErrContainerObservationMissing = errors.New("container observation is requir
 
 var ErrInvalidLifecyclePhase = errors.New("invalid lifecycle phase")
 
-func PlanImage(desired DesiredImage, observed *docker.ImageInspect) ImagePlan {
+func PlanImage(desired DesiredImage, observed *backend.ImageInspect) ImagePlan {
 	plan := ImagePlan{
 		Action:      ImageActionUseTarget,
 		TargetImage: desired.TargetImage,

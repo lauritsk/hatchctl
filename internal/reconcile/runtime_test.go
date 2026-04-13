@@ -4,14 +4,14 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/lauritsk/hatchctl/internal/docker"
+	"github.com/lauritsk/hatchctl/internal/backend"
 	storefs "github.com/lauritsk/hatchctl/internal/store/fs"
 )
 
 func TestPlanImageReusesManagedImageWhenReuseKeyMatches(t *testing.T) {
 	t.Parallel()
 
-	plan := PlanImage(DesiredImage{TargetImage: "hatchctl-demo", BuildMode: ImageBuildModeDocker, ReuseKey: "key-1"}, &docker.ImageInspect{Config: docker.InspectConfig{Labels: map[string]string{ImageKeyLabel: "key-1"}}})
+	plan := PlanImage(DesiredImage{TargetImage: "hatchctl-demo", BuildMode: ImageBuildModeBuild, ReuseKey: "key-1"}, &backend.ImageInspect{Config: backend.InspectConfig{Labels: map[string]string{ImageKeyLabel: "key-1"}}})
 	if plan.Action != ImageActionReuseTarget {
 		t.Fatalf("expected managed image reuse, got %#v", plan)
 	}
@@ -20,7 +20,7 @@ func TestPlanImageReusesManagedImageWhenReuseKeyMatches(t *testing.T) {
 func TestPlanImageBuildsManagedImageWhenReuseKeyDiffers(t *testing.T) {
 	t.Parallel()
 
-	plan := PlanImage(DesiredImage{TargetImage: "hatchctl-demo", BuildMode: ImageBuildModeFeatures, ReuseKey: "key-2"}, &docker.ImageInspect{Config: docker.InspectConfig{Labels: map[string]string{ImageKeyLabel: "old"}}})
+	plan := PlanImage(DesiredImage{TargetImage: "hatchctl-demo", BuildMode: ImageBuildModeFeatures, ReuseKey: "key-2"}, &backend.ImageInspect{Config: backend.InspectConfig{Labels: map[string]string{ImageKeyLabel: "old"}}})
 	if plan.Action != ImageActionBuildTarget || plan.BuildMode != ImageBuildModeFeatures {
 		t.Fatalf("expected managed image rebuild, got %#v", plan)
 	}
@@ -31,10 +31,10 @@ func TestPlanContainerUsesContainerKeyInsteadOfAdHocFlags(t *testing.T) {
 
 	observed := ObservedState{
 		Target: RuntimeTarget{PrimaryContainer: "container-123"},
-		Container: &docker.ContainerInspect{
+		Container: &backend.ContainerInspect{
 			ID:    "container-123",
-			State: docker.ContainerState{Running: true},
-			Config: docker.InspectConfig{Labels: map[string]string{
+			State: backend.ContainerState{Running: true},
+			Config: backend.InspectConfig{Labels: map[string]string{
 				ContainerKeyLabel: "desired-key",
 			}},
 		},

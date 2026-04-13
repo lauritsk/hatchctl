@@ -1,0 +1,32 @@
+package factory
+
+import (
+	"errors"
+	"testing"
+
+	"github.com/lauritsk/hatchctl/internal/backend"
+)
+
+func TestNormalizeNameDefaultsToDocker(t *testing.T) {
+	t.Parallel()
+
+	if got := NormalizeName(""); got != "docker" {
+		t.Fatalf("expected empty backend to default to docker, got %q", got)
+	}
+	if got := NormalizeName(" docker "); got != "docker" {
+		t.Fatalf("expected whitespace to be trimmed, got %q", got)
+	}
+}
+
+func TestNewReturnsUnsupportedBackendError(t *testing.T) {
+	t.Parallel()
+
+	_, err := New("podman")
+	var unsupported backend.UnsupportedBackendError
+	if !errors.As(err, &unsupported) {
+		t.Fatalf("expected unsupported backend error, got %v", err)
+	}
+	if unsupported.Name != "podman" {
+		t.Fatalf("unexpected backend name %q", unsupported.Name)
+	}
+}

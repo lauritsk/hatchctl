@@ -17,6 +17,7 @@ func TestReportFromSession(t *testing.T) {
 	}
 	session := &Session{
 		ID:         "bridge-session",
+		Backend:    "docker",
 		Enabled:    true,
 		HelperArch: "arm64",
 		Host:       "host.docker.internal",
@@ -31,7 +32,7 @@ func TestReportFromSession(t *testing.T) {
 		Status:     "running",
 	}
 	report := ReportFromSession(session)
-	if report == nil || report.ID != session.ID || report.HelperPath != session.HelperPath || report.Status != "running" {
+	if report == nil || report.ID != session.ID || report.Backend != session.Backend || report.HelperPath != session.HelperPath || report.Status != "running" {
 		t.Fatalf("unexpected report %#v", report)
 	}
 }
@@ -94,6 +95,7 @@ func TestDoctorReportsPersistedStatus(t *testing.T) {
 	}
 	if err := storefs.WriteBridgeSession(paths.Dir, Session{
 		ID:         "bridge-session",
+		Backend:    "docker",
 		Enabled:    true,
 		HelperArch: "arm64",
 		Host:       "host.docker.internal",
@@ -120,7 +122,7 @@ func TestDoctorReportsPersistedStatus(t *testing.T) {
 	if !report.Enabled || report.Status != "bridge ready" {
 		t.Fatalf("unexpected bridge report %#v", report)
 	}
-	if report.ID != "bridge-session" || report.Port != 43123 || report.HelperPath != helperPath {
+	if report.ID != "bridge-session" || report.Backend != "docker" || report.Port != 43123 || report.HelperPath != helperPath {
 		t.Fatalf("unexpected bridge report details %#v", report)
 	}
 }

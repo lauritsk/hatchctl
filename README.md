@@ -9,7 +9,7 @@ Run devcontainers from the terminal.
 
 [Install](#install) • [Quick Start](#quick-start) • [Configuration](#configuration) • [Security Defaults](#security-defaults) • [Development](#development)
 
-`hatchctl` is a Go CLI for creating, inspecting, and using devcontainer-based workspaces without editor integration. It is built for developers who already use Docker and want a direct, scriptable CLI for everyday devcontainer work.
+`hatchctl` is a Go CLI for creating, inspecting, and using devcontainer-based workspaces without editor integration. It is built around a backend-neutral runtime layer, with Docker implemented as the default backend today.
 
 > [!NOTE]
 > `hatchctl` supports macOS and Linux. Windows is not currently supported. Browser-open and localhost callback bridge support are macOS-only.
@@ -41,12 +41,12 @@ Prebuilt binaries for macOS and Linux are published on the [GitHub Releases](htt
 
 ## Requirements
 
-- Docker with a working `docker` CLI on `PATH`
-- Docker Compose support through `docker compose`
+- A supported container backend on `PATH`
+- Docker support today through the `docker` CLI, including `docker compose` for project-service devcontainers
 - A Linux container runtime target for devcontainers
 - macOS if you need browser-open or localhost callback bridge support
 
-`hatchctl` shells out to the Docker CLI rather than talking to the engine directly.
+`hatchctl` shells out through the selected container backend rather than talking to an engine API directly.
 
 ## Quick Start
 
@@ -117,6 +117,7 @@ Workspace config is intentionally limited by default. Host-affecting settings su
 Example:
 
 ```toml
+backend = "docker"
 config = ".devcontainer/devcontainer.json"
 feature_timeout = "2m"
 lockfile_policy = "auto"
@@ -145,7 +146,7 @@ Useful environment variables:
 `hatchctl` assumes `devcontainer.json` and repo-local config may come from repositories you do not fully trust yet.
 
 - Host-side `initializeCommand` is blocked unless you opt in with `--allow-host-lifecycle`
-- Repo-controlled Docker settings that expand host access are blocked unless you opt in with `--trust-workspace`
+- Repo-controlled container backend settings that expand host access are blocked unless you opt in with `--trust-workspace`
 - Unsigned images warn by default; set `HATCHCTL_COSIGN_STRICT=1` to fail closed
 - Unsigned remote OCI features fail by default in non-interactive runs
 - Direct tarball features must use `https`, except loopback `http` for local development and tests
@@ -157,8 +158,9 @@ See [SECURITY.md](./SECURITY.md) for the full policy and threat model.
 
 - Host OS: macOS and Linux
 - Bridge support: macOS only
-- Devcontainer sources: single-container image and Dockerfile workflows
-- Compose support: single-service Compose devcontainers
+- Container backend support: Docker
+- Devcontainer sources: single-container image and build-file workflows
+- Project-service support: single-service Compose devcontainers through Docker backend
 - Feature sources: local path, OCI, direct tarball, and deprecated GitHub shorthand
 - JSON output: `up`, `build`, `exec`, `config`, `run`, and `bridge doctor`
 

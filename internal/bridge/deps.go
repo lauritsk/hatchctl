@@ -1,23 +1,36 @@
 package bridge
 
 import (
+	"github.com/lauritsk/hatchctl/internal/backend"
+	backendfactory "github.com/lauritsk/hatchctl/internal/backend/factory"
 	"github.com/lauritsk/hatchctl/internal/command"
-	"github.com/lauritsk/hatchctl/internal/docker"
 )
 
 type bridgeRuntimeDeps struct {
 	hostCommand      command.Runner
-	docker           *docker.Client
+	backend          backend.Client
 	containerConnect containerConnectRunner
 }
 
 var defaultBridgeRuntimeDeps = newDefaultBridgeRuntimeDeps()
 
 func newDefaultBridgeRuntimeDeps() bridgeRuntimeDeps {
-	client := docker.NewClient("docker")
+	deps, _ := newBridgeRuntimeDeps("docker")
+	return deps
+}
+
+func newBridgeRuntimeDeps(name string) (bridgeRuntimeDeps, error) {
+	client, err := newBridgeBackend(name)
+	if err != nil {
+		return bridgeRuntimeDeps{}, err
+	}
 	return bridgeRuntimeDeps{
 		hostCommand:      command.Local{},
-		docker:           client,
-		containerConnect: containerConnectWithDocker(client),
-	}
+		backend:          client,
+		containerConnect: containerConnectWithBackend(client),
+	}, nil
+}
+
+func newBridgeBackend(name string) (backend.Client, error) {
+	return backendfactory.New(name)
 }

@@ -3,31 +3,29 @@ package reconcile
 import (
 	"context"
 	"fmt"
-	"sort"
 	"strings"
 
+	"github.com/lauritsk/hatchctl/internal/backend"
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
-	"github.com/lauritsk/hatchctl/internal/docker"
-	"github.com/lauritsk/hatchctl/internal/engine/dockercli"
 )
 
 const passwdFilePath = "/etc/passwd"
 
-func (e *Executor) DockerExecRequest(ctx context.Context, observed ObservedState, stdin bool, tty bool, extraEnv map[string]string, command []string, streams dockercli.Streams) (dockercli.ExecRequest, error) {
+func (e *Executor) ExecRequest(ctx context.Context, observed ObservedState, stdin bool, tty bool, extraEnv map[string]string, command []string, streams backend.Streams) (backend.ExecRequest, error) {
 	containerID := observed.Target.PrimaryContainer
 	user, err := e.effectiveExecUser(ctx, observed)
 	if err != nil {
-		return dockercli.ExecRequest{}, err
+		return backend.ExecRequest{}, err
 	}
 	command, err = e.execCommand(ctx, observed, user, command)
 	if err != nil {
-		return dockercli.ExecRequest{}, err
+		return backend.ExecRequest{}, err
 	}
 	env, err := e.execRemoteEnv(ctx, observed, user, extraEnv)
 	if err != nil {
-		return dockercli.ExecRequest{}, err
+		return backend.ExecRequest{}, err
 	}
-	return dockercli.ExecRequest{ContainerID: containerID, User: user, Workdir: observed.Resolved.RemoteWorkspace, Interactive: stdin, TTY: tty, Env: env, Command: command, Streams: streams}, nil
+	return backend.ExecRequest{ContainerID: containerID, User: user, Workdir: observed.Resolved.RemoteWorkspace, Interactive: stdin, TTY: tty, Env: env, Command: command, Streams: streams}, nil
 }
 
 func (e *Executor) execCommand(ctx context.Context, observed ObservedState, user string, command []string) ([]string, error) {
@@ -52,7 +50,7 @@ func (e *Executor) effectiveExecUser(ctx context.Context, observed ObservedState
 	if containerID == "" {
 		return "", nil
 	}
-	inspect, err := e.engine.InspectContainer(ctx, dockercli.InspectContainerRequest{ContainerID: containerID})
+	inspect, err := e.engine.InspectContainer(ctx, containerID)
 	if err != nil {
 		return "", err
 	}
@@ -104,7 +102,7 @@ func (e *Executor) resolveExecHome(ctx context.Context, observed ObservedState, 
 
 func (e *Executor) lookupExecUserEntry(ctx context.Context, observed ObservedState, user string) (passwdEntry, bool, error) {
 	containerID := observed.Target.PrimaryContainer
-	passwd, err := e.engine.ExecOutput(ctx, dockercli.ExecRequest{ContainerID: containerID, User: user, Command: []string{"cat", passwdFilePath}})
+	passwd, err := e.engine.ExecOutput(ctx, backend.ExecRequest{ContainerID: containerID, User: user, Command: []string{"cat", passwdFilePath}})
 	if err != nil {
 		return passwdEntry{}, false, fmt.Errorf("resolve passwd entry for container user %q: %w", firstNonEmpty(user, "default"), err)
 	}
@@ -168,34 +166,7 @@ func fallbackExecHome(observed ObservedState, user string) string {
 	return ""
 }
 
-func execArgs(req dockercli.ExecRequest) []string {
-	args := []string{"exec"}
-	if req.Interactive {
-		args = append(args, "-i")
-	}
-	if req.TTY {
-		args = append(args, "-t")
-	}
-	if req.User != "" {
-		args = append(args, "-u", req.User)
-	}
-	if req.Workdir != "" {
-		args = append(args, "--workdir", req.Workdir)
-	}
-	keys := make([]string, 0, len(req.Env))
-	for key := range req.Env {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	for _, key := range keys {
-		args = append(args, "-e", key+"="+req.Env[key])
-	}
-	args = append(args, req.ContainerID)
-	args = append(args, req.Command...)
-	return args
-}
-
-func effectiveRemoteUserFromContainerInspect(inspect *docker.ContainerInspect, resolved devcontainer.ResolvedConfig) string {
+func effectiveRemoteUserFromContainerInspect(inspect *backend.ContainerInspect, resolved devcontainer.ResolvedConfig) string {
 	if user := firstNonEmpty(resolved.Merged.RemoteUser, resolved.Merged.ContainerUser); user != "" {
 		return user
 	}

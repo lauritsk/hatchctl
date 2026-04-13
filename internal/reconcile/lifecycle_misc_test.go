@@ -10,13 +10,13 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/lauritsk/hatchctl/internal/backend"
+	dockercli "github.com/lauritsk/hatchctl/internal/backend/testdockercli"
 	"github.com/lauritsk/hatchctl/internal/bridge"
 	capdot "github.com/lauritsk/hatchctl/internal/capability/dotfiles"
 	"github.com/lauritsk/hatchctl/internal/command"
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	ui "github.com/lauritsk/hatchctl/internal/display"
-	"github.com/lauritsk/hatchctl/internal/docker"
-	"github.com/lauritsk/hatchctl/internal/engine/dockercli"
 	"github.com/lauritsk/hatchctl/internal/policy"
 	"github.com/lauritsk/hatchctl/internal/spec"
 	storefs "github.com/lauritsk/hatchctl/internal/store/fs"
@@ -199,7 +199,7 @@ func TestProgressWritersEmitOnceAndRedactionHelpers(t *testing.T) {
 func TestSessionSettersKeepObservedStateInSync(t *testing.T) {
 	t.Parallel()
 
-	session := &Session{prepared: preparedWorkspace{resolved: devcontainer.ResolvedConfig{ImageName: "image-a"}, state: storefs.WorkspaceState{ContainerID: "container-a"}, containerID: "container-a", containerInspect: &docker.ContainerInspect{ID: "container-a"}, observed: ObservedState{Resolved: devcontainer.ResolvedConfig{ImageName: "image-a"}, Target: RuntimeTarget{PrimaryContainer: "container-a"}, Control: ControlState{WorkspaceState: storefs.WorkspaceState{ContainerID: "container-a"}}, Container: &docker.ContainerInspect{ID: "container-a"}}}}
+	session := &Session{prepared: preparedWorkspace{resolved: devcontainer.ResolvedConfig{ImageName: "image-a"}, state: storefs.WorkspaceState{ContainerID: "container-a"}, containerID: "container-a", containerInspect: &backend.ContainerInspect{ID: "container-a"}, observed: ObservedState{Resolved: devcontainer.ResolvedConfig{ImageName: "image-a"}, Target: RuntimeTarget{PrimaryContainer: "container-a"}, Control: ControlState{WorkspaceState: storefs.WorkspaceState{ContainerID: "container-a"}}, Container: &backend.ContainerInspect{ID: "container-a"}}}}
 
 	session.SetResolved(devcontainer.ResolvedConfig{ImageName: "image-b"})
 	if session.Observed().Resolved.ImageName != "image-b" {
@@ -209,7 +209,7 @@ func TestSessionSettersKeepObservedStateInSync(t *testing.T) {
 	if session.ContainerID() != "container-b" || session.Observed().Control.WorkspaceState.ContainerID != "container-b" || session.ContainerInspect() != nil {
 		t.Fatalf("unexpected session state after SetState %#v", session.Observed())
 	}
-	inspect := &docker.ContainerInspect{ID: "container-b"}
+	inspect := &backend.ContainerInspect{ID: "container-b"}
 	session.SetContainerInspect(inspect)
 	if session.Observed().Container != inspect {
 		t.Fatalf("expected container inspect sync, got %#v", session.Observed().Container)

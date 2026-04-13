@@ -4,19 +4,18 @@ import (
 	"context"
 	"strings"
 
-	"github.com/lauritsk/hatchctl/internal/docker"
-	"github.com/lauritsk/hatchctl/internal/engine/dockercli"
+	"github.com/lauritsk/hatchctl/internal/backend"
 )
 
-type containerInspector func(context.Context, string) (docker.ContainerInspect, error)
+type containerInspector func(context.Context, string) (backend.ContainerInspect, error)
 
-func inspectContainerList(ctx context.Context, output string, inspect containerInspector) ([]docker.ContainerInspect, error) {
+func inspectContainerList(ctx context.Context, output string, inspect containerInspector) ([]backend.ContainerInspect, error) {
 	ids := uniqueContainerIDs(output)
-	inspects := make([]docker.ContainerInspect, 0, len(ids))
+	inspects := make([]backend.ContainerInspect, 0, len(ids))
 	for _, id := range ids {
 		container, err := inspect(ctx, id)
 		if err != nil {
-			if docker.IsNotFound(err) {
+			if backend.IsNotFound(err) {
 				continue
 			}
 			return nil, err
@@ -26,13 +25,13 @@ func inspectContainerList(ctx context.Context, output string, inspect containerI
 	return inspects, nil
 }
 
-func selectBestContainer(ctx context.Context, output string, inspect containerInspector) (docker.ContainerInspect, error) {
+func selectBestContainer(ctx context.Context, output string, inspect containerInspector) (backend.ContainerInspect, error) {
 	inspects, err := inspectContainerList(ctx, output, inspect)
 	if err != nil {
-		return docker.ContainerInspect{}, err
+		return backend.ContainerInspect{}, err
 	}
 	if len(inspects) == 0 {
-		return docker.ContainerInspect{}, errManagedContainerNotFound
+		return backend.ContainerInspect{}, errManagedContainerNotFound
 	}
 	return bestContainer(inspects), nil
 }
@@ -54,7 +53,7 @@ func uniqueContainerIDs(output string) []string {
 	return ids
 }
 
-func bestContainer(inspects []docker.ContainerInspect) docker.ContainerInspect {
+func bestContainer(inspects []backend.ContainerInspect) backend.ContainerInspect {
 	best := inspects[0]
 	for _, candidate := range inspects[1:] {
 		if candidate.State.Running != best.State.Running {
@@ -71,13 +70,13 @@ func bestContainer(inspects []docker.ContainerInspect) docker.ContainerInspect {
 }
 
 func inspectContainerWithEngine(engine engine) containerInspector {
-	return func(ctx context.Context, id string) (docker.ContainerInspect, error) {
-		return engine.InspectContainer(ctx, dockercli.InspectContainerRequest{ContainerID: id})
+	return func(ctx context.Context, id string) (backend.ContainerInspect, error) {
+		return engine.InspectContainer(ctx, id)
 	}
 }
 
-func inspectContainerWithObserverBackend(backend backend) containerInspector {
-	return func(ctx context.Context, id string) (docker.ContainerInspect, error) {
-		return backend.InspectContainer(ctx, id)
+func inspectContainerWithObserverBackend(observer observerBackend) containerInspector {
+	return func(ctx context.Context, id string) (backend.ContainerInspect, error) {
+		return observer.InspectContainer(ctx, id)
 	}
 }

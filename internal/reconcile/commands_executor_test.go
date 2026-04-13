@@ -2,18 +2,22 @@ package reconcile
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
+	"github.com/lauritsk/hatchctl/internal/backend"
+	backenddocker "github.com/lauritsk/hatchctl/internal/backend/docker"
+	docker "github.com/lauritsk/hatchctl/internal/backend/testdocker"
+	dockercli "github.com/lauritsk/hatchctl/internal/backend/testdockercli"
 	"github.com/lauritsk/hatchctl/internal/bridge"
 	"github.com/lauritsk/hatchctl/internal/capability"
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
-	"github.com/lauritsk/hatchctl/internal/docker"
-	"github.com/lauritsk/hatchctl/internal/engine/dockercli"
 	workspaceplan "github.com/lauritsk/hatchctl/internal/plan"
 	"github.com/lauritsk/hatchctl/internal/policy"
 	"github.com/lauritsk/hatchctl/internal/security"
@@ -37,95 +41,192 @@ type fakeExecutorEngine struct {
 	execOutputFunc       func(context.Context, dockercli.ExecRequest) (string, error)
 }
 
-func (f *fakeExecutorEngine) InspectImage(ctx context.Context, req dockercli.InspectImageRequest) (docker.ImageInspect, error) {
+func (f *fakeExecutorEngine) ID() string { return "docker" }
+
+func (f *fakeExecutorEngine) BridgeHost() string { return "host.docker.internal" }
+
+func (f *fakeExecutorEngine) BuildDefinitionFileName() string { return "Dockerfile" }
+
+func (f *fakeExecutorEngine) ConnectContainer(context.Context, string, int, io.Reader, io.Writer) error {
+	return errors.New("unexpected connect container")
+}
+
+func (f *fakeExecutorEngine) InspectImage(ctx context.Context, ref string) (backend.ImageInspect, error) {
 	if f.inspectImageFunc != nil {
-		return f.inspectImageFunc(ctx, req)
+		inspect, err := f.inspectImageFunc(ctx, dockercli.InspectImageRequest{Reference: ref})
+		return toBackendImageInspect(inspect), err
 	}
-	return docker.ImageInspect{}, errors.New("unexpected inspect image")
+	return backend.ImageInspect{}, errors.New("unexpected inspect image")
 }
 
-func (f *fakeExecutorEngine) InspectContainer(ctx context.Context, req dockercli.InspectContainerRequest) (docker.ContainerInspect, error) {
+func (f *fakeExecutorEngine) InspectContainer(ctx context.Context, containerID string) (backend.ContainerInspect, error) {
 	if f.inspectContainerFunc != nil {
-		return f.inspectContainerFunc(ctx, req)
+		inspect, err := f.inspectContainerFunc(ctx, dockercli.InspectContainerRequest{ContainerID: containerID})
+		return toBackendContainerInspect(inspect), err
 	}
-	return docker.ContainerInspect{}, errors.New("unexpected inspect container")
+	return backend.ContainerInspect{}, errors.New("unexpected inspect container")
 }
 
-func (f *fakeExecutorEngine) BuildImage(ctx context.Context, req dockercli.BuildImageRequest) error {
+func (f *fakeExecutorEngine) BuildImage(ctx context.Context, req backend.BuildImageRequest) error {
 	if f.buildImageFunc != nil {
-		return f.buildImageFunc(ctx, req)
+		return f.buildImageFunc(ctx, dockercli.BuildImageRequest{ContextDir: req.ContextDir, Dockerfile: req.DefinitionFile, Tag: req.Tag, Labels: req.Labels, BuildArgs: req.BuildArgs, Target: req.Target, ExtraOptions: req.ExtraOptions, Streams: dockercli.Streams{Stdin: req.Stdin, Stdout: req.Stdout, Stderr: req.Stderr}})
 	}
 	return errors.New("unexpected build image")
 }
 
-func (f *fakeExecutorEngine) PullImage(ctx context.Context, req dockercli.PullImageRequest) error {
+func (f *fakeExecutorEngine) PullImage(ctx context.Context, req backend.PullImageRequest) error {
 	if f.pullImageFunc != nil {
-		return f.pullImageFunc(ctx, req)
+		return f.pullImageFunc(ctx, dockercli.PullImageRequest{Reference: req.Reference, Streams: dockercli.Streams{Stdin: req.Stdin, Stdout: req.Stdout, Stderr: req.Stderr}})
 	}
 	return errors.New("unexpected pull image")
 }
 
-func (f *fakeExecutorEngine) RunDetachedContainer(ctx context.Context, req dockercli.RunDetachedContainerRequest) (string, error) {
+func (f *fakeExecutorEngine) RunDetachedContainer(ctx context.Context, req backend.RunDetachedContainerRequest) (string, error) {
 	if f.runDetachedFunc != nil {
-		return f.runDetachedFunc(ctx, req)
+		return f.runDetachedFunc(ctx, dockercli.RunDetachedContainerRequest{Name: req.Name, Labels: req.Labels, Mounts: req.Mounts, Init: req.Init, Privileged: req.Privileged, CapAdd: req.CapAdd, SecurityOpt: req.SecurityOpt, Env: req.Env, ExtraArgs: req.ExtraArgs, Image: req.Image, Command: req.Command, Streams: dockercli.Streams{Stdin: req.Stdin, Stdout: req.Stdout, Stderr: req.Stderr}})
 	}
 	return "", errors.New("unexpected run detached container")
 }
 
-func (f *fakeExecutorEngine) StartContainer(ctx context.Context, req dockercli.StartContainerRequest) error {
+func (f *fakeExecutorEngine) StartContainer(ctx context.Context, req backend.StartContainerRequest) error {
 	if f.startContainerFunc != nil {
-		return f.startContainerFunc(ctx, req)
+		return f.startContainerFunc(ctx, dockercli.StartContainerRequest{ContainerID: req.ContainerID, Streams: dockercli.Streams{Stdin: req.Stdin, Stdout: req.Stdout, Stderr: req.Stderr}})
 	}
 	return errors.New("unexpected start container")
 }
 
-func (f *fakeExecutorEngine) RemoveContainer(ctx context.Context, req dockercli.RemoveContainerRequest) error {
+func (f *fakeExecutorEngine) RemoveContainer(ctx context.Context, req backend.RemoveContainerRequest) error {
 	if f.removeContainerFunc != nil {
-		return f.removeContainerFunc(ctx, req)
+		return f.removeContainerFunc(ctx, dockercli.RemoveContainerRequest{ContainerID: req.ContainerID, Force: req.Force, Streams: dockercli.Streams{Stdin: req.Stdin, Stdout: req.Stdout, Stderr: req.Stderr}})
 	}
 	return errors.New("unexpected remove container")
 }
 
-func (f *fakeExecutorEngine) ListContainers(ctx context.Context, req dockercli.ListContainersRequest) (string, error) {
+func (f *fakeExecutorEngine) ListContainers(ctx context.Context, req backend.ListContainersRequest) (string, error) {
 	if f.listContainersFunc != nil {
-		return f.listContainersFunc(ctx, req)
+		filters := make([]string, 0, len(req.Labels))
+		for _, key := range sortedTestKeys(req.Labels) {
+			filters = append(filters, "label="+key+"="+req.Labels[key])
+		}
+		return f.listContainersFunc(ctx, dockercli.ListContainersRequest{All: req.All, Quiet: req.Quiet, Filters: filters, Dir: req.Dir})
 	}
 	return "", nil
 }
 
-func (f *fakeExecutorEngine) ComposeConfig(ctx context.Context, req dockercli.ComposeConfigRequest) (string, error) {
+func (f *fakeExecutorEngine) ProjectConfig(ctx context.Context, req backend.ProjectConfigRequest) (backend.ProjectConfig, error) {
 	if f.composeConfigFunc != nil {
-		return f.composeConfigFunc(ctx, req)
+		output, err := f.composeConfigFunc(ctx, dockercli.ComposeConfigRequest{Target: dockercli.ComposeTarget{Files: req.Target.Files, Project: req.Target.Project, Dir: req.Target.Dir}, Format: "json"})
+		if err != nil {
+			return backend.ProjectConfig{}, err
+		}
+		if start := strings.Index(output, "{"); start >= 0 {
+			output = output[start:]
+		}
+		var config backend.ProjectConfig
+		if err := json.Unmarshal([]byte(output), &config); err != nil {
+			return backend.ProjectConfig{}, err
+		}
+		return config, nil
 	}
-	return "", errors.New("unexpected compose config")
+	return backend.ProjectConfig{}, errors.New("unexpected project config")
 }
 
-func (f *fakeExecutorEngine) ComposeBuild(ctx context.Context, req dockercli.ComposeBuildRequest) error {
+func (f *fakeExecutorEngine) BuildProject(ctx context.Context, req backend.ProjectBuildRequest) error {
 	if f.composeBuildFunc != nil {
-		return f.composeBuildFunc(ctx, req)
+		return f.composeBuildFunc(ctx, dockercli.ComposeBuildRequest{Target: dockercli.ComposeTarget{Files: req.Target.Files, Project: req.Target.Project, Dir: req.Target.Dir}, Services: req.Services, Streams: dockercli.Streams{Stdin: req.Stdin, Stdout: req.Stdout, Stderr: req.Stderr}})
 	}
-	return errors.New("unexpected compose build")
+	return errors.New("unexpected project build")
 }
 
-func (f *fakeExecutorEngine) ComposeUp(ctx context.Context, req dockercli.ComposeUpRequest) error {
+func (f *fakeExecutorEngine) UpProject(ctx context.Context, req backend.ProjectUpRequest) error {
 	if f.composeUpFunc != nil {
-		return f.composeUpFunc(ctx, req)
+		files := append([]string(nil), req.Target.Files...)
+		var overridePath string
+		if req.Override != nil {
+			overridePath = filepath.Join(req.StateDir, "project-service.override.yml")
+			if err := os.MkdirAll(req.StateDir, 0o700); err != nil {
+				return err
+			}
+			var data strings.Builder
+			if req.Override.Image != "" {
+				data.WriteString("image: ")
+				data.WriteString(req.Override.Image)
+				data.WriteString("\n")
+			}
+			if err := os.WriteFile(overridePath, []byte(data.String()), 0o600); err != nil {
+				return err
+			}
+			files = append(files, overridePath)
+		}
+		err := f.composeUpFunc(ctx, dockercli.ComposeUpRequest{Target: dockercli.ComposeTarget{Files: files, Project: req.Target.Project, Dir: req.Target.Dir}, Services: req.Services, NoBuild: req.NoBuild, Detach: req.Detach, Streams: dockercli.Streams{Stdin: req.Stdin, Stdout: req.Stdout, Stderr: req.Stderr}})
+		if overridePath != "" {
+			_ = os.Remove(overridePath)
+		}
+		return err
 	}
-	return errors.New("unexpected compose up")
+	return errors.New("unexpected project up")
 }
 
-func (f *fakeExecutorEngine) Exec(ctx context.Context, req dockercli.ExecRequest) error {
+func (f *fakeExecutorEngine) ProjectContainers(ctx context.Context, req backend.ProjectContainersRequest) ([]backend.ContainerInspect, *backend.ContainerInspect, error) {
+	if f.listContainersFunc == nil || f.inspectContainerFunc == nil {
+		return nil, nil, nil
+	}
+	output, err := f.listContainersFunc(ctx, dockercli.ListContainersRequest{All: true, Quiet: true, Filters: []string{"label=com.docker.compose.project=" + req.Target.Project}})
+	if err != nil {
+		return nil, nil, err
+	}
+	inspects, err := inspectContainerList(ctx, output, func(ctx context.Context, id string) (backend.ContainerInspect, error) {
+		inspect, err := f.inspectContainerFunc(ctx, dockercli.InspectContainerRequest{ContainerID: id})
+		return toBackendContainerInspect(inspect), err
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	if req.Target.Service == "" {
+		return inspects, nil, nil
+	}
+	var primaryCandidates []backend.ContainerInspect
+	for _, inspect := range inspects {
+		if inspect.Config.Labels["com.docker.compose.service"] == req.Target.Service {
+			primaryCandidates = append(primaryCandidates, inspect)
+		}
+	}
+	if len(primaryCandidates) == 0 {
+		return inspects, nil, nil
+	}
+	best := bestContainer(primaryCandidates)
+	return inspects, &best, nil
+}
+
+func (f *fakeExecutorEngine) Exec(ctx context.Context, req backend.ExecRequest) error {
 	if f.execFunc != nil {
-		return f.execFunc(ctx, req)
+		return f.execFunc(ctx, dockercli.ExecRequest{ContainerID: req.ContainerID, User: req.User, Workdir: req.Workdir, Interactive: req.Interactive, TTY: req.TTY, Env: req.Env, Command: req.Command, Streams: dockercli.Streams{Stdin: req.Stdin, Stdout: req.Stdout, Stderr: req.Stderr}})
 	}
 	return errors.New("unexpected exec")
 }
 
-func (f *fakeExecutorEngine) ExecOutput(ctx context.Context, req dockercli.ExecRequest) (string, error) {
+func (f *fakeExecutorEngine) ExecOutput(ctx context.Context, req backend.ExecRequest) (string, error) {
 	if f.execOutputFunc != nil {
-		return f.execOutputFunc(ctx, req)
+		return f.execOutputFunc(ctx, dockercli.ExecRequest{ContainerID: req.ContainerID, User: req.User, Workdir: req.Workdir, Interactive: req.Interactive, TTY: req.TTY, Env: req.Env, Command: req.Command, Streams: dockercli.Streams{Stdin: req.Stdin, Stdout: req.Stdout, Stderr: req.Stderr}})
 	}
 	return "", errors.New("unexpected exec output")
+}
+
+func toBackendImageInspect(inspect docker.ImageInspect) backend.ImageInspect {
+	return inspect
+}
+
+func toBackendContainerInspect(inspect docker.ContainerInspect) backend.ContainerInspect {
+	return inspect
+}
+
+func sortedTestKeys(values map[string]string) []string {
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 type testResolvedConfigOptions struct {
@@ -256,7 +357,7 @@ func TestUpUsesEnrichedResolvedMetadataForDotfilesTargetPath(t *testing.T) {
 			switch req.Reference {
 			case "mcr.microsoft.com/devcontainers/base:ubuntu":
 				if !baseImagePulled {
-					return docker.ImageInspect{}, &docker.Error{Args: []string{"image", "inspect", req.Reference}, Stderr: "No such image", Err: errors.New("not found")}
+					return docker.ImageInspect{}, &backenddocker.Error{Args: []string{"image", "inspect", req.Reference}, Stderr: "No such image", Err: errors.New("not found")}
 				}
 				return docker.ImageInspect{
 					Architecture: "arm64",
@@ -264,7 +365,7 @@ func TestUpUsesEnrichedResolvedMetadataForDotfilesTargetPath(t *testing.T) {
 				}, nil
 			case "hatchctl-demo":
 				if !imageBuilt {
-					return docker.ImageInspect{}, &docker.Error{Args: []string{"image", "inspect", req.Reference}, Stderr: "No such image", Err: errors.New("not found")}
+					return docker.ImageInspect{}, &backenddocker.Error{Args: []string{"image", "inspect", req.Reference}, Stderr: "No such image", Err: errors.New("not found")}
 				}
 				return docker.ImageInspect{
 					Architecture: "arm64",
@@ -392,12 +493,12 @@ func TestUpRecreateReinstallsDotfilesForNewContainer(t *testing.T) {
 			switch req.Reference {
 			case "mcr.microsoft.com/devcontainers/base:ubuntu":
 				if !baseImagePulled {
-					return docker.ImageInspect{}, &docker.Error{Args: []string{"image", "inspect", req.Reference}, Stderr: "No such image", Err: errors.New("not found")}
+					return docker.ImageInspect{}, &backenddocker.Error{Args: []string{"image", "inspect", req.Reference}, Stderr: "No such image", Err: errors.New("not found")}
 				}
 				return docker.ImageInspect{Architecture: "arm64", Config: docker.InspectConfig{Labels: map[string]string{devcontainer.ImageMetadataLabel: sourceMetadataLabel}}}, nil
 			case "hatchctl-demo":
 				if !imageBuilt {
-					return docker.ImageInspect{}, &docker.Error{Args: []string{"image", "inspect", req.Reference}, Stderr: "No such image", Err: errors.New("not found")}
+					return docker.ImageInspect{}, &backenddocker.Error{Args: []string{"image", "inspect", req.Reference}, Stderr: "No such image", Err: errors.New("not found")}
 				}
 				return docker.ImageInspect{Architecture: "arm64", Config: docker.InspectConfig{Labels: map[string]string{devcontainer.ImageMetadataLabel: managedMetadataLabel}}}, nil
 			default:

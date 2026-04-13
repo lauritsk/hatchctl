@@ -7,7 +7,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/lauritsk/hatchctl/internal/docker"
+	"github.com/lauritsk/hatchctl/internal/backend"
+	backenddocker "github.com/lauritsk/hatchctl/internal/backend/docker"
 )
 
 func TestUniqueContainerIDsDeduplicatesAndSkipsEmptyLines(t *testing.T) {
@@ -23,14 +24,14 @@ func TestUniqueContainerIDsDeduplicatesAndSkipsEmptyLines(t *testing.T) {
 func TestSelectBestContainerPrefersRunningContainer(t *testing.T) {
 	t.Parallel()
 
-	best, err := selectBestContainer(context.Background(), "stopped\nrunning\n", func(_ context.Context, id string) (docker.ContainerInspect, error) {
+	best, err := selectBestContainer(context.Background(), "stopped\nrunning\n", func(_ context.Context, id string) (backend.ContainerInspect, error) {
 		switch id {
 		case "stopped":
-			return docker.ContainerInspect{ID: id, State: docker.ContainerState{Running: false}}, nil
+			return backend.ContainerInspect{ID: id, State: backend.ContainerState{Running: false}}, nil
 		case "running":
-			return docker.ContainerInspect{ID: id, State: docker.ContainerState{Running: true}}, nil
+			return backend.ContainerInspect{ID: id, State: backend.ContainerState{Running: true}}, nil
 		default:
-			return docker.ContainerInspect{}, errors.New("unexpected container")
+			return backend.ContainerInspect{}, errors.New("unexpected container")
 		}
 	})
 	if err != nil {
@@ -44,11 +45,11 @@ func TestSelectBestContainerPrefersRunningContainer(t *testing.T) {
 func TestSelectBestContainerSkipsMissingContainers(t *testing.T) {
 	t.Parallel()
 
-	best, err := selectBestContainer(context.Background(), "missing\nlive\n", func(_ context.Context, id string) (docker.ContainerInspect, error) {
+	best, err := selectBestContainer(context.Background(), "missing\nlive\n", func(_ context.Context, id string) (backend.ContainerInspect, error) {
 		if id == "missing" {
-			return docker.ContainerInspect{}, &docker.Error{Stderr: "No such object", Err: os.ErrNotExist}
+			return backend.ContainerInspect{}, &backenddocker.Error{Stderr: "No such object", Err: os.ErrNotExist}
 		}
-		return docker.ContainerInspect{ID: id, State: docker.ContainerState{Running: true}}, nil
+		return backend.ContainerInspect{ID: id, State: backend.ContainerState{Running: true}}, nil
 	})
 	if err != nil {
 		t.Fatalf("select best container: %v", err)
@@ -61,10 +62,10 @@ func TestSelectBestContainerSkipsMissingContainers(t *testing.T) {
 func TestBestContainerUsesLowestIDForTie(t *testing.T) {
 	t.Parallel()
 
-	best := bestContainer([]docker.ContainerInspect{
-		{ID: "zulu", State: docker.ContainerState{Running: true}},
-		{ID: "alpha", State: docker.ContainerState{Running: true}},
-		{ID: "bravo", State: docker.ContainerState{Running: false}},
+	best := bestContainer([]backend.ContainerInspect{
+		{ID: "zulu", State: backend.ContainerState{Running: true}},
+		{ID: "alpha", State: backend.ContainerState{Running: true}},
+		{ID: "bravo", State: backend.ContainerState{Running: false}},
 	})
 	if best.ID != "alpha" {
 		t.Fatalf("expected lowest running container id, got %#v", best)

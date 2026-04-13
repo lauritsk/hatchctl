@@ -12,6 +12,7 @@ import (
 )
 
 type Config struct {
+	Backend        string             `toml:"backend"`
 	Workspace      string             `toml:"workspace"`
 	ConfigPath     string             `toml:"config"`
 	StateDir       string             `toml:"state_dir"`
@@ -116,6 +117,9 @@ func merge(base Config, override Config) Config {
 	merged := base
 	if override.Workspace != "" {
 		merged.Workspace = override.Workspace
+	}
+	if override.Backend != "" {
+		merged.Backend = override.Backend
 	}
 	if override.ConfigPath != "" {
 		merged.ConfigPath = override.ConfigPath

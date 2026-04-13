@@ -8,11 +8,10 @@ import (
 	stdruntime "runtime"
 	"strings"
 
+	"github.com/lauritsk/hatchctl/internal/backend"
 	capuid "github.com/lauritsk/hatchctl/internal/capability/uidremap"
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	ui "github.com/lauritsk/hatchctl/internal/display"
-	"github.com/lauritsk/hatchctl/internal/docker"
-	"github.com/lauritsk/hatchctl/internal/engine/dockercli"
 	workspaceplan "github.com/lauritsk/hatchctl/internal/plan"
 	"github.com/lauritsk/hatchctl/internal/spec"
 	storefs "github.com/lauritsk/hatchctl/internal/store/fs"
@@ -58,7 +57,7 @@ func (e *Executor) planDesiredImage(ctx context.Context, resolved devcontainer.R
 			targetImage = resolved.ComposeProject + "-" + resolved.ComposeService
 		}
 		if service.Build.Enabled() {
-			return DesiredImage{TargetImage: targetImage, BuildMode: ImageBuildModeCompose}, nil
+			return DesiredImage{TargetImage: targetImage, BuildMode: ImageBuildModeProject}, nil
 		}
 		return DesiredImage{TargetImage: targetImage, BuildMode: ImageBuildModeNone, Verify: targetImage != ""}, nil
 	}
@@ -76,7 +75,7 @@ func (e *Executor) planDesiredImage(ctx context.Context, resolved devcontainer.R
 	if err != nil {
 		return DesiredImage{}, err
 	}
-	return DesiredImage{TargetImage: resolved.ImageName, BuildMode: ImageBuildModeDocker, ReuseKey: key}, nil
+	return DesiredImage{TargetImage: resolved.ImageName, BuildMode: ImageBuildModeBuild, ReuseKey: key}, nil
 }
 
 func (e *Executor) ReconcileImage(ctx context.Context, workspacePlan workspaceplan.WorkspacePlan, resolved devcontainer.ResolvedConfig, events ui.Sink) (string, ImagePlan, error) {
@@ -121,7 +120,7 @@ func (e *Executor) ReconcileImage(ctx context.Context, workspacePlan workspacepl
 }
 
 func (e *Executor) EnrichMergedConfig(ctx context.Context, resolved *devcontainer.ResolvedConfig, image string) error {
-	inspect, err := e.engine.InspectImage(ctx, dockercli.InspectImageRequest{Reference: image})
+	inspect, err := e.engine.InspectImage(ctx, image)
 	if err != nil {
 		if resolved.SourceKind == "compose" || isManagedImage(resolved, image) {
 			resolved.Merged = spec.MergeMetadata(resolved.Config, featureMetadata(resolved.Features))
@@ -147,9 +146,9 @@ func (e *Executor) EnrichMergedConfig(ctx context.Context, resolved *devcontaine
 }
 
 func (e *Executor) InspectImageUser(ctx context.Context, image string) (string, error) {
-	inspect, err := e.engine.InspectImage(ctx, dockercli.InspectImageRequest{Reference: image})
+	inspect, err := e.engine.InspectImage(ctx, image)
 	if err != nil {
-		if docker.IsNotFound(err) {
+		if backend.IsNotFound(err) {
 			return "", nil
 		}
 		return "", err
@@ -158,9 +157,9 @@ func (e *Executor) InspectImageUser(ctx context.Context, image string) (string, 
 }
 
 func (e *Executor) InspectImageArchitecture(ctx context.Context, image string) (string, error) {
-	inspect, err := e.engine.InspectImage(ctx, dockercli.InspectImageRequest{Reference: image})
+	inspect, err := e.engine.InspectImage(ctx, image)
 	if err != nil {
-		if docker.IsNotFound(err) {
+		if backend.IsNotFound(err) {
 			return stdruntime.GOARCH, nil
 		}
 		return "", err
@@ -193,7 +192,7 @@ func mergeManagedImageMetadata(base []spec.MetadataEntry, overlay []spec.Metadat
 }
 
 func (e *Executor) imageMetadata(ctx context.Context, image string) ([]spec.MetadataEntry, error) {
-	inspect, err := e.engine.InspectImage(ctx, dockercli.InspectImageRequest{Reference: image})
+	inspect, err := e.engine.InspectImage(ctx, image)
 	if err != nil {
 		return nil, err
 	}
@@ -206,7 +205,7 @@ func (e *Executor) mergeSourceImageMetadata(ctx context.Context, resolved devcon
 	}
 	sourceMetadata, err := e.imageMetadata(ctx, resolved.Config.Image)
 	if err != nil {
-		if docker.IsNotFound(err) {
+		if backend.IsNotFound(err) {
 			return metadata, nil
 		}
 		return nil, err
@@ -218,7 +217,7 @@ func isManagedImage(resolved *devcontainer.ResolvedConfig, image string) bool {
 	return image == resolved.ImageName || strings.HasPrefix(image, resolved.ImageName+"-")
 }
 
-func writeFeatureBuildContext(buildDir string, baseImage string, features []devcontainer.ResolvedFeature, containerUser string, remoteUser string, metadata []spec.MetadataEntry, imageKey string) error {
+func writeFeatureBuildContext(buildDir string, definitionFileName string, baseImage string, features []devcontainer.ResolvedFeature, containerUser string, remoteUser string, metadata []spec.MetadataEntry, imageKey string) error {
 	metadataLabel, err := spec.MetadataLabelValue(metadata)
 	if err != nil {
 		return err
@@ -263,7 +262,7 @@ func writeFeatureBuildContext(buildDir string, baseImage string, features []devc
 	if imageKey != "" {
 		dockerfile.WriteString("LABEL " + ImageKeyLabel + "=" + dockerfileQuotedValue(imageKey) + "\n")
 	}
-	return storefs.WriteFeatureBuildFile(filepath.Join(buildDir, "Dockerfile"), []byte(dockerfile.String()), 0o600)
+	return storefs.WriteFeatureBuildFile(filepath.Join(buildDir, definitionFileName), []byte(dockerfile.String()), 0o600)
 }
 
 func shellEnvFile(values map[string]string) string {
@@ -315,7 +314,7 @@ func (e *Executor) buildDockerfileImage(ctx context.Context, resolved devcontain
 		extraOptions = append(extraOptions, resolved.Config.Build.Options...)
 	}
 	stdout, stderr := e.progressWriters(events, phaseImage, "Building container image", e.stdout, e.stderr)
-	return e.engine.BuildImage(ctx, dockercli.BuildImageRequest{ContextDir: contextDir, Dockerfile: dockerfile, Tag: imageName, Labels: labels, BuildArgs: buildArgs, Target: target, ExtraOptions: extraOptions, Streams: dockercli.Streams{Stdout: stdout, Stderr: stderr}})
+	return e.engine.BuildImage(ctx, backend.BuildImageRequest{ContextDir: contextDir, DefinitionFile: dockerfile, Tag: imageName, Labels: labels, BuildArgs: buildArgs, Target: target, ExtraOptions: extraOptions, Streams: backend.Streams{Stdout: stdout, Stderr: stderr}})
 }
 
 func (e *Executor) ensureImageWithFeatures(ctx context.Context, resolved devcontainer.ResolvedConfig, imageKey string, events ui.Sink) (string, error) {
@@ -334,15 +333,15 @@ func (e *Executor) ensureImageWithFeatures(ctx context.Context, resolved devcont
 }
 
 func (e *Executor) ensureLocalImage(ctx context.Context, image string, events ui.Sink) error {
-	_, err := e.engine.InspectImage(ctx, dockercli.InspectImageRequest{Reference: image})
+	_, err := e.engine.InspectImage(ctx, image)
 	if err == nil {
 		return nil
 	}
-	if !docker.IsNotFound(err) {
+	if !backend.IsNotFound(err) {
 		return err
 	}
 	stdout, stderr := e.progressWriters(events, phaseImage, "Pulling source image", e.stdout, e.stderr)
-	return e.engine.PullImage(ctx, dockercli.PullImageRequest{Reference: image, Streams: dockercli.Streams{Stdout: stdout, Stderr: stderr}})
+	return e.engine.PullImage(ctx, backend.PullImageRequest{Reference: image, Streams: backend.Streams{Stdout: stdout, Stderr: stderr}})
 }
 
 func (e *Executor) ensureFeaturesImageFromBase(ctx context.Context, resolved devcontainer.ResolvedConfig, baseImage string, imageKey string, events ui.Sink) (string, error) {
@@ -363,17 +362,18 @@ func (e *Executor) ensureFeaturesImageFromBase(ctx context.Context, resolved dev
 		} else {
 			managedMetadata = mergeManagedImageMetadata(metadata, managedMetadata)
 		}
-	} else if !docker.IsNotFound(err) {
+	} else if !backend.IsNotFound(err) {
 		return "", err
 	}
-	if err := writeFeatureBuildContext(buildDir, baseImage, resolved.Features, containerUser, remoteUser, managedMetadata, imageKey); err != nil {
+	if err := writeFeatureBuildContext(buildDir, e.engine.BuildDefinitionFileName(), baseImage, resolved.Features, containerUser, remoteUser, managedMetadata, imageKey); err != nil {
 		return "", err
 	}
-	if _, err := os.Stat(filepath.Join(buildDir, "Dockerfile")); err != nil {
-		return "", fmt.Errorf("generated feature Dockerfile missing in %s: %w", buildDir, err)
+	definitionFile := filepath.Join(buildDir, e.engine.BuildDefinitionFileName())
+	if _, err := os.Stat(definitionFile); err != nil {
+		return "", fmt.Errorf("generated feature build definition missing in %s: %w", buildDir, err)
 	}
 	stdout, stderr := e.progressWriters(events, phaseImage, "Building features image", e.stdout, e.stderr)
-	if err := e.engine.BuildImage(ctx, dockercli.BuildImageRequest{ContextDir: buildDir, Dockerfile: filepath.Join(buildDir, "Dockerfile"), Tag: resolved.ImageName, Streams: dockercli.Streams{Stdout: stdout, Stderr: stderr}}); err != nil {
+	if err := e.engine.BuildImage(ctx, backend.BuildImageRequest{ContextDir: buildDir, DefinitionFile: definitionFile, Tag: resolved.ImageName, Streams: backend.Streams{Stdout: stdout, Stderr: stderr}}); err != nil {
 		entries, _ := os.ReadDir(buildDir)
 		names := make([]string, 0, len(entries))
 		for _, entry := range entries {
@@ -396,7 +396,7 @@ func (e *Executor) ensureComposeImage(ctx context.Context, resolved devcontainer
 	baseImage := service.Image
 	if service.Build.Enabled() {
 		stdout, stderr := e.progressWriters(events, phaseImage, fmt.Sprintf("Building compose service %s", resolved.ComposeService), e.stdout, e.stderr)
-		if err := e.engine.ComposeBuild(ctx, dockercli.ComposeBuildRequest{Target: dockercli.ComposeTarget{Files: resolved.ComposeFiles, Project: resolved.ComposeProject, Dir: resolved.ConfigDir}, Services: []string{resolved.ComposeService}, Streams: dockercli.Streams{Stdout: stdout, Stderr: stderr}}); err != nil {
+		if err := e.engine.BuildProject(ctx, backend.ProjectBuildRequest{Target: backend.ProjectTarget{Files: resolved.ComposeFiles, Project: resolved.ComposeProject, Service: resolved.ComposeService, Dir: resolved.ConfigDir}, Services: []string{resolved.ComposeService}, Streams: backend.Streams{Stdout: stdout, Stderr: stderr}}); err != nil {
 			return "", err
 		}
 		if baseImage == "" {
@@ -450,7 +450,7 @@ func (e *Executor) EnsureUpdatedUIDContainer(ctx context.Context, resolved devco
 	if uid <= 0 || gid <= 0 {
 		return nil
 	}
-	inspect, err := e.engine.InspectImage(ctx, dockercli.InspectImageRequest{Reference: image})
+	inspect, err := e.engine.InspectImage(ctx, image)
 	if err != nil {
 		return err
 	}
@@ -459,5 +459,5 @@ func (e *Executor) EnsureUpdatedUIDContainer(ctx context.Context, resolved devco
 		return nil
 	}
 	stdout, stderr := e.progressWriters(events, phaseContainer, "Reconciling container user", e.stdout, e.stderr)
-	return e.engine.Exec(ctx, dockercli.ExecRequest{ContainerID: containerID, User: "root", Interactive: true, Command: []string{"sh", "-s", "--", remoteUser, fmt.Sprintf("%d", uid), fmt.Sprintf("%d", gid)}, Streams: dockercli.Streams{Stdin: strings.NewReader(capuid.UpdateScript), Stdout: stdout, Stderr: stderr}})
+	return e.engine.Exec(ctx, backend.ExecRequest{ContainerID: containerID, User: "root", Interactive: true, Command: []string{"sh", "-s", "--", remoteUser, fmt.Sprintf("%d", uid), fmt.Sprintf("%d", gid)}, Streams: backend.Streams{Stdin: strings.NewReader(capuid.UpdateScript), Stdout: stdout, Stderr: stderr}})
 }

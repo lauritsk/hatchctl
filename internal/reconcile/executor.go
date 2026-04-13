@@ -6,12 +6,11 @@ import (
 	"io"
 	"os"
 
+	"github.com/lauritsk/hatchctl/internal/backend"
 	"github.com/lauritsk/hatchctl/internal/bridge"
 	"github.com/lauritsk/hatchctl/internal/command"
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	ui "github.com/lauritsk/hatchctl/internal/display"
-	"github.com/lauritsk/hatchctl/internal/docker"
-	"github.com/lauritsk/hatchctl/internal/engine/dockercli"
 	workspaceplan "github.com/lauritsk/hatchctl/internal/plan"
 	"github.com/lauritsk/hatchctl/internal/policy"
 	"github.com/lauritsk/hatchctl/internal/security"
@@ -20,24 +19,10 @@ import (
 )
 
 type engine interface {
-	InspectImage(context.Context, dockercli.InspectImageRequest) (docker.ImageInspect, error)
-	InspectContainer(context.Context, dockercli.InspectContainerRequest) (docker.ContainerInspect, error)
-	BuildImage(context.Context, dockercli.BuildImageRequest) error
-	PullImage(context.Context, dockercli.PullImageRequest) error
-	RunDetachedContainer(context.Context, dockercli.RunDetachedContainerRequest) (string, error)
-	StartContainer(context.Context, dockercli.StartContainerRequest) error
-	RemoveContainer(context.Context, dockercli.RemoveContainerRequest) error
-	ListContainers(context.Context, dockercli.ListContainersRequest) (string, error)
-	ComposeConfig(context.Context, dockercli.ComposeConfigRequest) (string, error)
-	ComposeBuild(context.Context, dockercli.ComposeBuildRequest) error
-	ComposeUp(context.Context, dockercli.ComposeUpRequest) error
-	Exec(context.Context, dockercli.ExecRequest) error
-	ExecOutput(context.Context, dockercli.ExecRequest) (string, error)
+	backend.Client
 }
 
-type observerEngine struct {
-	engine engine
-}
+type observerEngine struct{ engine engine }
 
 type Executor struct {
 	stdin          io.Reader
@@ -135,7 +120,7 @@ type preparedWorkspace struct {
 	image            string
 	state            storefs.WorkspaceState
 	containerID      string
-	containerInspect *docker.ContainerInspect
+	containerInspect *backend.ContainerInspect
 	observed         ObservedState
 }
 
@@ -153,11 +138,11 @@ const (
 
 var isTerminal = term.IsTerminal
 
-func NewExecutor(client *docker.Client) *Executor {
+func NewExecutor(client backend.Client) *Executor {
 	return NewExecutorWithIO(client, os.Stdin, os.Stdout, os.Stderr)
 }
 
-func NewExecutorWithIO(client *docker.Client, stdin io.Reader, stdout io.Writer, stderr io.Writer) *Executor {
+func NewExecutorWithIO(client backend.Client, stdin io.Reader, stdout io.Writer, stderr io.Writer) *Executor {
 	executor := &Executor{
 		stdin:         stdin,
 		stdout:        stdout,
@@ -166,9 +151,7 @@ func NewExecutorWithIO(client *docker.Client, stdin io.Reader, stdout io.Writer,
 		imageVerifier: policy.NewImageVerificationPolicy(stdin, stderr),
 		planner:       workspaceplan.NewResolver(),
 	}
-	if client != nil {
-		executor.engine = dockercli.New(client)
-	}
+	executor.engine = client
 	return executor
 }
 
@@ -355,18 +338,22 @@ func streamFileDescriptor(stream any) (uintptr, bool) {
 	return f.Fd(), true
 }
 
-func (e *Executor) observerBackend() backend {
+func (e *Executor) observerBackend() observerBackend {
 	return observerEngine{engine: e.engine}
 }
 
-func (b observerEngine) InspectImage(ctx context.Context, ref string) (docker.ImageInspect, error) {
-	return b.engine.InspectImage(ctx, dockercli.InspectImageRequest{Reference: ref})
+func (b observerEngine) InspectImage(ctx context.Context, ref string) (backend.ImageInspect, error) {
+	return b.engine.InspectImage(ctx, ref)
 }
 
-func (b observerEngine) InspectContainer(ctx context.Context, containerID string) (docker.ContainerInspect, error) {
-	return b.engine.InspectContainer(ctx, dockercli.InspectContainerRequest{ContainerID: containerID})
+func (b observerEngine) InspectContainer(ctx context.Context, containerID string) (backend.ContainerInspect, error) {
+	return b.engine.InspectContainer(ctx, containerID)
 }
 
-func (b observerEngine) ListContainers(ctx context.Context, req dockercli.ListContainersRequest) (string, error) {
+func (b observerEngine) ListContainers(ctx context.Context, req backend.ListContainersRequest) (string, error) {
 	return b.engine.ListContainers(ctx, req)
+}
+
+func (b observerEngine) ProjectContainers(ctx context.Context, req backend.ProjectContainersRequest) ([]backend.ContainerInspect, *backend.ContainerInspect, error) {
+	return b.engine.ProjectContainers(ctx, req)
 }

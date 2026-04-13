@@ -9,6 +9,7 @@ import (
 )
 
 type globalOptions struct {
+	Backend string
 	Verbose bool
 	Debug   bool
 }
@@ -43,6 +44,7 @@ func addDotfilesFlags(cmd *cobra.Command, opts *appcore.DotfilesOptions) {
 
 func resolveDefaultsRequest(cmd *cobra.Command, workspace string, configPath string, featureTimeout time.Duration, lockfilePolicy string, bridgeEnabled *bool, trustWorkspace *bool, sshAgent *bool, dotfiles appcore.DotfilesOptions) appcore.ResolveDefaultsRequest {
 	req := appcore.ResolveDefaultsRequest{
+		Backend:        appcore.FlagValue[string]{Value: cmd.Flag("backend").Value.String(), Changed: flagChanged(cmd, "backend")},
 		Workspace:      appcore.FlagValue[string]{Value: workspace, Changed: flagChanged(cmd, "workspace")},
 		ConfigPath:     appcore.FlagValue[string]{Value: configPath, Changed: flagChanged(cmd, "config")},
 		FeatureTimeout: appcore.FlagValue[time.Duration]{Value: featureTimeout, Changed: flagChanged(cmd, "feature-timeout")},

@@ -6,12 +6,13 @@ import (
 	"context"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sync"
 	"testing"
 
+	backenddocker "github.com/lauritsk/hatchctl/internal/backend/docker"
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
-	"github.com/lauritsk/hatchctl/internal/docker"
 	"github.com/lauritsk/hatchctl/internal/reconcile"
 	"github.com/lauritsk/hatchctl/internal/spec"
 )
@@ -21,14 +22,15 @@ var dockerAvailabilityForIntegration struct {
 	err  error
 }
 
-func integrationDockerClient(t *testing.T) *docker.Client {
+func integrationDockerClient(t *testing.T) *backenddocker.Client {
 	t.Helper()
 	if testing.Short() {
 		t.Skip("skipping Docker integration test in short mode")
 	}
-	client := docker.NewClient("docker")
+	client := backenddocker.New("docker")
 	dockerAvailabilityForIntegration.once.Do(func() {
-		_, dockerAvailabilityForIntegration.err = client.Output(context.Background(), "version", "--format", "{{.Server.Version}}")
+		cmd := exec.CommandContext(context.Background(), "docker", "version", "--format", "{{.Server.Version}}")
+		_, dockerAvailabilityForIntegration.err = cmd.Output()
 	})
 	if dockerAvailabilityForIntegration.err != nil {
 		t.Skipf("docker unavailable: %v", dockerAvailabilityForIntegration.err)
@@ -36,7 +38,7 @@ func integrationDockerClient(t *testing.T) *docker.Client {
 	return client
 }
 
-func integrationService(client *docker.Client) *Service {
+func integrationService(client *backenddocker.Client) *Service {
 	return NewWithExecutor(reconcile.NewExecutor(client))
 }
 
@@ -72,7 +74,7 @@ func TestBuildPersistsMetadataLabel(t *testing.T) {
 		t.Fatalf("build image: %v", err)
 	}
 	t.Cleanup(func() {
-		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rmi", "-f", result.Image}})
+		_ = exec.CommandContext(ctx, "docker", "rmi", "-f", result.Image).Run()
 	})
 
 	inspect, err := client.InspectImage(ctx, result.Image)
@@ -144,7 +146,7 @@ func TestBuildDoesNotWriteWorkspaceState(t *testing.T) {
 		t.Fatalf("build: %v", err)
 	}
 	t.Cleanup(func() {
-		_ = client.Run(ctx, docker.RunOptions{Args: []string{"rmi", "-f", result.Image}})
+		_ = exec.CommandContext(ctx, "docker", "rmi", "-f", result.Image).Run()
 	})
 
 	if _, err := os.Stat(filepath.Join(stateDir, "state.json")); !os.IsNotExist(err) {

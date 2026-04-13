@@ -7,38 +7,46 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/lauritsk/hatchctl/internal/backend"
+	backenddocker "github.com/lauritsk/hatchctl/internal/backend/docker"
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
-	"github.com/lauritsk/hatchctl/internal/docker"
-	"github.com/lauritsk/hatchctl/internal/engine/dockercli"
 	workspaceplan "github.com/lauritsk/hatchctl/internal/plan"
 	storefs "github.com/lauritsk/hatchctl/internal/store/fs"
 )
 
 type fakeBackend struct {
-	listContainers func(context.Context, dockercli.ListContainersRequest) (string, error)
-	inspectImage   func(context.Context, string) (docker.ImageInspect, error)
-	inspectCont    func(context.Context, string) (docker.ContainerInspect, error)
+	listContainers    func(context.Context, backend.ListContainersRequest) (string, error)
+	inspectImage      func(context.Context, string) (backend.ImageInspect, error)
+	inspectCont       func(context.Context, string) (backend.ContainerInspect, error)
+	projectContainers func(context.Context, backend.ProjectContainersRequest) ([]backend.ContainerInspect, *backend.ContainerInspect, error)
 }
 
-func (f fakeBackend) InspectImage(ctx context.Context, image string) (docker.ImageInspect, error) {
+func (f fakeBackend) InspectImage(ctx context.Context, image string) (backend.ImageInspect, error) {
 	if f.inspectImage == nil {
-		return docker.ImageInspect{}, nil
+		return backend.ImageInspect{}, nil
 	}
 	return f.inspectImage(ctx, image)
 }
 
-func (f fakeBackend) InspectContainer(ctx context.Context, containerID string) (docker.ContainerInspect, error) {
+func (f fakeBackend) InspectContainer(ctx context.Context, containerID string) (backend.ContainerInspect, error) {
 	if f.inspectCont == nil {
-		return docker.ContainerInspect{}, nil
+		return backend.ContainerInspect{}, nil
 	}
 	return f.inspectCont(ctx, containerID)
 }
 
-func (f fakeBackend) ListContainers(ctx context.Context, req dockercli.ListContainersRequest) (string, error) {
+func (f fakeBackend) ListContainers(ctx context.Context, req backend.ListContainersRequest) (string, error) {
 	if f.listContainers == nil {
 		return "", nil
 	}
 	return f.listContainers(ctx, req)
+}
+
+func (f fakeBackend) ProjectContainers(ctx context.Context, req backend.ProjectContainersRequest) ([]backend.ContainerInspect, *backend.ContainerInspect, error) {
+	if f.projectContainers == nil {
+		return nil, nil, nil
+	}
+	return f.projectContainers(ctx, req)
 }
 
 func TestObserveManagedContainerCombinesControlAndEngineState(t *testing.T) {
@@ -60,23 +68,23 @@ func TestObserveManagedContainerCombinesControlAndEngineState(t *testing.T) {
 		t.Fatal(err)
 	}
 	backend := fakeBackend{
-		listContainers: func(_ context.Context, req dockercli.ListContainersRequest) (string, error) {
-			if len(req.Filters) != 2 {
-				t.Fatalf("unexpected filters %#v", req.Filters)
+		listContainers: func(_ context.Context, req backend.ListContainersRequest) (string, error) {
+			if len(req.Labels) != 2 {
+				t.Fatalf("unexpected labels %#v", req.Labels)
 			}
 			return "dead\nlive\n", nil
 		},
-		inspectCont: func(_ context.Context, containerID string) (docker.ContainerInspect, error) {
+		inspectCont: func(_ context.Context, containerID string) (backend.ContainerInspect, error) {
 			switch containerID {
 			case "missing":
-				return docker.ContainerInspect{}, &docker.Error{Stderr: "No such object", Err: os.ErrNotExist}
+				return backend.ContainerInspect{}, &backenddocker.Error{Stderr: "No such object", Err: os.ErrNotExist}
 			case "dead":
-				return docker.ContainerInspect{ID: "dead", State: docker.ContainerState{Status: "exited", Running: false}}, nil
+				return backend.ContainerInspect{ID: "dead", State: backend.ContainerState{Status: "exited", Running: false}}, nil
 			case "live":
-				return docker.ContainerInspect{ID: "live", State: docker.ContainerState{Status: "running", Running: true}}, nil
+				return backend.ContainerInspect{ID: "live", State: backend.ContainerState{Status: "running", Running: true}}, nil
 			default:
 				t.Fatalf("unexpected inspect %q", containerID)
-				return docker.ContainerInspect{}, nil
+				return backend.ContainerInspect{}, nil
 			}
 		},
 	}
@@ -118,22 +126,10 @@ func TestObserveComposeTargetIncludesProjectContainers(t *testing.T) {
 	t.Parallel()
 
 	backend := fakeBackend{
-		listContainers: func(_ context.Context, req dockercli.ListContainersRequest) (string, error) {
-			if len(req.Filters) != 1 || req.Filters[0] != "label=com.docker.compose.project=demo" {
-				t.Fatalf("unexpected filters %#v", req.Filters)
-			}
-			return "db\napp\n", nil
-		},
-		inspectCont: func(_ context.Context, containerID string) (docker.ContainerInspect, error) {
-			switch containerID {
-			case "db":
-				return docker.ContainerInspect{ID: "db", Config: docker.InspectConfig{Labels: map[string]string{"com.docker.compose.service": "db"}}, State: docker.ContainerState{Status: "running", Running: true}}, nil
-			case "app":
-				return docker.ContainerInspect{ID: "app", Config: docker.InspectConfig{Labels: map[string]string{"com.docker.compose.service": "app"}}, State: docker.ContainerState{Status: "running", Running: true}}, nil
-			default:
-				t.Fatalf("unexpected inspect %q", containerID)
-				return docker.ContainerInspect{}, nil
-			}
+		projectContainers: func(_ context.Context, req backend.ProjectContainersRequest) ([]backend.ContainerInspect, *backend.ContainerInspect, error) {
+			app := backend.ContainerInspect{ID: "app", State: backend.ContainerState{Status: "running", Running: true}}
+			db := backend.ContainerInspect{ID: "db", State: backend.ContainerState{Status: "running", Running: true}}
+			return []backend.ContainerInspect{db, app}, &app, nil
 		},
 	}
 	observed, err := NewObserver(backend).Observe(context.Background(), ObserveRequest{
@@ -156,8 +152,8 @@ func TestRevalidateReadTokenDetectsCoordinationChanges(t *testing.T) {
 
 	stateDir := t.TempDir()
 	backend := fakeBackend{
-		inspectCont: func(_ context.Context, containerID string) (docker.ContainerInspect, error) {
-			return docker.ContainerInspect{ID: containerID}, nil
+		inspectCont: func(_ context.Context, containerID string) (backend.ContainerInspect, error) {
+			return backend.ContainerInspect{ID: containerID}, nil
 		},
 	}
 	lock, err := storefs.AcquireWorkspaceLock(context.Background(), stateDir, "up")
@@ -192,14 +188,9 @@ func TestRevalidateReadTokenDetectsComposeIdentityChanges(t *testing.T) {
 	t.Parallel()
 
 	observer := NewObserver(fakeBackend{
-		inspectCont: func(_ context.Context, containerID string) (docker.ContainerInspect, error) {
-			return docker.ContainerInspect{
-				ID: containerID,
-				Config: docker.InspectConfig{Labels: map[string]string{
-					"com.docker.compose.project": "demo",
-					"com.docker.compose.service": "db",
-				}},
-			}, nil
+		projectContainers: func(_ context.Context, req backend.ProjectContainersRequest) ([]backend.ContainerInspect, *backend.ContainerInspect, error) {
+			db := backend.ContainerInspect{ID: "container-123"}
+			return []backend.ContainerInspect{db}, nil, nil
 		},
 	})
 	observed := ObservedState{

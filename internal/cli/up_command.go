@@ -31,7 +31,7 @@ func (a *App) newUpCommand(global *globalOptions) *cobra.Command {
 			"Create or reuse the managed devcontainer for a workspace.",
 			"",
 			"Use this as the normal entry point when you want hatchctl to resolve the config, build the image if needed, and start or reconnect to the container.",
-			"If the workspace asks for host-side lifecycle commands or elevated Docker settings, hatchctl stops and tells you which trust flag to add.",
+			"If the workspace asks for host-side lifecycle commands or elevated container backend settings, hatchctl stops and tells you which trust flag to add.",
 		}, "\n"),
 		Example: strings.Join([]string{
 			"hatchctl up",
@@ -76,7 +76,7 @@ func (a *App) newUpCommand(global *globalOptions) *cobra.Command {
 	cmd.Flags().BoolVar(&recreate, "recreate", false, "remove and recreate an existing managed container")
 	cmd.Flags().BoolVar(&bridgeEnabled, "bridge", false, "enable macOS browser-open and localhost callback forwarding")
 	cmd.Flags().BoolVar(&sshAgent, "ssh", false, "mount the host ssh-agent socket into the container")
-	cmd.Flags().BoolVar(&trustWorkspace, "trust-workspace", trustWorkspace, "trust repo-controlled Docker mounts, privilege, and build settings")
+	cmd.Flags().BoolVar(&trustWorkspace, "trust-workspace", trustWorkspace, "trust repo-controlled backend mounts, privilege, and build settings")
 	cmd.Flags().BoolVar(&allowHostLifecycle, "allow-host-lifecycle", allowHostLifecycle, "trust and run host-side lifecycle commands such as initializeCommand")
 	addJSONFlag(cmd, &jsonOut)
 	addDotfilesFlags(cmd, &dotfiles)

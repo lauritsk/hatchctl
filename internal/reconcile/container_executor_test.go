@@ -7,17 +7,18 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/lauritsk/hatchctl/internal/backend"
+	docker "github.com/lauritsk/hatchctl/internal/backend/testdocker"
+	dockercli "github.com/lauritsk/hatchctl/internal/backend/testdockercli"
 	capssh "github.com/lauritsk/hatchctl/internal/capability/sshagent"
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
-	"github.com/lauritsk/hatchctl/internal/docker"
-	"github.com/lauritsk/hatchctl/internal/engine/dockercli"
 	"github.com/lauritsk/hatchctl/internal/spec"
 )
 
 func TestContainerBridgeModeMatches(t *testing.T) {
 	t.Parallel()
 
-	inspect := docker.ContainerInspect{Config: docker.InspectConfig{Labels: map[string]string{devcontainer.BridgeEnabledLabel: "true"}}}
+	inspect := backend.ContainerInspect{Config: backend.InspectConfig{Labels: map[string]string{devcontainer.BridgeEnabledLabel: "true"}}}
 	if !containerBridgeModeMatches(inspect, true) {
 		t.Fatal("expected bridge-enabled container to match enabled requirement")
 	}
@@ -29,7 +30,7 @@ func TestContainerBridgeModeMatches(t *testing.T) {
 func TestContainerSSHAgentMatches(t *testing.T) {
 	t.Parallel()
 
-	withLabel := docker.ContainerInspect{Config: docker.InspectConfig{Labels: map[string]string{devcontainer.SSHAgentLabel: "true"}}}
+	withLabel := backend.ContainerInspect{Config: backend.InspectConfig{Labels: map[string]string{devcontainer.SSHAgentLabel: "true"}}}
 	if !containerSSHAgentMatches(withLabel, true) {
 		t.Fatal("expected ssh-agent label to satisfy ssh requirement")
 	}
@@ -37,7 +38,7 @@ func TestContainerSSHAgentMatches(t *testing.T) {
 		t.Fatal("expected ssh-agent label to fail when ssh is disabled")
 	}
 
-	withMount := docker.ContainerInspect{Mounts: []docker.ContainerMount{{Destination: capssh.ContainerSocketPath}}}
+	withMount := backend.ContainerInspect{Mounts: []backend.ContainerMount{{Destination: capssh.ContainerSocketPath}}}
 	if !containerSSHAgentMatches(withMount, true) {
 		t.Fatal("expected ssh-agent mount to satisfy ssh requirement")
 	}
@@ -45,7 +46,7 @@ func TestContainerSSHAgentMatches(t *testing.T) {
 		t.Fatal("expected ssh-agent mount to fail when ssh is disabled")
 	}
 
-	withoutMount := docker.ContainerInspect{}
+	withoutMount := backend.ContainerInspect{}
 	if !containerSSHAgentMatches(withoutMount, false) {
 		t.Fatal("expected missing ssh-agent mount to satisfy disabled ssh requirement")
 	}
@@ -72,9 +73,6 @@ func TestReadComposeConfigUpdatesResolvedProject(t *testing.T) {
 	executor := NewExecutorWithIO(nil, nil, nil, nil)
 	executor.engine = &fakeExecutorEngine{
 		composeConfigFunc: func(_ context.Context, req dockercli.ComposeConfigRequest) (string, error) {
-			if req.Format != "json" {
-				t.Fatalf("expected json compose config format, got %q", req.Format)
-			}
 			return `{"name":"resolved-project","services":{"app":{"image":"alpine:3.23"}}}`, nil
 		},
 	}
@@ -112,7 +110,7 @@ func TestReadComposeConfigStripsLeadingNoise(t *testing.T) {
 	}
 }
 
-func TestRenderComposeOverrideIncludesDerivedSettings(t *testing.T) {
+func TestProjectOverrideIncludesDerivedSettings(t *testing.T) {
 	t.Parallel()
 
 	trueValue := true
@@ -141,29 +139,38 @@ func TestRenderComposeOverrideIncludesDerivedSettings(t *testing.T) {
 		},
 	}
 
-	override, err := renderComposeOverride(resolved, "managed-image", "container-key")
+	override, err := projectOverride(resolved, "managed-image", "container-key")
 	if err != nil {
-		t.Fatalf("render compose override: %v", err)
+		t.Fatalf("project override: %v", err)
 	}
-	for _, want := range []string{
-		"pull_policy: never",
-		"devcontainer.bridge.enabled=true",
-		"devcontainer.ssh_agent.enabled=true",
-		"container-key",
-		"FOO=bar",
-		"image: managed-image",
-		"user: vscode",
-		"/workspaces/demo",
-		"source: deps",
-		"source: /tmp/cache",
-		"cap_add:",
-		"SYS_PTRACE",
-		"security_opt:",
-		"seccomp=unconfined",
-	} {
-		if !strings.Contains(override, want) {
-			t.Fatalf("expected compose override to contain %q, got:\n%s", want, override)
-		}
+	if override.PullPolicy != "never" || override.Image != "managed-image" || override.User != "vscode" {
+		t.Fatalf("unexpected override basics %#v", override)
+	}
+	if override.Labels[devcontainer.BridgeEnabledLabel] != "true" || override.Labels[devcontainer.SSHAgentLabel] != "true" || override.Labels[ContainerKeyLabel] != "container-key" {
+		t.Fatalf("unexpected labels %#v", override.Labels)
+	}
+	if override.Environment["FOO"] != "bar" || len(override.Mounts) != 3 {
+		t.Fatalf("unexpected override env/mounts %#v", override)
+	}
+	if len(override.CapAdd) != 1 || override.CapAdd[0] != "SYS_PTRACE" || len(override.SecurityOpt) != 1 || override.SecurityOpt[0] != "seccomp=unconfined" {
+		t.Fatalf("unexpected override security %#v", override)
+	}
+}
+
+func TestProjectOverrideReturnsMetadataEncodingError(t *testing.T) {
+	t.Parallel()
+
+	resolved := devcontainer.ResolvedConfig{
+		SourceKind:     "compose",
+		ComposeService: "app",
+		WorkspaceMount: "type=bind,source=/workspace,target=/workspaces/demo",
+		Merged: spec.MergedConfig{
+			Metadata: []spec.MetadataEntry{{Customizations: map[string]any{"bad": func() {}}}},
+		},
+	}
+
+	if _, err := projectOverride(resolved, "managed-image", "container-key"); err == nil {
+		t.Fatal("expected metadata encoding error")
 	}
 }
 
@@ -219,17 +226,14 @@ func TestFindComposeContainerResolvesProjectFromComposeConfig(t *testing.T) {
 			if !strings.Contains(filters, "label=com.docker.compose.project=resolved-project") {
 				t.Fatalf("expected compose project filter, got %#v", req.Filters)
 			}
-			if !strings.Contains(filters, "label=com.docker.compose.service=app") {
-				t.Fatalf("expected compose service filter, got %#v", req.Filters)
-			}
 			return "container-123\n", nil
 		},
 		inspectContainerFunc: func(_ context.Context, req dockercli.InspectContainerRequest) (docker.ContainerInspect, error) {
-			return docker.ContainerInspect{ID: req.ContainerID, State: docker.ContainerState{Running: true}}, nil
+			return docker.ContainerInspect{ID: req.ContainerID, Config: docker.InspectConfig{Labels: map[string]string{"com.docker.compose.service": "app"}}, State: docker.ContainerState{Running: true}}, nil
 		},
 	}
 
-	resolved := devcontainer.ResolvedConfig{ConfigDir: "/workspace/.devcontainer", ComposeFiles: []string{"compose.yml"}, ComposeService: "app", SourceKind: "compose"}
+	resolved := devcontainer.ResolvedConfig{ConfigDir: "/workspace/.devcontainer", ComposeFiles: []string{"compose.yml"}, ComposeProject: "resolved-project", ComposeService: "app", SourceKind: "compose"}
 	id, err := executor.findComposeContainer(context.Background(), resolved)
 	if err != nil {
 		t.Fatalf("find compose container: %v", err)
@@ -264,7 +268,7 @@ func TestCreateComposeContainerWritesTemporaryOverrideAndRemovesIt(t *testing.T)
 			return "container-123\n", nil
 		},
 		inspectContainerFunc: func(_ context.Context, req dockercli.InspectContainerRequest) (docker.ContainerInspect, error) {
-			return docker.ContainerInspect{ID: req.ContainerID, State: docker.ContainerState{Running: true}}, nil
+			return docker.ContainerInspect{ID: req.ContainerID, Config: docker.InspectConfig{Labels: map[string]string{"com.docker.compose.service": "app"}}, State: docker.ContainerState{Running: true}}, nil
 		},
 	}
 
@@ -279,7 +283,7 @@ func TestCreateComposeContainerWritesTemporaryOverrideAndRemovesIt(t *testing.T)
 		Merged:         spec.MergedConfig{},
 	}
 
-	id, err := executor.createComposeContainer(context.Background(), resolved, "managed-image", "container-key", "", nil)
+	id, err := executor.createComposeContainer(context.Background(), resolved, "managed-image", "container-key", nil)
 	if err != nil {
 		t.Fatalf("create compose container: %v", err)
 	}
@@ -292,7 +296,7 @@ func TestCreateComposeContainerWritesTemporaryOverrideAndRemovesIt(t *testing.T)
 	if _, err := os.Stat(overridePath); !os.IsNotExist(err) {
 		t.Fatalf("expected temporary override to be removed, got %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(stateDir, "docker-compose.override.yml")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(stateDir, "project-service.override.yml")); !os.IsNotExist(err) {
 		t.Fatalf("expected workspace override path to be cleaned up, got %v", err)
 	}
 }
@@ -310,6 +314,7 @@ func TestEnsureComposeContainerReusesExistingMatchingContainer(t *testing.T) {
 			return docker.ContainerInspect{
 				ID: req.ContainerID,
 				Config: docker.InspectConfig{Labels: map[string]string{
+					"com.docker.compose.service":    "app",
 					devcontainer.BridgeEnabledLabel: "true",
 					devcontainer.SSHAgentLabel:      "true",
 				}},
@@ -322,8 +327,8 @@ func TestEnsureComposeContainerReusesExistingMatchingContainer(t *testing.T) {
 		},
 	}
 
-	resolved := devcontainer.ResolvedConfig{SourceKind: "compose", ConfigDir: "/workspace/.devcontainer", ComposeFiles: []string{"compose.yml"}, ComposeProject: "demo", ComposeService: "app"}
-	id, created, err := executor.ensureComposeContainer(context.Background(), resolved, true, true, "override.yml", nil)
+	resolved := devcontainer.ResolvedConfig{SourceKind: "compose", StateDir: t.TempDir(), ConfigDir: "/workspace/.devcontainer", ComposeFiles: []string{"compose.yml"}, ComposeProject: "demo", ComposeService: "app"}
+	id, created, err := executor.ensureComposeContainer(context.Background(), resolved, "managed-image", "container-key", true, true, nil)
 	if err != nil {
 		t.Fatalf("ensure compose container: %v", err)
 	}
@@ -350,12 +355,12 @@ func TestEnsureComposeContainerStartsComposeWhenMissing(t *testing.T) {
 			return "container-456\n", nil
 		},
 		inspectContainerFunc: func(_ context.Context, req dockercli.InspectContainerRequest) (docker.ContainerInspect, error) {
-			return docker.ContainerInspect{ID: req.ContainerID, State: docker.ContainerState{Running: true}}, nil
+			return docker.ContainerInspect{ID: req.ContainerID, Config: docker.InspectConfig{Labels: map[string]string{"com.docker.compose.service": "app"}}, State: docker.ContainerState{Running: true}}, nil
 		},
 		composeUpFunc: func(_ context.Context, req dockercli.ComposeUpRequest) error {
 			composeUpCalled = true
-			if len(req.Target.Files) != 2 || req.Target.Files[1] != "override.yml" {
-				t.Fatalf("expected provided override path in compose target, got %#v", req.Target.Files)
+			if len(req.Target.Files) != 2 || filepath.Base(req.Target.Files[1]) != "project-service.override.yml" {
+				t.Fatalf("expected generated override path in compose target, got %#v", req.Target.Files)
 			}
 			if !req.NoBuild || !req.Detach {
 				t.Fatalf("expected compose up to run detached without build, got %#v", req)
@@ -364,8 +369,8 @@ func TestEnsureComposeContainerStartsComposeWhenMissing(t *testing.T) {
 		},
 	}
 
-	resolved := devcontainer.ResolvedConfig{SourceKind: "compose", ConfigDir: "/workspace/.devcontainer", ComposeFiles: []string{"compose.yml"}, ComposeProject: "demo", ComposeService: "app"}
-	id, created, err := executor.ensureComposeContainer(context.Background(), resolved, false, false, "override.yml", nil)
+	resolved := devcontainer.ResolvedConfig{SourceKind: "compose", StateDir: t.TempDir(), ConfigDir: "/workspace/.devcontainer", ComposeFiles: []string{"compose.yml"}, ComposeProject: "demo", ComposeService: "app"}
+	id, created, err := executor.ensureComposeContainer(context.Background(), resolved, "managed-image", "container-key", false, false, nil)
 	if err != nil {
 		t.Fatalf("ensure compose container: %v", err)
 	}

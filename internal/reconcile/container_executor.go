@@ -2,21 +2,16 @@ package reconcile
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"sort"
 	"strings"
 
+	"github.com/lauritsk/hatchctl/internal/backend"
 	capssh "github.com/lauritsk/hatchctl/internal/capability/sshagent"
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	ui "github.com/lauritsk/hatchctl/internal/display"
-	"github.com/lauritsk/hatchctl/internal/docker"
-	"github.com/lauritsk/hatchctl/internal/engine/dockercli"
 	"github.com/lauritsk/hatchctl/internal/spec"
-	storefs "github.com/lauritsk/hatchctl/internal/store/fs"
-	"go.yaml.in/yaml/v3"
 )
 
 var errManagedContainerNotFound = errors.New("managed container not found")
@@ -26,74 +21,11 @@ type containerReuseRequirements struct {
 	SSHAgent      bool
 }
 
-type composeConfig struct {
-	Name     string                    `json:"name"`
-	Services map[string]composeService `json:"services"`
-}
-
-type composeService struct {
-	Image string        `json:"image"`
-	Build *composeBuild `json:"build"`
-}
-
-type composeBuild struct {
-	Context    string            `json:"context"`
-	Dockerfile string            `json:"dockerfile"`
-	Target     string            `json:"target"`
-	Args       map[string]string `json:"args"`
-}
-
-type composeOverrideFile struct {
-	Services map[string]composeOverrideService `yaml:"services"`
-	Volumes  map[string]composeOverrideVolume  `yaml:"volumes,omitempty"`
-}
-
-type composeOverrideService struct {
-	PullPolicy  string                `yaml:"pull_policy,omitempty"`
-	Labels      []string              `yaml:"labels,omitempty"`
-	Environment []string              `yaml:"environment,omitempty"`
-	Volumes     []composeServiceMount `yaml:"volumes,omitempty"`
-	Init        bool                  `yaml:"init,omitempty"`
-	Privileged  bool                  `yaml:"privileged,omitempty"`
-	User        string                `yaml:"user,omitempty"`
-	Command     []string              `yaml:"command,omitempty"`
-	CapAdd      []string              `yaml:"cap_add,omitempty"`
-	SecurityOpt []string              `yaml:"security_opt,omitempty"`
-	Image       string                `yaml:"image,omitempty"`
-}
-
-type composeServiceMount struct {
-	Type        string                     `yaml:"type,omitempty"`
-	Source      string                     `yaml:"source,omitempty"`
-	Target      string                     `yaml:"target,omitempty"`
-	ReadOnly    bool                       `yaml:"read_only,omitempty"`
-	Consistency string                     `yaml:"consistency,omitempty"`
-	Bind        *composeBindMountOptions   `yaml:"bind,omitempty"`
-	Volume      *composeVolumeMountOptions `yaml:"volume,omitempty"`
-}
-
-type composeBindMountOptions struct {
-	Propagation    string `yaml:"propagation,omitempty"`
-	CreateHostPath *bool  `yaml:"create_host_path,omitempty"`
-	SELinux        string `yaml:"selinux,omitempty"`
-}
-
-type composeVolumeMountOptions struct {
-	NoCopy  bool   `yaml:"nocopy,omitempty"`
-	Subpath string `yaml:"subpath,omitempty"`
-}
-
-type composeOverrideVolume struct{}
-
-func (b *composeBuild) Enabled() bool {
-	return b != nil && b.Context != ""
-}
-
-func containerBridgeModeMatches(inspect docker.ContainerInspect, bridgeEnabled bool) bool {
+func containerBridgeModeMatches(inspect backend.ContainerInspect, bridgeEnabled bool) bool {
 	return (inspect.Config.Labels[devcontainer.BridgeEnabledLabel] == "true") == bridgeEnabled
 }
 
-func containerSSHAgentMatches(inspect docker.ContainerInspect, sshAgent bool) bool {
+func containerSSHAgentMatches(inspect backend.ContainerInspect, sshAgent bool) bool {
 	if inspect.Config.Labels[devcontainer.SSHAgentLabel] == "true" {
 		return sshAgent
 	}
@@ -117,7 +49,7 @@ func (e *Executor) ReconcileContainer(ctx context.Context, observed ObservedStat
 		return plan.ContainerID, containerKey, false, nil
 	case ContainerActionStart:
 		stdout, stderr := e.progressWriters(events, phaseContainer, "Starting existing container "+plan.ContainerID, e.stdout, e.stderr)
-		if err := e.engine.StartContainer(ctx, dockercli.StartContainerRequest{ContainerID: plan.ContainerID, Streams: dockercli.Streams{Stdout: stdout, Stderr: stderr}}); err != nil {
+		if err := e.engine.StartContainer(ctx, backend.StartContainerRequest{ContainerID: plan.ContainerID, Streams: backend.Streams{Stdout: stdout, Stderr: stderr}}); err != nil {
 			return "", "", false, err
 		}
 		return plan.ContainerID, containerKey, false, nil
@@ -127,10 +59,10 @@ func (e *Executor) ReconcileContainer(ctx context.Context, observed ObservedStat
 				return "", "", false, err
 			}
 		}
-		containerID, err := e.createContainer(ctx, resolved, image, containerKey, bridgeEnabled, sshAgent, "", events)
+		containerID, err := e.createContainer(ctx, resolved, image, containerKey, bridgeEnabled, sshAgent, events)
 		return containerID, containerKey, true, err
 	case ContainerActionCreate:
-		containerID, err := e.createContainer(ctx, resolved, image, containerKey, bridgeEnabled, sshAgent, "", events)
+		containerID, err := e.createContainer(ctx, resolved, image, containerKey, bridgeEnabled, sshAgent, events)
 		return containerID, containerKey, true, err
 	default:
 		return plan.ContainerID, containerKey, false, nil
@@ -138,7 +70,7 @@ func (e *Executor) ReconcileContainer(ctx context.Context, observed ObservedStat
 }
 
 func (e *Executor) ensureReusableContainer(ctx context.Context, containerID string, requirements containerReuseRequirements, events ui.Sink) (string, bool, error) {
-	inspect, err := e.engine.InspectContainer(ctx, dockercli.InspectContainerRequest{ContainerID: containerID})
+	inspect, err := e.engine.InspectContainer(ctx, containerID)
 	if err != nil {
 		return "", false, err
 	}
@@ -150,7 +82,7 @@ func (e *Executor) ensureReusableContainer(ctx context.Context, containerID stri
 	}
 	if !inspect.State.Running {
 		stdout, stderr := e.progressWriters(events, phaseContainer, fmt.Sprintf("Starting existing container %s", inspect.ID), e.stdout, e.stderr)
-		if err := e.engine.StartContainer(ctx, dockercli.StartContainerRequest{ContainerID: inspect.ID, Streams: dockercli.Streams{Stdout: stdout, Stderr: stderr}}); err != nil {
+		if err := e.engine.StartContainer(ctx, backend.StartContainerRequest{ContainerID: inspect.ID, Streams: backend.Streams{Stdout: stdout, Stderr: stderr}}); err != nil {
 			return "", false, err
 		}
 	}
@@ -161,11 +93,7 @@ func (e *Executor) findContainer(ctx context.Context, resolved devcontainer.Reso
 	if resolved.SourceKind == "compose" {
 		return e.findComposeContainer(ctx, resolved)
 	}
-	filters := make([]string, 0, len(resolved.Labels))
-	for key, value := range resolved.Labels {
-		filters = append(filters, "label="+key+"="+value)
-	}
-	result, err := e.engine.ListContainers(ctx, dockercli.ListContainersRequest{All: true, Quiet: true, Filters: filters})
+	result, err := e.engine.ListContainers(ctx, backend.ListContainersRequest{All: true, Quiet: true, Labels: resolved.Labels})
 	if err != nil {
 		return "", err
 	}
@@ -174,7 +102,7 @@ func (e *Executor) findContainer(ctx context.Context, resolved devcontainer.Reso
 
 func (e *Executor) removeContainer(ctx context.Context, containerID string, events ui.Sink) error {
 	stdout, stderr := e.progressWriters(events, phaseContainer, fmt.Sprintf("Removing managed container %s", containerID), e.stdout, e.stderr)
-	return e.engine.RemoveContainer(ctx, dockercli.RemoveContainerRequest{ContainerID: containerID, Force: true, Streams: dockercli.Streams{Stdout: stdout, Stderr: stderr}})
+	return e.engine.RemoveContainer(ctx, backend.RemoveContainerRequest{ContainerID: containerID, Force: true, Streams: backend.Streams{Stdout: stdout, Stderr: stderr}})
 }
 
 func (e *Executor) effectiveRemoteUser(ctx context.Context, prepared preparedWorkspace) (string, error) {
@@ -182,7 +110,7 @@ func (e *Executor) effectiveRemoteUser(ctx context.Context, prepared preparedWor
 		return user, nil
 	}
 	if prepared.containerID != "" {
-		inspect, err := e.engine.InspectContainer(ctx, dockercli.InspectContainerRequest{ContainerID: prepared.containerID})
+		inspect, err := e.engine.InspectContainer(ctx, prepared.containerID)
 		if err != nil {
 			return "", err
 		}
@@ -271,9 +199,9 @@ func isNumericUser(value string) bool {
 	return true
 }
 
-func (e *Executor) createContainer(ctx context.Context, resolved devcontainer.ResolvedConfig, image string, containerKey string, bridgeEnabled bool, sshAgent bool, overridePath string, events ui.Sink) (string, error) {
+func (e *Executor) createContainer(ctx context.Context, resolved devcontainer.ResolvedConfig, image string, containerKey string, bridgeEnabled bool, sshAgent bool, events ui.Sink) (string, error) {
 	if resolved.SourceKind == "compose" {
-		return e.createComposeContainer(ctx, resolved, image, containerKey, overridePath, events)
+		return e.createComposeContainer(ctx, resolved, image, containerKey, events)
 	}
 	return e.createManagedContainer(ctx, resolved, image, containerKey, bridgeEnabled, sshAgent)
 }
@@ -304,21 +232,16 @@ func (e *Executor) createManagedContainer(ctx context.Context, resolved devconta
 	for key, value := range resolved.Merged.ContainerEnv {
 		env[key] = value
 	}
-	return e.engine.RunDetachedContainer(ctx, dockercli.RunDetachedContainerRequest{Name: resolved.ContainerName, Labels: labels, Mounts: append([]string{resolved.WorkspaceMount, stateMount}, resolved.Merged.Mounts...), Init: resolved.Merged.Init, Privileged: resolved.Merged.Privileged, CapAdd: resolved.Merged.CapAdd, SecurityOpt: resolved.Merged.SecurityOpt, Env: env, ExtraArgs: resolved.Config.RunArgs, Image: image, Command: spec.ContainerCommand(resolved.Config)})
+	return e.engine.RunDetachedContainer(ctx, backend.RunDetachedContainerRequest{Name: resolved.ContainerName, Labels: labels, Mounts: append([]string{resolved.WorkspaceMount, stateMount}, resolved.Merged.Mounts...), Init: resolved.Merged.Init, Privileged: resolved.Merged.Privileged, CapAdd: resolved.Merged.CapAdd, SecurityOpt: resolved.Merged.SecurityOpt, Env: env, ExtraArgs: resolved.Config.RunArgs, Image: image, Command: spec.ContainerCommand(resolved.Config)})
 }
 
-func (e *Executor) readComposeConfig(ctx context.Context, resolved *devcontainer.ResolvedConfig) (composeConfig, error) {
+func (e *Executor) readComposeConfig(ctx context.Context, resolved *devcontainer.ResolvedConfig) (backend.ProjectConfig, error) {
 	if resolved == nil {
-		return composeConfig{}, nil
+		return backend.ProjectConfig{}, nil
 	}
-	output, err := e.engine.ComposeConfig(ctx, dockercli.ComposeConfigRequest{Target: dockercli.ComposeTarget{Files: resolved.ComposeFiles, Project: resolved.ComposeProject, Dir: resolved.ConfigDir}, Format: "json"})
+	config, err := e.engine.ProjectConfig(ctx, backend.ProjectConfigRequest{Target: backend.ProjectTarget{Files: resolved.ComposeFiles, Project: resolved.ComposeProject, Service: resolved.ComposeService, Dir: resolved.ConfigDir}})
 	if err != nil {
-		return composeConfig{}, err
-	}
-	output = sanitizeComposeJSONOutput(output)
-	var config composeConfig
-	if err := json.Unmarshal([]byte(output), &config); err != nil {
-		return composeConfig{}, fmt.Errorf("parse docker compose config json: %w (output=%q)", err, truncateForError(output, 200))
+		return backend.ProjectConfig{}, err
 	}
 	if config.Name != "" {
 		resolved.ComposeProject = config.Name
@@ -326,55 +249,21 @@ func (e *Executor) readComposeConfig(ctx context.Context, resolved *devcontainer
 	return config, nil
 }
 
-func sanitizeComposeJSONOutput(output string) string {
-	output = strings.TrimSpace(output)
-	if strings.HasPrefix(output, "{") {
-		return output
-	}
-	if start := strings.Index(output, "{"); start >= 0 {
-		return strings.TrimSpace(output[start:])
-	}
-	return output
-}
-
-func truncateForError(value string, limit int) string {
-	if len(value) <= limit {
-		return value
-	}
-	if limit <= 3 {
-		return value[:limit]
-	}
-	return value[:limit-3] + "..."
-}
-
 func (e *Executor) findComposeContainer(ctx context.Context, resolved devcontainer.ResolvedConfig) (string, error) {
-	project := resolved.ComposeProject
-	if project == "" {
-		config, err := e.readComposeConfig(ctx, &resolved)
-		if err != nil {
-			return "", err
-		}
-		project = firstNonEmpty(config.Name, resolved.ComposeProject)
-	}
-	result, err := e.engine.ListContainers(ctx, dockercli.ListContainersRequest{All: true, Quiet: true, Filters: []string{"label=com.docker.compose.project=" + project, "label=com.docker.compose.service=" + resolved.ComposeService}})
+	_, primary, err := e.engine.ProjectContainers(ctx, backend.ProjectContainersRequest{Target: backend.ProjectTarget{Files: resolved.ComposeFiles, Project: resolved.ComposeProject, Service: resolved.ComposeService, Dir: resolved.ConfigDir}})
 	if err != nil {
 		return "", err
 	}
-	return e.selectBestContainerID(ctx, result)
-}
-
-func writeComposeOverride(resolved devcontainer.ResolvedConfig, image string, containerKey string) (string, error) {
-	contents, err := renderComposeOverride(resolved, image, containerKey)
-	if err != nil {
-		return "", err
+	if primary == nil {
+		return "", errManagedContainerNotFound
 	}
-	return storefs.WriteComposeOverride(resolved.StateDir, []byte(contents))
+	return primary.ID, nil
 }
 
-func renderComposeOverride(resolved devcontainer.ResolvedConfig, image string, containerKey string) (string, error) {
-	service := composeOverrideService{}
+func projectOverride(resolved devcontainer.ResolvedConfig, image string, containerKey string) (backend.ProjectOverride, error) {
+	override := backend.ProjectOverride{}
 	if len(resolved.Features) > 0 {
-		service.PullPolicy = "never"
+		override.PullPolicy = "never"
 	}
 	labels := map[string]string{}
 	for key, value := range resolved.Labels {
@@ -386,18 +275,18 @@ func renderComposeOverride(resolved devcontainer.ResolvedConfig, image string, c
 	if resolved.Merged.ContainerEnv["SSH_AUTH_SOCK"] == capssh.ContainerSocketPath {
 		labels[devcontainer.SSHAgentLabel] = "true"
 	}
-	if metadataLabel, err := spec.MetadataLabelValue(resolved.Merged.Metadata); err == nil && metadataLabel != "" {
+	metadataLabel, err := spec.MetadataLabelValue(resolved.Merged.Metadata)
+	if err != nil {
+		return backend.ProjectOverride{}, err
+	}
+	if metadataLabel != "" {
 		labels[devcontainer.ImageMetadataLabel] = metadataLabel
 	}
 	if containerKey != "" {
 		labels[ContainerKeyLabel] = containerKey
 	}
-	for _, key := range spec.SortedMapKeys(labels) {
-		service.Labels = append(service.Labels, key+"="+labels[key])
-	}
-	for _, key := range spec.SortedMapKeys(resolved.Merged.ContainerEnv) {
-		service.Environment = append(service.Environment, key+"="+resolved.Merged.ContainerEnv[key])
-	}
+	override.Labels = labels
+	override.Environment = resolved.Merged.ContainerEnv
 	allMounts := append([]string{resolved.WorkspaceMount}, resolved.Merged.Mounts...)
 	namedVolumes := map[string]struct{}{}
 	for _, mount := range allMounts {
@@ -406,45 +295,33 @@ func renderComposeOverride(resolved devcontainer.ResolvedConfig, image string, c
 			continue
 		}
 		if value, ok := composeMountValue(mountSpec); ok {
-			service.Volumes = append(service.Volumes, value)
+			override.Mounts = append(override.Mounts, value)
 		}
 		if source, ok := composeNamedVolume(mountSpec); ok {
 			namedVolumes[source] = struct{}{}
 		}
 	}
-	if resolved.Merged.Init {
-		service.Init = true
-	}
-	if resolved.Merged.Privileged {
-		service.Privileged = true
-	}
+	override.Init = resolved.Merged.Init
+	override.Privileged = resolved.Merged.Privileged
 	if user := resolved.Merged.ContainerUser; user != "" {
-		service.User = user
+		override.User = user
 	}
 	if overrideCommandEnabled(resolved.Config.OverrideCommand) {
-		service.Command = []string{"/bin/sh", "-lc", spec.KeepAliveCommand()}
+		override.Command = []string{"/bin/sh", "-lc", spec.KeepAliveCommand()}
 	}
 	if len(resolved.Merged.CapAdd) > 0 {
-		service.CapAdd = append([]string(nil), resolved.Merged.CapAdd...)
+		override.CapAdd = append([]string(nil), resolved.Merged.CapAdd...)
 	}
 	if len(resolved.Merged.SecurityOpt) > 0 {
-		service.SecurityOpt = append([]string(nil), resolved.Merged.SecurityOpt...)
+		override.SecurityOpt = append([]string(nil), resolved.Merged.SecurityOpt...)
 	}
 	if image != "" {
-		service.Image = image
+		override.Image = image
 	}
-	override := composeOverrideFile{Services: map[string]composeOverrideService{resolved.ComposeService: service}}
 	if len(namedVolumes) > 0 {
-		override.Volumes = make(map[string]composeOverrideVolume, len(namedVolumes))
-		for _, name := range sortedVolumeNames(namedVolumes) {
-			override.Volumes[name] = composeOverrideVolume{}
-		}
+		override.NamedVolumes = sortedVolumeNames(namedVolumes)
 	}
-	data, err := yaml.Marshal(override)
-	if err != nil {
-		return "", err
-	}
-	return string(data), nil
+	return override, nil
 }
 
 func overrideCommandEnabled(value *bool) bool {
@@ -454,13 +331,13 @@ func overrideCommandEnabled(value *bool) bool {
 	return *value
 }
 
-func composeMountValue(mountSpec spec.MountSpec) (composeServiceMount, bool) {
+func composeMountValue(mountSpec spec.MountSpec) (backend.ProjectMount, bool) {
 	switch mountSpec.Type {
 	case "bind", "volume":
 		if mountSpec.Source == "" {
-			return composeServiceMount{}, false
+			return backend.ProjectMount{}, false
 		}
-		mount := composeServiceMount{Type: mountSpec.Type, Source: mountSpec.Source, Target: mountSpec.Target}
+		mount := backend.ProjectMount{Type: mountSpec.Type, Source: mountSpec.Source, Target: mountSpec.Target}
 		if mountSpec.ReadOnly {
 			mount.ReadOnly = true
 		}
@@ -468,7 +345,7 @@ func composeMountValue(mountSpec spec.MountSpec) (composeServiceMount, bool) {
 			mount.Consistency = mountSpec.Consistency
 		}
 		if mount.Type == "bind" {
-			bind := &composeBindMountOptions{}
+			bind := &backend.ProjectBindMount{}
 			if mountSpec.BindPropagation != "" {
 				bind.Propagation = mountSpec.BindPropagation
 			}
@@ -484,7 +361,7 @@ func composeMountValue(mountSpec spec.MountSpec) (composeServiceMount, bool) {
 			}
 		}
 		if mount.Type == "volume" {
-			volume := &composeVolumeMountOptions{}
+			volume := &backend.ProjectVolumeMount{}
 			if mountSpec.NoCopy {
 				volume.NoCopy = true
 			}
@@ -497,7 +374,7 @@ func composeMountValue(mountSpec spec.MountSpec) (composeServiceMount, bool) {
 		}
 		return mount, true
 	default:
-		return composeServiceMount{}, false
+		return backend.ProjectMount{}, false
 	}
 }
 
@@ -517,42 +394,35 @@ func sortedVolumeNames(values map[string]struct{}) []string {
 	return keys
 }
 
-func composeTarget(resolved devcontainer.ResolvedConfig, overridePath string) dockercli.ComposeTarget {
-	files := append([]string(nil), resolved.ComposeFiles...)
-	if overridePath != "" {
-		files = append(files, overridePath)
-	}
-	return dockercli.ComposeTarget{Files: files, Project: resolved.ComposeProject, Dir: resolved.ConfigDir}
+func composeTarget(resolved devcontainer.ResolvedConfig) backend.ProjectTarget {
+	return backend.ProjectTarget{Files: append([]string(nil), resolved.ComposeFiles...), Project: resolved.ComposeProject, Service: resolved.ComposeService, Dir: resolved.ConfigDir}
 }
 
-func (e *Executor) startComposeService(ctx context.Context, resolved devcontainer.ResolvedConfig, overridePath string, events ui.Sink) error {
+func (e *Executor) startComposeService(ctx context.Context, resolved devcontainer.ResolvedConfig, image string, containerKey string, events ui.Sink) error {
 	stdout, stderr := e.progressWriters(events, phaseContainer, fmt.Sprintf("Starting compose service %s", resolved.ComposeService), e.stdout, e.stderr)
-	return e.engine.ComposeUp(ctx, dockercli.ComposeUpRequest{
-		Target:   composeTarget(resolved, overridePath),
+	override, err := projectOverride(resolved, image, containerKey)
+	if err != nil {
+		return err
+	}
+	return e.engine.UpProject(ctx, backend.ProjectUpRequest{
+		Target:   composeTarget(resolved),
 		Services: []string{resolved.ComposeService},
 		NoBuild:  true,
 		Detach:   true,
-		Streams:  dockercli.Streams{Stdout: stdout, Stderr: stderr},
+		Override: &override,
+		StateDir: resolved.StateDir,
+		Streams:  backend.Streams{Stdout: stdout, Stderr: stderr},
 	})
 }
 
-func (e *Executor) createComposeContainer(ctx context.Context, resolved devcontainer.ResolvedConfig, image string, containerKey string, overridePath string, events ui.Sink) (string, error) {
-	path := overridePath
-	var err error
-	if path == "" {
-		path, err = writeComposeOverride(resolved, image, containerKey)
-		if err != nil {
-			return "", err
-		}
-		defer os.Remove(path)
-	}
-	if err := e.startComposeService(ctx, resolved, path, events); err != nil {
+func (e *Executor) createComposeContainer(ctx context.Context, resolved devcontainer.ResolvedConfig, image string, containerKey string, events ui.Sink) (string, error) {
+	if err := e.startComposeService(ctx, resolved, image, containerKey, events); err != nil {
 		return "", err
 	}
 	return e.findComposeContainer(ctx, resolved)
 }
 
-func (e *Executor) ensureComposeContainer(ctx context.Context, resolved devcontainer.ResolvedConfig, bridgeEnabled bool, sshAgent bool, overridePath string, events ui.Sink) (string, bool, error) {
+func (e *Executor) ensureComposeContainer(ctx context.Context, resolved devcontainer.ResolvedConfig, image string, containerKey string, bridgeEnabled bool, sshAgent bool, events ui.Sink) (string, bool, error) {
 	containerID, err := e.findComposeContainer(ctx, resolved)
 	if err != nil && !errors.Is(err, errManagedContainerNotFound) {
 		return "", false, err
@@ -566,7 +436,7 @@ func (e *Executor) ensureComposeContainer(ctx context.Context, resolved devconta
 			return reusedID, false, nil
 		}
 	}
-	if err := e.startComposeService(ctx, resolved, overridePath, events); err != nil {
+	if err := e.startComposeService(ctx, resolved, image, containerKey, events); err != nil {
 		return "", false, err
 	}
 	containerID, err = e.findComposeContainer(ctx, resolved)

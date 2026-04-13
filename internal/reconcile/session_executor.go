@@ -3,9 +3,9 @@ package reconcile
 import (
 	"context"
 
+	"github.com/lauritsk/hatchctl/internal/backend"
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
 	ui "github.com/lauritsk/hatchctl/internal/display"
-	"github.com/lauritsk/hatchctl/internal/docker"
 	workspaceplan "github.com/lauritsk/hatchctl/internal/plan"
 	storefs "github.com/lauritsk/hatchctl/internal/store/fs"
 )
@@ -102,11 +102,11 @@ func (s *Session) SetContainerID(containerID string) {
 	}
 }
 
-func (s *Session) ContainerInspect() *docker.ContainerInspect {
+func (s *Session) ContainerInspect() *backend.ContainerInspect {
 	return s.prepared.containerInspect
 }
 
-func (s *Session) SetContainerInspect(inspect *docker.ContainerInspect) {
+func (s *Session) SetContainerInspect(inspect *backend.ContainerInspect) {
 	s.prepared.containerInspect = inspect
 	s.prepared.observed.Container = inspect
 }

@@ -7,14 +7,13 @@ import (
 	stdruntime "runtime"
 	"strings"
 
+	"github.com/lauritsk/hatchctl/internal/backend"
 	"github.com/lauritsk/hatchctl/internal/bridge"
 	bridgecap "github.com/lauritsk/hatchctl/internal/capability/bridge"
 	capdot "github.com/lauritsk/hatchctl/internal/capability/dotfiles"
 	capssh "github.com/lauritsk/hatchctl/internal/capability/sshagent"
 	"github.com/lauritsk/hatchctl/internal/command"
 	ui "github.com/lauritsk/hatchctl/internal/display"
-	"github.com/lauritsk/hatchctl/internal/docker"
-	"github.com/lauritsk/hatchctl/internal/engine/dockercli"
 	"github.com/lauritsk/hatchctl/internal/policy"
 	"github.com/lauritsk/hatchctl/internal/spec"
 	storefs "github.com/lauritsk/hatchctl/internal/store/fs"
@@ -24,7 +23,7 @@ func injectSSHAgent(merged spec.MergedConfig) (spec.MergedConfig, error) {
 	return capssh.Inject(stdruntime.GOOS, os.Getenv("SSH_AUTH_SOCK"), merged)
 }
 
-func EnsureContainerHasSSHAgent(inspect *docker.ContainerInspect) error {
+func EnsureContainerHasSSHAgent(inspect *backend.ContainerInspect) error {
 	return capssh.EnsureAttached(inspect)
 }
 
@@ -145,7 +144,7 @@ func (e *Executor) runContainerLifecycle(ctx context.Context, observed ObservedS
 	}
 	return runCommand(ctx, func(ctx context.Context, args []string) error {
 		stdout, stderr := e.progressWriters(events, phaseLifecycle, label, e.stdout, e.stderr)
-		req, err := e.DockerExecRequest(ctx, observed, true, false, nil, args, dockercli.Streams{Stdout: stdout, Stderr: stderr})
+		req, err := e.ExecRequest(ctx, observed, true, false, nil, args, backend.Streams{Stdout: stdout, Stderr: stderr})
 		if err != nil {
 			return err
 		}
@@ -163,7 +162,7 @@ func (e *Executor) installDotfiles(ctx context.Context, observed ObservedState, 
 	}
 	label := fmt.Sprintf("Installing dotfiles from %s", cfg.Repository)
 	stdout, stderr := e.progressWriters(events, phaseDotfiles, label, e.stdout, e.stderr)
-	req, err := e.DockerExecRequest(ctx, observed, true, false, nil, capdot.InstallArgs(cfg.Repository, targetPath, cfg.InstallCommand), dockercli.Streams{Stdin: strings.NewReader(capdot.InstallScript), Stdout: stdout, Stderr: stderr})
+	req, err := e.ExecRequest(ctx, observed, true, false, nil, capdot.InstallArgs(cfg.Repository, targetPath, cfg.InstallCommand), backend.Streams{Stdin: strings.NewReader(capdot.InstallScript), Stdout: stdout, Stderr: stderr})
 	if err != nil {
 		return err
 	}

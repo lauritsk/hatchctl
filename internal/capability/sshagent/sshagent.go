@@ -6,8 +6,8 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/lauritsk/hatchctl/internal/backend"
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
-	"github.com/lauritsk/hatchctl/internal/docker"
 	"github.com/lauritsk/hatchctl/internal/spec"
 )
 
@@ -55,7 +55,7 @@ func MountSource(goos string, hostSocket string) (string, error) {
 	return hostSocket, nil
 }
 
-func EnsureAttached(inspect *docker.ContainerInspect) error {
+func EnsureAttached(inspect *backend.ContainerInspect) error {
 	if inspect == nil {
 		return fmt.Errorf("managed container does not have ssh-agent passthrough; rerun 'hatchctl up --ssh --recreate'")
 	}
@@ -65,7 +65,7 @@ func EnsureAttached(inspect *docker.ContainerInspect) error {
 	return fmt.Errorf("managed container does not have ssh-agent passthrough; rerun 'hatchctl up --ssh --recreate'")
 }
 
-func HasTargetMount(inspect docker.ContainerInspect, target string) bool {
+func HasTargetMount(inspect backend.ContainerInspect, target string) bool {
 	for _, mount := range inspect.Mounts {
 		if mount.Destination == target {
 			return true
