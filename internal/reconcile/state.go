@@ -11,6 +11,17 @@ type StateTracker struct {
 	state    storefs.WorkspaceState
 }
 
+func LoadStateTracker(stateDir string) (*StateTracker, error) {
+	if stateDir == "" {
+		return NewStateTracker("", storefs.WorkspaceState{}), nil
+	}
+	state, err := storefs.ReadWorkspaceState(stateDir)
+	if err != nil {
+		return nil, err
+	}
+	return NewStateTracker(stateDir, state), nil
+}
+
 func NewStateTracker(stateDir string, state storefs.WorkspaceState) *StateTracker {
 	return &StateTracker{stateDir: stateDir, state: state}
 }
@@ -43,6 +54,11 @@ func (t *StateTracker) ApplyContainer(containerID string, containerKey string, c
 	t.SetContainer(containerID, containerKey)
 }
 
+func (t *StateTracker) ApplyContainerAndPersist(containerID string, containerKey string, created bool) error {
+	t.ApplyContainer(containerID, containerKey, created)
+	return t.Persist()
+}
+
 func (t *StateTracker) SetContainer(containerID string, containerKey string) {
 	t.state.ContainerID = containerID
 	t.state.ContainerKey = containerKey
@@ -50,6 +66,11 @@ func (t *StateTracker) SetContainer(containerID string, containerKey string) {
 
 func (t *StateTracker) SetTrustedRefs(refs []string) {
 	t.state.TrustedRefs = slices.Clone(refs)
+}
+
+func (t *StateTracker) SetTrustedRefsAndPersist(refs []string) error {
+	t.SetTrustedRefs(refs)
+	return t.Persist()
 }
 
 func (t *StateTracker) SetBridge(enabled bool, sessionID string) {
@@ -60,6 +81,11 @@ func (t *StateTracker) SetBridge(enabled bool, sessionID string) {
 
 func (t *StateTracker) EnableBridge(sessionID string) {
 	t.SetBridge(true, sessionID)
+}
+
+func (t *StateTracker) EnableBridgeAndPersist(sessionID string) error {
+	t.EnableBridge(sessionID)
+	return t.Persist()
 }
 
 func (t *StateTracker) DisableBridge() {
@@ -79,6 +105,11 @@ func (t *StateTracker) BeginPlannedLifecycle(plan LifecyclePlan, installDotfiles
 	}
 }
 
+func (t *StateTracker) BeginPlannedLifecycleAndPersist(plan LifecyclePlan, installDotfiles bool) error {
+	t.BeginPlannedLifecycle(plan, installDotfiles)
+	return t.Persist()
+}
+
 func (t *StateTracker) CompleteLifecycle(key string, dotfiles DotfilesConfig) {
 	t.state.LifecycleTransition = nil
 	t.state.LifecycleReady = true
@@ -93,10 +124,20 @@ func (t *StateTracker) CompletePlannedLifecycle(plan LifecyclePlan, dotfiles Dot
 	t.CompleteLifecycle(plan.Key, dotfiles)
 }
 
+func (t *StateTracker) CompletePlannedLifecycleAndPersist(plan LifecyclePlan, dotfiles DotfilesConfig, installDotfiles bool) error {
+	t.CompletePlannedLifecycle(plan, dotfiles, installDotfiles)
+	return t.Persist()
+}
+
 func (t *StateTracker) BeginBridge(kind string, key string) {
 	t.state.BridgeTransition = &storefs.StateTransition{Kind: kind, Key: key}
 	t.state.BridgeEnabled = false
 	t.state.BridgeSessionID = ""
+}
+
+func (t *StateTracker) BeginBridgeAndPersist(kind string, key string) error {
+	t.BeginBridge(kind, key)
+	return t.Persist()
 }
 
 func (t *StateTracker) BeginDotfiles(kind string, key string) {

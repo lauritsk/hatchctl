@@ -122,9 +122,8 @@ func (e *Executor) Up(ctx context.Context, workspacePlan workspaceplan.Workspace
 	if bridgeReport == nil {
 		tracker.DisableBridge()
 	}
-	tracker.SetTrustedRefs(executor.imageVerifier.TrustedRefs())
 	executor.emitPhaseProgress(opts.IO.Events, phaseState, "Writing workspace state")
-	if err := tracker.Persist(); err != nil {
+	if err := tracker.SetTrustedRefsAndPersist(executor.imageVerifier.TrustedRefs()); err != nil {
 		return UpResult{}, err
 	}
 	return UpResult{ContainerID: containerID, Image: image, RemoteWorkspaceFolder: resolved.RemoteWorkspace, StateDir: resolved.StateDir, Bridge: bridgeReport}, nil
@@ -200,8 +199,7 @@ func (e *Executor) reconcileUpContainer(ctx context.Context, session *Session, t
 	if err != nil {
 		return "", "", false, err
 	}
-	tracker.ApplyContainer(containerID, containerKey, created)
-	if err := tracker.Persist(); err != nil {
+	if err := tracker.ApplyContainerAndPersist(containerID, containerKey, created); err != nil {
 		return "", "", false, err
 	}
 	session.SetState(tracker.State())
@@ -222,8 +220,7 @@ func (e *Executor) startUpBridge(ctx context.Context, tracker *StateTracker, bri
 	if bridgeSession == nil {
 		return nil, nil
 	}
-	tracker.BeginBridge("start", containerKey)
-	if err := tracker.Persist(); err != nil {
+	if err := tracker.BeginBridgeAndPersist("start", containerKey); err != nil {
 		return nil, err
 	}
 	e.emitPhaseProgress(events, phaseBridge, "Starting bridge session")
@@ -232,8 +229,7 @@ func (e *Executor) startUpBridge(ctx context.Context, tracker *StateTracker, bri
 		return nil, err
 	}
 	bridgeReport := bridge.ReportFromSession(startedBridge)
-	tracker.EnableBridge(bridgeReport.ID)
-	if err := tracker.Persist(); err != nil {
+	if err := tracker.EnableBridgeAndPersist(bridgeReport.ID); err != nil {
 		return nil, err
 	}
 	return bridgeReport, nil
@@ -247,16 +243,15 @@ func (e *Executor) runUpLifecycle(ctx context.Context, session *Session, tracker
 	}
 	observed := session.Observed()
 	lifecyclePlan := PlanUpLifecycle(observed, DesiredLifecycle{Key: lifecycleKey, Dotfiles: dotfiles, Created: created})
-	tracker.BeginPlannedLifecycle(lifecyclePlan, DotfilesNeedsInstall(state, dotfiles))
-	if err := tracker.Persist(); err != nil {
+	installDotfiles := DotfilesNeedsInstall(state, dotfiles)
+	if err := tracker.BeginPlannedLifecycleAndPersist(lifecyclePlan, installDotfiles); err != nil {
 		return err
 	}
 	e.emitPhaseProgress(events, phaseLifecycle, "Running lifecycle commands")
 	if err := e.RunLifecyclePlan(ctx, observed, state, dotfiles, workspacePlan.Trust.HostLifecycleAllowed, events, lifecyclePlan); err != nil {
 		return err
 	}
-	tracker.CompletePlannedLifecycle(lifecyclePlan, dotfiles, DotfilesNeedsInstall(state, dotfiles))
-	return nil
+	return tracker.CompletePlannedLifecycleAndPersist(lifecyclePlan, dotfiles, installDotfiles)
 }
 
 func (e *Executor) Build(ctx context.Context, workspacePlan workspaceplan.WorkspacePlan, opts BuildOptions) (BuildResult, error) {
@@ -280,7 +275,11 @@ func (e *Executor) Build(ctx context.Context, workspacePlan workspaceplan.Worksp
 	if err := executor.EnrichMergedConfig(ctx, &resolved, image); err != nil {
 		return BuildResult{}, err
 	}
-	if err := persistTrustedRefs(resolved.StateDir, executor.imageVerifier.TrustedRefs()); err != nil {
+	tracker, err := LoadStateTracker(resolved.StateDir)
+	if err != nil {
+		return BuildResult{}, err
+	}
+	if err := tracker.SetTrustedRefsAndPersist(executor.imageVerifier.TrustedRefs()); err != nil {
 		return BuildResult{}, err
 	}
 	return BuildResult{Image: image}, nil
@@ -415,18 +414,6 @@ func (e *Executor) ReadConfig(ctx context.Context, workspacePlan workspaceplan.W
 	return ReadConfigResult{WorkspaceFolder: resolved.WorkspaceFolder, ConfigPath: resolved.ConfigPath, WorkspaceMount: resolved.WorkspaceMount, SourceKind: resolved.SourceKind, HasInitializeCommand: !resolved.Config.InitializeCommand.Empty(), HasCreateCommand: len(resolved.Merged.OnCreateCommands) > 0 || len(resolved.Merged.UpdateContentCommands) > 0 || len(resolved.Merged.PostCreateCommands) > 0, HasStartCommand: len(resolved.Merged.PostStartCommands) > 0, HasAttachCommand: len(resolved.Merged.PostAttachCommands) > 0, Image: image, ImageUser: imageUser, ContainerName: resolved.ContainerName, StateDir: resolved.StateDir, CacheDir: resolved.CacheDir, RemoteUser: resolvedUser, ContainerUser: resolved.Merged.ContainerUser, RemoteEnv: RedactSensitiveMap(resolved.Merged.RemoteEnv), ContainerEnv: RedactSensitiveMap(resolved.Merged.ContainerEnv), Mounts: resolved.Merged.Mounts, ForwardPorts: []string(resolved.Merged.ForwardPorts), Bridge: bridgeReport, Dotfiles: DotfilesStatusFromState(state, dotfiles), MetadataCount: len(resolved.Merged.Metadata), ManagedContainer: managedContainer}, nil
 }
 
-func persistTrustedRefs(stateDir string, refs []string) error {
-	if stateDir == "" {
-		return nil
-	}
-	state, err := storefs.ReadWorkspaceState(stateDir)
-	if err != nil {
-		return err
-	}
-	state.TrustedRefs = refs
-	return storefs.WriteWorkspaceState(stateDir, state)
-}
-
 func (e *Executor) RunLifecycle(ctx context.Context, workspacePlan workspaceplan.WorkspacePlan, opts RunLifecycleOptions) (RunLifecycleResult, error) {
 	executor := e.cloneWithIO(opts.IO.Stdin, opts.IO.Stdout, opts.IO.Stderr)
 	dotfiles, err := capdot.Normalize(workspacePlan.Preferences.Dotfiles)
@@ -458,8 +445,8 @@ func (e *Executor) RunLifecycle(ctx context.Context, workspacePlan workspaceplan
 	}
 	tracker := NewStateTracker(resolved.StateDir, state)
 	if lifecyclePlan.RunCreate {
-		tracker.BeginPlannedLifecycle(lifecyclePlan, DotfilesNeedsInstall(state, dotfiles))
-		if err := tracker.Persist(); err != nil {
+		installDotfiles := DotfilesNeedsInstall(state, dotfiles)
+		if err := tracker.BeginPlannedLifecycleAndPersist(lifecyclePlan, installDotfiles); err != nil {
 			return RunLifecycleResult{}, err
 		}
 	}
@@ -468,8 +455,7 @@ func (e *Executor) RunLifecycle(ctx context.Context, workspacePlan workspaceplan
 		return RunLifecycleResult{}, err
 	}
 	if lifecyclePlan.RunCreate {
-		tracker.CompletePlannedLifecycle(lifecyclePlan, dotfiles, DotfilesNeedsInstall(state, dotfiles))
-		if err := tracker.Persist(); err != nil {
+		if err := tracker.CompletePlannedLifecycleAndPersist(lifecyclePlan, dotfiles, DotfilesNeedsInstall(state, dotfiles)); err != nil {
 			return RunLifecycleResult{}, err
 		}
 	}

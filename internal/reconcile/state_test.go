@@ -13,19 +13,32 @@ func TestStateTrackerPersistsLifecycleBridgeAndDotfilesState(t *testing.T) {
 	tracker := NewStateTracker(stateDir, storefs.WorkspaceState{})
 	plan := LifecyclePlan{RunCreate: true, RunStart: true, RunAttach: true, Key: "lifecycle-key", TransitionKind: LifecyclePhaseAll}
 	dotfiles := DotfilesConfig{Repository: "github.com/example/dotfiles", InstallCommand: "install.sh", TargetPath: "$HOME/.dotfiles"}
-	tracker.BeginContainer("container-123", "container-key")
-	tracker.BeginBridge("start", "container-key")
-	tracker.BeginPlannedLifecycle(plan, true)
-	tracker.CompletePlannedLifecycle(plan, dotfiles, true)
-	tracker.SetBridge(true, "bridge-session")
-	tracker.SetTrustedRefs([]string{"ghcr.io/example/feature@sha256:abc"})
-	if err := tracker.Persist(); err != nil {
-		t.Fatalf("persist state: %v", err)
+	if err := tracker.ApplyContainerAndPersist("container-123", "container-key", true); err != nil {
+		t.Fatalf("persist container state: %v", err)
+	}
+	if err := tracker.BeginBridgeAndPersist("start", "container-key"); err != nil {
+		t.Fatalf("persist bridge transition: %v", err)
+	}
+	if err := tracker.BeginPlannedLifecycleAndPersist(plan, true); err != nil {
+		t.Fatalf("persist lifecycle transition: %v", err)
+	}
+	if err := tracker.CompletePlannedLifecycleAndPersist(plan, dotfiles, true); err != nil {
+		t.Fatalf("persist lifecycle completion: %v", err)
+	}
+	if err := tracker.EnableBridgeAndPersist("bridge-session"); err != nil {
+		t.Fatalf("persist bridge session: %v", err)
+	}
+	if err := tracker.SetTrustedRefsAndPersist([]string{"ghcr.io/example/feature@sha256:abc"}); err != nil {
+		t.Fatalf("persist trusted refs: %v", err)
 	}
 
-	state, err := storefs.ReadWorkspaceState(stateDir)
+	loaded, err := LoadStateTracker(stateDir)
 	if err != nil {
-		t.Fatalf("read state: %v", err)
+		t.Fatalf("load tracker: %v", err)
+	}
+	state := loaded.State()
+	if loaded.stateDir != stateDir {
+		t.Fatalf("unexpected loaded tracker state dir %q", loaded.stateDir)
 	}
 	if state.ContainerID != "container-123" || state.ContainerKey != "container-key" {
 		t.Fatalf("unexpected container state %#v", state)
