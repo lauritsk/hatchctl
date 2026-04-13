@@ -12,7 +12,7 @@ func TestNewConfiguresPodmanDefaults(t *testing.T) {
 	if client.BridgeHost() != "host.containers.internal" {
 		t.Fatalf("unexpected bridge host %q", client.BridgeHost())
 	}
-	if client.BuildDefinitionFileName() != "Dockerfile" {
+	if client.BuildDefinitionFileName() != "Containerfile" {
 		t.Fatalf("unexpected build definition file %q", client.BuildDefinitionFileName())
 	}
 }

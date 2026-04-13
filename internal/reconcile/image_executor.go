@@ -284,7 +284,7 @@ func dockerfileQuotedValue(value string) string {
 func (e *Executor) buildDockerfileImage(ctx context.Context, resolved devcontainer.ResolvedConfig, imageName string, imageKey string, events ui.Sink) error {
 	dockerfile := resolved.ConfigDir
 	contextDir := resolved.ConfigDir
-	if rel := spec.EffectiveDockerfile(resolved.Config); rel != "" {
+	if rel := spec.ResolvedDockerfile(resolved.ConfigDir, resolved.Config); rel != "" {
 		dockerfile = filepath.Join(resolved.ConfigDir, rel)
 	}
 	if rel := spec.EffectiveContext(resolved.Config); rel != "" {

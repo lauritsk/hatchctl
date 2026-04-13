@@ -7,7 +7,7 @@ func New(binary string) *docker.Client {
 		Binary:              binary,
 		RuntimeID:           "podman",
 		BridgeHost:          "host.containers.internal",
-		BuildDefinitionFile: "Dockerfile",
+		BuildDefinitionFile: "Containerfile",
 		ComposeCommand:      []string{"compose"},
 	})
 }

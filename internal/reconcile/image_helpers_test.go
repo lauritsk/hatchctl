@@ -115,6 +115,26 @@ func TestBuildDockerfileImageUsesResolvedBuildInputs(t *testing.T) {
 	}
 }
 
+func TestBuildDockerfileImageFallsBackToContainerfile(t *testing.T) {
+	t.Parallel()
+
+	configDir := t.TempDir()
+	writeReconcileTestFile(t, filepath.Join(configDir, "Containerfile"), "FROM alpine:3.23\n")
+	var req dockercli.BuildImageRequest
+	executor := &Executor{engine: &fakeExecutorEngine{buildImageFunc: func(_ context.Context, got dockercli.BuildImageRequest) error {
+		req = got
+		return nil
+	}}}
+	resolved := devcontainer.ResolvedConfig{ConfigDir: configDir, Config: spec.Config{}, Merged: spec.MergedConfig{Metadata: []spec.MetadataEntry{{RemoteUser: "vscode"}}}}
+
+	if err := executor.buildDockerfileImage(context.Background(), resolved, "hatchctl-demo", "", nil); err != nil {
+		t.Fatalf("build containerfile image: %v", err)
+	}
+	if req.Dockerfile != filepath.Join(configDir, "Containerfile") {
+		t.Fatalf("unexpected build definition %q", req.Dockerfile)
+	}
+}
+
 func TestEnsureComposeImageBuildsServiceAndFallsBackToComposeName(t *testing.T) {
 	t.Parallel()
 

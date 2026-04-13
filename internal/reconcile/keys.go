@@ -31,7 +31,7 @@ func ManagedImageKey(resolved devcontainer.ResolvedConfig, targetImage string) (
 		}
 	}
 	if resolved.SourceKind != "compose" {
-		dockerfile := filepath.Join(resolved.ConfigDir, spec.EffectiveDockerfile(resolved.Config))
+		dockerfile := filepath.Join(resolved.ConfigDir, spec.ResolvedDockerfile(resolved.ConfigDir, resolved.Config))
 		writeKeyValue(h, "dockerfile", filepath.Clean(dockerfile))
 		if err := hashFile(h, dockerfile); err != nil && !os.IsNotExist(err) {
 			return "", err

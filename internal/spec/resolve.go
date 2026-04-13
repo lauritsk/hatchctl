@@ -135,6 +135,23 @@ func EffectiveDockerfile(config Config) string {
 	}
 }
 
+func ResolvedDockerfile(configDir string, config Config) string {
+	if config.DockerFile != "" || (config.Build != nil && config.Build.Dockerfile != "") {
+		return EffectiveDockerfile(config)
+	}
+	if configDir != "" {
+		dockerfilePath := filepath.Join(configDir, "Dockerfile")
+		if _, err := os.Stat(dockerfilePath); err == nil {
+			return "Dockerfile"
+		}
+		containerfilePath := filepath.Join(configDir, "Containerfile")
+		if _, err := os.Stat(containerfilePath); err == nil {
+			return "Containerfile"
+		}
+	}
+	return "Dockerfile"
+}
+
 func EffectiveContext(config Config) string {
 	if config.Build != nil && config.Build.Context != "" {
 		return config.Build.Context

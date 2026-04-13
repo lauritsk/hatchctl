@@ -231,6 +231,29 @@ func TestResolveHelpersPreferExpectedConfigValues(t *testing.T) {
 	}
 }
 
+func TestResolvedDockerfileFallsBackToContainerfile(t *testing.T) {
+	t.Parallel()
+
+	configDir := t.TempDir()
+	writeSpecTestFile(t, filepath.Join(configDir, "Containerfile"), "FROM alpine:3.23\n")
+
+	if got := ResolvedDockerfile(configDir, Config{}); got != "Containerfile" {
+		t.Fatalf("unexpected resolved dockerfile %q", got)
+	}
+}
+
+func TestResolvedDockerfilePrefersDockerfileWhenBothExist(t *testing.T) {
+	t.Parallel()
+
+	configDir := t.TempDir()
+	writeSpecTestFile(t, filepath.Join(configDir, "Dockerfile"), "FROM alpine:3.23\n")
+	writeSpecTestFile(t, filepath.Join(configDir, "Containerfile"), "FROM alpine:3.23\n")
+
+	if got := ResolvedDockerfile(configDir, Config{}); got != "Dockerfile" {
+		t.Fatalf("unexpected resolved dockerfile %q", got)
+	}
+}
+
 func TestNormalizeAndMergeForwardPorts(t *testing.T) {
 	t.Parallel()
 
