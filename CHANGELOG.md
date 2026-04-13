@@ -2,6 +2,19 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## [v0.8.0](https://github.com/lauritsk/hatchctl/compare/5b66255e77a33fbfebd2e9545f811d4c52744ed7..v0.8.0) - 2026-04-13
+#### Features
+- (**runtime**) Add bridge host fallbacks - ([af0f8dc](https://github.com/lauritsk/hatchctl/commit/af0f8dcb3e3fdf7bec02ad291d04ce4399cc2677)) - Karl Hans Laurits
+- (**runtime**) Add backend capability gating - ([809c020](https://github.com/lauritsk/hatchctl/commit/809c020c8fd620776eead35ae7c51fedaad028e2)) - Karl Hans Laurits
+- (**runtime**) Support podman compose variants - ([8b83ed9](https://github.com/lauritsk/hatchctl/commit/8b83ed9955fec98e87a7b56f3a2b693fd6a44a12)) - Karl Hans Laurits
+- (**runtime**) Add auto backend detection - ([5b66255](https://github.com/lauritsk/hatchctl/commit/5b66255e77a33fbfebd2e9545f811d4c52744ed7)) - Karl Hans Laurits
+#### Bug Fixes
+- (**runtime**) Handle podman image not-found errors - ([52eae51](https://github.com/lauritsk/hatchctl/commit/52eae511e0e5488a964bacccd67ae4c91068a83f)) - Karl Hans Laurits
+#### Tests
+- (**runtime**) Add podman integration coverage - ([ab25c19](https://github.com/lauritsk/hatchctl/commit/ab25c19c37f4943d3cce7170228e8f95573dcf7c)) - Karl Hans Laurits
+
+- - -
+
 ## [v0.7.0](https://github.com/lauritsk/hatchctl/compare/af8aa53ee58bd14a826412d6f34e95502d7da016..v0.7.0) - 2026-04-13
 #### Features
 - (**runtime**) Support Containerfile defaults - ([033b0bc](https://github.com/lauritsk/hatchctl/commit/033b0bcfdd1359b23bcca1b57a5d1d439c6d0576)) - Karl Hans Laurits
