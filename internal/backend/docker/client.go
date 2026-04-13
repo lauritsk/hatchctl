@@ -28,6 +28,7 @@ type Client struct {
 	runtimeID           string
 	bridgeHost          string
 	buildDefinitionFile string
+	composeBinary       string
 	composeCommand      []string
 	runner              command.Runner
 }
@@ -37,10 +38,12 @@ type Options struct {
 	RuntimeID           string
 	BridgeHost          string
 	BuildDefinitionFile string
+	ComposeBinary       string
 	ComposeCommand      []string
 }
 
 type runOptions struct {
+	Binary string
 	Stdin  io.Reader
 	Stdout io.Writer
 	Stderr io.Writer
@@ -81,6 +84,7 @@ func NewWithOptions(opts Options) *Client {
 		runtimeID:           opts.RuntimeID,
 		bridgeHost:          opts.BridgeHost,
 		buildDefinitionFile: opts.BuildDefinitionFile,
+		composeBinary:       strings.TrimSpace(opts.ComposeBinary),
 		composeCommand:      append([]string(nil), opts.ComposeCommand...),
 		runner:              command.Local{},
 	}
@@ -244,12 +248,12 @@ func (c *Client) ListContainers(ctx context.Context, req backend.ListContainersR
 
 func (c *Client) ProjectConfig(ctx context.Context, req backend.ProjectConfigRequest) (backend.ProjectConfig, error) {
 	jsonArgs := append(c.composeBaseArgs(req.Target), "config", "--format", "json")
-	output, err := c.output(ctx, runOptions{Args: jsonArgs, Dir: req.Target.Dir})
+	output, err := c.output(ctx, runOptions{Binary: c.composeBinaryValue(), Args: jsonArgs, Dir: req.Target.Dir})
 	if err == nil {
 		return parseProjectConfig(output)
 	}
 	plainArgs := append(c.composeBaseArgs(req.Target), "config")
-	plainOutput, plainErr := c.output(ctx, runOptions{Args: plainArgs, Dir: req.Target.Dir})
+	plainOutput, plainErr := c.output(ctx, runOptions{Binary: c.composeBinaryValue(), Args: plainArgs, Dir: req.Target.Dir})
 	if plainErr != nil {
 		return backend.ProjectConfig{}, err
 	}
@@ -260,7 +264,7 @@ func (c *Client) BuildProject(ctx context.Context, req backend.ProjectBuildReque
 	args := c.composeBaseArgs(req.Target)
 	args = append(args, "build")
 	args = append(args, req.Services...)
-	return c.run(ctx, runOptions{Args: args, Dir: req.Target.Dir, Stdin: req.Stdin, Stdout: req.Stdout, Stderr: req.Stderr})
+	return c.run(ctx, runOptions{Binary: c.composeBinaryValue(), Args: args, Dir: req.Target.Dir, Stdin: req.Stdin, Stdout: req.Stdout, Stderr: req.Stderr})
 }
 
 func (c *Client) UpProject(ctx context.Context, req backend.ProjectUpRequest) error {
@@ -282,11 +286,11 @@ func (c *Client) UpProject(ctx context.Context, req backend.ProjectUpRequest) er
 		args = append(args, "-d")
 	}
 	args = append(args, req.Services...)
-	return c.run(ctx, runOptions{Args: args, Dir: target.Dir, Stdin: req.Stdin, Stdout: req.Stdout, Stderr: req.Stderr})
+	return c.run(ctx, runOptions{Binary: c.composeBinaryValue(), Args: args, Dir: target.Dir, Stdin: req.Stdin, Stdout: req.Stdout, Stderr: req.Stderr})
 }
 
 func (c *Client) ProjectContainers(ctx context.Context, req backend.ProjectContainersRequest) ([]backend.ContainerInspect, *backend.ContainerInspect, error) {
-	output, err := c.output(ctx, runOptions{Args: append(c.composeBaseArgs(req.Target), "ps", "-a", "-q"), Dir: req.Target.Dir})
+	output, err := c.output(ctx, runOptions{Binary: c.composeBinaryValue(), Args: append(c.composeBaseArgs(req.Target), "ps", "-a", "-q"), Dir: req.Target.Dir})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -300,7 +304,7 @@ func (c *Client) ProjectContainers(ctx context.Context, req backend.ProjectConta
 	if req.Target.Service == "" {
 		return inspects, nil, nil
 	}
-	primaryOutput, err := c.output(ctx, runOptions{Args: append(c.composeBaseArgs(req.Target), "ps", "-q", req.Target.Service), Dir: req.Target.Dir})
+	primaryOutput, err := c.output(ctx, runOptions{Binary: c.composeBinaryValue(), Args: append(c.composeBaseArgs(req.Target), "ps", "-q", req.Target.Service), Dir: req.Target.Dir})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -345,15 +349,16 @@ func (c *Client) run(ctx context.Context, opts runOptions) error {
 				target = opts.Stderr
 			}
 			combined := &capturingWriter{target: target}
-			err := c.runner.Run(ctx, command.Command{Binary: c.Binary, Args: opts.Args, Dir: opts.Dir, Env: opts.Env, Stdin: opts.Stdin, Stdout: combined, Stderr: combined})
+			binary := valueOrDefault(opts.Binary, c.Binary)
+			err := c.runner.Run(ctx, command.Command{Binary: binary, Args: opts.Args, Dir: opts.Dir, Env: opts.Env, Stdin: opts.Stdin, Stdout: combined, Stderr: combined})
 			if err == nil {
 				return nil
 			}
 			if !retryableExit255(err) || attempt == maxAttempts || ctx.Err() != nil {
-				return &Error{Binary: c.Binary, Args: append([]string(nil), opts.Args...), Stderr: combined.String(), Err: err}
+				return &Error{Binary: binary, Args: append([]string(nil), opts.Args...), Stderr: combined.String(), Err: err}
 			}
 			if err := sleepWithContext(ctx, time.Duration(attempt)*time.Second); err != nil {
-				return &Error{Binary: c.Binary, Args: append([]string(nil), opts.Args...), Stderr: combined.String(), Err: err}
+				return &Error{Binary: binary, Args: append([]string(nil), opts.Args...), Stderr: combined.String(), Err: err}
 			}
 			continue
 		}
@@ -362,24 +367,26 @@ func (c *Client) run(ctx context.Context, opts runOptions) error {
 		if stderr == nil {
 			stderr = &stderrBuffer
 		}
-		err := c.runner.Run(ctx, command.Command{Binary: c.Binary, Args: opts.Args, Dir: opts.Dir, Env: opts.Env, Stdin: opts.Stdin, Stdout: opts.Stdout, Stderr: stderr})
+		binary := valueOrDefault(opts.Binary, c.Binary)
+		err := c.runner.Run(ctx, command.Command{Binary: binary, Args: opts.Args, Dir: opts.Dir, Env: opts.Env, Stdin: opts.Stdin, Stdout: opts.Stdout, Stderr: stderr})
 		if err == nil {
 			return nil
 		}
 		if !retryableExit255(err) || attempt == maxAttempts || ctx.Err() != nil {
-			return &Error{Binary: c.Binary, Args: append([]string(nil), opts.Args...), Stderr: stderrBuffer.String(), Err: err}
+			return &Error{Binary: binary, Args: append([]string(nil), opts.Args...), Stderr: stderrBuffer.String(), Err: err}
 		}
 		if err := sleepWithContext(ctx, time.Duration(attempt)*time.Second); err != nil {
-			return &Error{Binary: c.Binary, Args: append([]string(nil), opts.Args...), Stderr: stderrBuffer.String(), Err: err}
+			return &Error{Binary: binary, Args: append([]string(nil), opts.Args...), Stderr: stderrBuffer.String(), Err: err}
 		}
 	}
 	return nil
 }
 
 func (c *Client) output(ctx context.Context, opts runOptions) (string, error) {
-	stdout, stderr, err := c.runner.Output(ctx, command.Command{Binary: c.Binary, Args: opts.Args, Dir: opts.Dir, Env: opts.Env, Stdin: opts.Stdin})
+	binary := valueOrDefault(opts.Binary, c.Binary)
+	stdout, stderr, err := c.runner.Output(ctx, command.Command{Binary: binary, Args: opts.Args, Dir: opts.Dir, Env: opts.Env, Stdin: opts.Stdin})
 	if err != nil {
-		return "", &Error{Binary: c.Binary, Args: append([]string(nil), opts.Args...), Stderr: stderr, Err: err}
+		return "", &Error{Binary: binary, Args: append([]string(nil), opts.Args...), Stderr: stderr, Err: err}
 	}
 	return stdout, nil
 }
@@ -394,7 +401,7 @@ func (c *Client) combinedOutput(ctx context.Context, args ...string) (string, er
 
 func (c *Client) composeBaseArgs(target backend.ProjectTarget) []string {
 	args := append([]string(nil), c.composeCommand...)
-	if len(args) == 0 {
+	if len(args) == 0 && c.composeBinaryValue() == c.Binary {
 		args = []string{"compose"}
 	}
 	for _, file := range target.Files {
@@ -404,6 +411,20 @@ func (c *Client) composeBaseArgs(target backend.ProjectTarget) []string {
 		args = append(args, "-p", target.Project)
 	}
 	return args
+}
+
+func (c *Client) composeBinaryValue() string {
+	if c.composeBinary != "" {
+		return c.composeBinary
+	}
+	return c.Binary
+}
+
+func valueOrDefault(value string, fallback string) string {
+	if value != "" {
+		return value
+	}
+	return fallback
 }
 
 func execArgs(req backend.ExecRequest) []string {
@@ -678,9 +699,6 @@ func shouldCombineStreams(args []string) bool {
 	}
 	if args[0] == "build" {
 		return true
-	}
-	if args[0] != "compose" {
-		return false
 	}
 	for _, arg := range args[1:] {
 		if arg == "build" || arg == "up" {

@@ -43,7 +43,7 @@ Prebuilt binaries for macOS and Linux are published on the [GitHub Releases](htt
 
 - A supported container backend on `PATH`
 - Docker support through the `docker` CLI, including `docker compose` for project-service devcontainers
-- Podman support through the `podman` CLI, including `podman compose` for project-service devcontainers
+- Podman support through the `podman` CLI, using either native `podman compose` or `podman-compose` for project-service devcontainers
 - A Linux container runtime target for devcontainers
 - macOS if you need browser-open or localhost callback bridge support
 

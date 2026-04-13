@@ -16,6 +16,7 @@ Some `devcontainer.json` settings are blocked until you explicitly trust the rep
 - rerun with `--allow-host-lifecycle` when the repo uses host-side `initializeCommand`
 - prefer user config for personal defaults; workspace-local `.hatchctl/config.toml` host-affecting settings and `verification.trusted_signers` only apply after `--trust-workspace`
 - if you use Podman, set `backend = "podman"` in config or pass `--backend podman` so hatchctl shells out to the Podman CLI instead of Docker
+- for compose-based Podman workspaces, either native `podman compose` or `podman-compose` works; hatchctl prefers native compose and falls back to `podman-compose` when needed
 
 ## Unsigned Images Or Features
 

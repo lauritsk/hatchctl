@@ -132,3 +132,27 @@ func TestProjectContainersReturnsPrimaryServiceContainer(t *testing.T) {
 		t.Fatalf("unexpected primary %#v", primary)
 	}
 }
+
+func TestProjectConfigUsesExternalComposeBinary(t *testing.T) {
+	t.Parallel()
+
+	client := &Client{Binary: "podman", composeBinary: "podman-compose", runner: fakeRunner{
+		outputFn: func(cmd command.Command) (string, string, error) {
+			if cmd.Binary != "podman-compose" {
+				t.Fatalf("unexpected command binary %q", cmd.Binary)
+			}
+			if strings.Join(cmd.Args, " ") != "-p demo config --format json" {
+				t.Fatalf("unexpected output command %#v", cmd.Args)
+			}
+			return `{"name":"demo","services":{"app":{"image":"alpine:3.23"}}}`, "", nil
+		},
+	}}
+
+	config, err := client.ProjectConfig(context.Background(), backend.ProjectConfigRequest{Target: backend.ProjectTarget{Project: "demo"}})
+	if err != nil {
+		t.Fatalf("project config: %v", err)
+	}
+	if config.Name != "demo" || config.Services["app"].Image != "alpine:3.23" {
+		t.Fatalf("unexpected config %#v", config)
+	}
+}
