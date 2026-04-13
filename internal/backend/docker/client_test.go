@@ -64,15 +64,46 @@ func TestRenderProjectOverrideIncludesServiceDetails(t *testing.T) {
 	}
 }
 
+func TestProjectConfigFallsBackToPlainComposeConfig(t *testing.T) {
+	t.Parallel()
+
+	client := &Client{Binary: "podman", runner: fakeRunner{
+		outputFn: func(cmd command.Command) (string, string, error) {
+			switch strings.Join(cmd.Args, " ") {
+			case "compose -p demo config --format json":
+				return "", "unknown flag: --format", errors.New("unknown flag")
+			case "compose -p demo config":
+				return "name: demo\nservices:\n  app:\n    image: alpine:3.23\n", "", nil
+			default:
+				t.Fatalf("unexpected output command %#v", cmd.Args)
+			}
+			return "", "", nil
+		},
+	}}
+
+	config, err := client.ProjectConfig(context.Background(), backend.ProjectConfigRequest{Target: backend.ProjectTarget{Project: "demo"}})
+	if err != nil {
+		t.Fatalf("project config: %v", err)
+	}
+	if config.Name != "demo" || config.Services["app"].Image != "alpine:3.23" {
+		t.Fatalf("unexpected config %#v", config)
+	}
+}
+
 func TestProjectContainersReturnsPrimaryServiceContainer(t *testing.T) {
 	t.Parallel()
 
 	client := &Client{Binary: "docker", runner: fakeRunner{
 		outputFn: func(cmd command.Command) (string, string, error) {
-			if strings.Join(cmd.Args, " ") != "ps -a -q --filter label=com.docker.compose.project=demo" {
+			switch strings.Join(cmd.Args, " ") {
+			case "compose -p demo ps -a -q":
+				return "db\napp\n", "", nil
+			case "compose -p demo ps -q app":
+				return "app\n", "", nil
+			default:
 				t.Fatalf("unexpected output command %#v", cmd.Args)
 			}
-			return "db\napp\n", "", nil
+			return "", "", nil
 		},
 		combinedOutputFn: func(cmd command.Command) (string, error) {
 			if len(cmd.Args) != 2 || cmd.Args[0] != "inspect" {

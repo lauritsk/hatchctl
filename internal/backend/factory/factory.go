@@ -5,6 +5,7 @@ import (
 
 	"github.com/lauritsk/hatchctl/internal/backend"
 	backenddocker "github.com/lauritsk/hatchctl/internal/backend/docker"
+	backendpodman "github.com/lauritsk/hatchctl/internal/backend/podman"
 )
 
 func NormalizeName(name string) string {
@@ -18,6 +19,8 @@ func New(name string) (backend.Client, error) {
 	switch NormalizeName(name) {
 	case "docker":
 		return backenddocker.New("docker"), nil
+	case "podman":
+		return backendpodman.New("podman"), nil
 	default:
 		return nil, backend.UnsupportedBackendError{Name: name}
 	}

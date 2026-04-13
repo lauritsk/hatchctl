@@ -24,8 +24,20 @@ import (
 const projectOverrideFileName = "project-service.override.yml"
 
 type Client struct {
-	Binary string
-	runner command.Runner
+	Binary              string
+	runtimeID           string
+	bridgeHost          string
+	buildDefinitionFile string
+	composeCommand      []string
+	runner              command.Runner
+}
+
+type Options struct {
+	Binary              string
+	RuntimeID           string
+	BridgeHost          string
+	BuildDefinitionFile string
+	ComposeCommand      []string
 }
 
 type runOptions struct {
@@ -38,28 +50,61 @@ type runOptions struct {
 }
 
 type Error struct {
+	Binary string
 	Args   []string
 	Stderr string
 	Err    error
 }
 
 func New(binary string) *Client {
-	if strings.TrimSpace(binary) == "" {
-		binary = "docker"
+	return NewWithOptions(Options{Binary: binary, RuntimeID: "docker", BridgeHost: "host.docker.internal", BuildDefinitionFile: "Dockerfile", ComposeCommand: []string{"compose"}})
+}
+
+func NewWithOptions(opts Options) *Client {
+	if strings.TrimSpace(opts.Binary) == "" {
+		opts.Binary = "docker"
 	}
-	return &Client{Binary: binary, runner: command.Local{}}
+	if strings.TrimSpace(opts.RuntimeID) == "" {
+		opts.RuntimeID = "docker"
+	}
+	if strings.TrimSpace(opts.BridgeHost) == "" {
+		opts.BridgeHost = "host.docker.internal"
+	}
+	if strings.TrimSpace(opts.BuildDefinitionFile) == "" {
+		opts.BuildDefinitionFile = "Dockerfile"
+	}
+	if len(opts.ComposeCommand) == 0 {
+		opts.ComposeCommand = []string{"compose"}
+	}
+	return &Client{
+		Binary:              strings.TrimSpace(opts.Binary),
+		runtimeID:           opts.RuntimeID,
+		bridgeHost:          opts.BridgeHost,
+		buildDefinitionFile: opts.BuildDefinitionFile,
+		composeCommand:      append([]string(nil), opts.ComposeCommand...),
+		runner:              command.Local{},
+	}
 }
 
 func (c *Client) ID() string {
-	return "docker"
+	if c.runtimeID == "" {
+		return "docker"
+	}
+	return c.runtimeID
 }
 
 func (c *Client) BuildDefinitionFileName() string {
-	return "Dockerfile"
+	if c.buildDefinitionFile == "" {
+		return "Dockerfile"
+	}
+	return c.buildDefinitionFile
 }
 
 func (c *Client) BridgeHost() string {
-	return "host.docker.internal"
+	if c.bridgeHost == "" {
+		return "host.docker.internal"
+	}
+	return c.bridgeHost
 }
 
 func (e *Error) Error() string {
@@ -67,7 +112,11 @@ func (e *Error) Error() string {
 	if message == "" {
 		message = e.Err.Error()
 	}
-	return fmt.Sprintf("%s %s: %s", "docker", strings.Join(e.Args, " "), message)
+	binary := e.Binary
+	if binary == "" {
+		binary = "docker"
+	}
+	return fmt.Sprintf("%s %s: %s", binary, strings.Join(e.Args, " "), message)
 }
 
 func (e *Error) Unwrap() error {
@@ -194,22 +243,21 @@ func (c *Client) ListContainers(ctx context.Context, req backend.ListContainersR
 }
 
 func (c *Client) ProjectConfig(ctx context.Context, req backend.ProjectConfigRequest) (backend.ProjectConfig, error) {
-	args := composeBaseArgs(req.Target)
-	args = append(args, "config", "--format", "json")
-	output, err := c.output(ctx, runOptions{Args: args, Dir: req.Target.Dir})
-	if err != nil {
+	jsonArgs := append(c.composeBaseArgs(req.Target), "config", "--format", "json")
+	output, err := c.output(ctx, runOptions{Args: jsonArgs, Dir: req.Target.Dir})
+	if err == nil {
+		return parseProjectConfig(output)
+	}
+	plainArgs := append(c.composeBaseArgs(req.Target), "config")
+	plainOutput, plainErr := c.output(ctx, runOptions{Args: plainArgs, Dir: req.Target.Dir})
+	if plainErr != nil {
 		return backend.ProjectConfig{}, err
 	}
-	output = sanitizeComposeJSONOutput(output)
-	var config backend.ProjectConfig
-	if err := json.Unmarshal([]byte(output), &config); err != nil {
-		return backend.ProjectConfig{}, fmt.Errorf("parse project config json: %w (output=%q)", err, truncateForError(output, 200))
-	}
-	return config, nil
+	return parseProjectConfig(plainOutput)
 }
 
 func (c *Client) BuildProject(ctx context.Context, req backend.ProjectBuildRequest) error {
-	args := composeBaseArgs(req.Target)
+	args := c.composeBaseArgs(req.Target)
 	args = append(args, "build")
 	args = append(args, req.Services...)
 	return c.run(ctx, runOptions{Args: args, Dir: req.Target.Dir, Stdin: req.Stdin, Stdout: req.Stdout, Stderr: req.Stderr})
@@ -225,7 +273,7 @@ func (c *Client) UpProject(ctx context.Context, req backend.ProjectUpRequest) er
 		defer os.Remove(overridePath)
 		target.Files = append(append([]string(nil), req.Target.Files...), overridePath)
 	}
-	args := composeBaseArgs(target)
+	args := c.composeBaseArgs(target)
 	args = append(args, "up")
 	if req.NoBuild {
 		args = append(args, "--no-build")
@@ -238,11 +286,7 @@ func (c *Client) UpProject(ctx context.Context, req backend.ProjectUpRequest) er
 }
 
 func (c *Client) ProjectContainers(ctx context.Context, req backend.ProjectContainersRequest) ([]backend.ContainerInspect, *backend.ContainerInspect, error) {
-	if req.Target.Project == "" {
-		return nil, nil, nil
-	}
-	labels := map[string]string{"com.docker.compose.project": req.Target.Project}
-	output, err := c.ListContainers(ctx, backend.ListContainersRequest{All: true, Quiet: true, Labels: labels})
+	output, err := c.output(ctx, runOptions{Args: append(c.composeBaseArgs(req.Target), "ps", "-a", "-q"), Dir: req.Target.Dir})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -256,11 +300,13 @@ func (c *Client) ProjectContainers(ctx context.Context, req backend.ProjectConta
 	if req.Target.Service == "" {
 		return inspects, nil, nil
 	}
-	primaryCandidates := make([]backend.ContainerInspect, 0)
-	for _, inspect := range inspects {
-		if inspect.Config.Labels["com.docker.compose.service"] == req.Target.Service {
-			primaryCandidates = append(primaryCandidates, inspect)
-		}
+	primaryOutput, err := c.output(ctx, runOptions{Args: append(c.composeBaseArgs(req.Target), "ps", "-q", req.Target.Service), Dir: req.Target.Dir})
+	if err != nil {
+		return nil, nil, err
+	}
+	primaryCandidates, err := inspectContainerList(ctx, primaryOutput, c.InspectContainer)
+	if err != nil {
+		return nil, nil, err
 	}
 	if len(primaryCandidates) == 0 {
 		return inspects, nil, nil
@@ -304,10 +350,10 @@ func (c *Client) run(ctx context.Context, opts runOptions) error {
 				return nil
 			}
 			if !retryableExit255(err) || attempt == maxAttempts || ctx.Err() != nil {
-				return &Error{Args: append([]string(nil), opts.Args...), Stderr: combined.String(), Err: err}
+				return &Error{Binary: c.Binary, Args: append([]string(nil), opts.Args...), Stderr: combined.String(), Err: err}
 			}
 			if err := sleepWithContext(ctx, time.Duration(attempt)*time.Second); err != nil {
-				return &Error{Args: append([]string(nil), opts.Args...), Stderr: combined.String(), Err: err}
+				return &Error{Binary: c.Binary, Args: append([]string(nil), opts.Args...), Stderr: combined.String(), Err: err}
 			}
 			continue
 		}
@@ -321,10 +367,10 @@ func (c *Client) run(ctx context.Context, opts runOptions) error {
 			return nil
 		}
 		if !retryableExit255(err) || attempt == maxAttempts || ctx.Err() != nil {
-			return &Error{Args: append([]string(nil), opts.Args...), Stderr: stderrBuffer.String(), Err: err}
+			return &Error{Binary: c.Binary, Args: append([]string(nil), opts.Args...), Stderr: stderrBuffer.String(), Err: err}
 		}
 		if err := sleepWithContext(ctx, time.Duration(attempt)*time.Second); err != nil {
-			return &Error{Args: append([]string(nil), opts.Args...), Stderr: stderrBuffer.String(), Err: err}
+			return &Error{Binary: c.Binary, Args: append([]string(nil), opts.Args...), Stderr: stderrBuffer.String(), Err: err}
 		}
 	}
 	return nil
@@ -333,7 +379,7 @@ func (c *Client) run(ctx context.Context, opts runOptions) error {
 func (c *Client) output(ctx context.Context, opts runOptions) (string, error) {
 	stdout, stderr, err := c.runner.Output(ctx, command.Command{Binary: c.Binary, Args: opts.Args, Dir: opts.Dir, Env: opts.Env, Stdin: opts.Stdin})
 	if err != nil {
-		return "", &Error{Args: append([]string(nil), opts.Args...), Stderr: stderr, Err: err}
+		return "", &Error{Binary: c.Binary, Args: append([]string(nil), opts.Args...), Stderr: stderr, Err: err}
 	}
 	return stdout, nil
 }
@@ -341,13 +387,16 @@ func (c *Client) output(ctx context.Context, opts runOptions) (string, error) {
 func (c *Client) combinedOutput(ctx context.Context, args ...string) (string, error) {
 	data, err := c.runner.CombinedOutput(ctx, command.Command{Binary: c.Binary, Args: args})
 	if err != nil {
-		return "", &Error{Args: append([]string(nil), args...), Stderr: data, Err: err}
+		return "", &Error{Binary: c.Binary, Args: append([]string(nil), args...), Stderr: data, Err: err}
 	}
 	return data, nil
 }
 
-func composeBaseArgs(target backend.ProjectTarget) []string {
-	args := []string{"compose"}
+func (c *Client) composeBaseArgs(target backend.ProjectTarget) []string {
+	args := append([]string(nil), c.composeCommand...)
+	if len(args) == 0 {
+		args = []string{"compose"}
+	}
 	for _, file := range target.Files {
 		args = append(args, "-f", file)
 	}
@@ -397,6 +446,23 @@ func writeProjectOverride(stateDir string, serviceName string, override backend.
 type composeOverrideFile struct {
 	Services map[string]composeOverrideService `yaml:"services"`
 	Volumes  map[string]composeOverrideVolume  `yaml:"volumes,omitempty"`
+}
+
+type yamlProjectConfig struct {
+	Name     string                        `yaml:"name"`
+	Services map[string]yamlProjectService `yaml:"services"`
+}
+
+type yamlProjectService struct {
+	Image string                   `yaml:"image"`
+	Build *yamlProjectServiceBuild `yaml:"build"`
+}
+
+type yamlProjectServiceBuild struct {
+	Context    string            `yaml:"context"`
+	Dockerfile string            `yaml:"dockerfile"`
+	Target     string            `yaml:"target"`
+	Args       map[string]string `yaml:"args"`
 }
 
 type composeOverrideService struct {
@@ -466,6 +532,41 @@ func renderProjectOverride(serviceName string, override backend.ProjectOverride)
 		return "", err
 	}
 	return string(data), nil
+}
+
+func parseProjectConfig(output string) (backend.ProjectConfig, error) {
+	jsonOutput := sanitizeComposeJSONOutput(output)
+	var config backend.ProjectConfig
+	if err := json.Unmarshal([]byte(jsonOutput), &config); err == nil {
+		return config, nil
+	}
+	var yamlConfig yamlProjectConfig
+	if err := yaml.Unmarshal([]byte(output), &yamlConfig); err != nil {
+		return backend.ProjectConfig{}, fmt.Errorf("parse project config: %w (output=%q)", err, truncateForError(strings.TrimSpace(output), 200))
+	}
+	config.Name = yamlConfig.Name
+	if len(yamlConfig.Services) > 0 {
+		config.Services = make(map[string]backend.ProjectService, len(yamlConfig.Services))
+		for name, service := range yamlConfig.Services {
+			config.Services[name] = backend.ProjectService{
+				Image: service.Image,
+				Build: projectServiceBuildFromYAML(service.Build),
+			}
+		}
+	}
+	return config, nil
+}
+
+func projectServiceBuildFromYAML(build *yamlProjectServiceBuild) *backend.ProjectServiceBuild {
+	if build == nil {
+		return nil
+	}
+	return &backend.ProjectServiceBuild{
+		Context:        build.Context,
+		DefinitionFile: build.Dockerfile,
+		Target:         build.Target,
+		Args:           build.Args,
+	}
 }
 
 func composeServiceMountFromProjectMount(mount backend.ProjectMount) composeServiceMount {

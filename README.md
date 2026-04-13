@@ -9,7 +9,7 @@ Run devcontainers from the terminal.
 
 [Install](#install) • [Quick Start](#quick-start) • [Configuration](#configuration) • [Security Defaults](#security-defaults) • [Development](#development)
 
-`hatchctl` is a Go CLI for creating, inspecting, and using devcontainer-based workspaces without editor integration. It is built around a backend-neutral runtime layer, with Docker implemented as the default backend today.
+`hatchctl` is a Go CLI for creating, inspecting, and using devcontainer-based workspaces without editor integration. It is built around a backend-neutral runtime layer, with Docker as the default backend and Podman as an additional supported backend.
 
 > [!NOTE]
 > `hatchctl` supports macOS and Linux. Windows is not currently supported. Browser-open and localhost callback bridge support are macOS-only.
@@ -42,7 +42,8 @@ Prebuilt binaries for macOS and Linux are published on the [GitHub Releases](htt
 ## Requirements
 
 - A supported container backend on `PATH`
-- Docker support today through the `docker` CLI, including `docker compose` for project-service devcontainers
+- Docker support through the `docker` CLI, including `docker compose` for project-service devcontainers
+- Podman support through the `podman` CLI, including `podman compose` for project-service devcontainers
 - A Linux container runtime target for devcontainers
 - macOS if you need browser-open or localhost callback bridge support
 
@@ -158,7 +159,7 @@ See [SECURITY.md](./SECURITY.md) for the full policy and threat model.
 
 - Host OS: macOS and Linux
 - Bridge support: macOS only
-- Container backend support: Docker
+- Container backend support: Docker and Podman
 - Devcontainer sources: single-container image and build-file workflows
 - Project-service support: single-service Compose devcontainers through Docker backend
 - Feature sources: local path, OCI, direct tarball, and deprecated GitHub shorthand
