@@ -20,21 +20,22 @@ import (
 )
 
 type Session struct {
-	ID         string `json:"id"`
-	Backend    string `json:"backend,omitempty"`
-	Enabled    bool   `json:"enabled"`
-	HelperArch string `json:"helperArch,omitempty"`
-	Host       string `json:"host,omitempty"`
-	Port       int    `json:"port,omitempty"`
-	Token      string `json:"token,omitempty"`
-	StatePath  string `json:"statePath"`
-	ConfigPath string `json:"configPath,omitempty"`
-	PIDPath    string `json:"pidPath,omitempty"`
-	StatusPath string `json:"statusPath,omitempty"`
-	HelperPath string `json:"helperPath"`
-	MountPath  string `json:"mountPath"`
-	BinPath    string `json:"binPath"`
-	Status     string `json:"status"`
+	ID         string   `json:"id"`
+	Backend    string   `json:"backend,omitempty"`
+	Enabled    bool     `json:"enabled"`
+	HelperArch string   `json:"helperArch,omitempty"`
+	Host       string   `json:"host,omitempty"`
+	Hosts      []string `json:"hosts,omitempty"`
+	Port       int      `json:"port,omitempty"`
+	Token      string   `json:"token,omitempty"`
+	StatePath  string   `json:"statePath"`
+	ConfigPath string   `json:"configPath,omitempty"`
+	PIDPath    string   `json:"pidPath,omitempty"`
+	StatusPath string   `json:"statusPath,omitempty"`
+	HelperPath string   `json:"helperPath"`
+	MountPath  string   `json:"mountPath"`
+	BinPath    string   `json:"binPath"`
+	Status     string   `json:"status"`
 }
 
 type Report struct {
@@ -82,7 +83,7 @@ const (
 	defaultBridgeHost        = "host.docker.internal"
 )
 
-func Prepare(stateDir string, enabled bool, helperArch string, backendID string, bridgeHost string) (*Session, error) {
+func Prepare(stateDir string, enabled bool, helperArch string, backendID string, bridgeHosts []string) (*Session, error) {
 	paths, err := storefs.EnsureWorkspaceBridgePaths(stateDir)
 	if err != nil {
 		return nil, err
@@ -94,8 +95,16 @@ func Prepare(stateDir string, enabled bool, helperArch string, backendID string,
 	}
 	binPath := paths.BinDir
 	helperPath := filepath.Join(binPath, "devcontainer-open")
+	hosts := normalizeBridgeHosts(session.Hosts, bridgeHosts)
+	if session.Host != "" {
+		hosts = normalizeBridgeHosts([]string{session.Host}, hosts)
+	}
+	if len(hosts) == 0 {
+		hosts = []string{defaultBridgeHost}
+	}
+	session.Hosts = hosts
 	if session.Host == "" {
-		session.Host = valueOrDefault(bridgeHost, defaultBridgeHost)
+		session.Host = hosts[0]
 	}
 	if backendID != "" {
 		session.Backend = backendID
@@ -218,6 +227,11 @@ func Doctor(stateDir string) (Report, error) {
 }
 
 func openShim(session *Session) string {
+	hosts := session.Hosts
+	if len(hosts) == 0 {
+		hosts = normalizeBridgeHosts([]string{session.Host}, nil)
+	}
+	hostList := strings.Join(hosts, " ")
 	return fmt.Sprintf(`#!/bin/sh
 set -eu
 
@@ -230,8 +244,14 @@ if [ -n "${DEVCONTAINER_BRIDGE_OPEN_COMMAND:-}" ]; then
   DEVCONTAINER_BRIDGE_URL="$url" exec /bin/sh -lc "$DEVCONTAINER_BRIDGE_OPEN_COMMAND"
 fi
 
-	exec %s bridge helper open --host %s --port %d --token %s --url "$url"
-`, containerHelperBin, session.Host, session.Port, session.Token)
+for host in %s; do
+  if %s bridge helper open --host "$host" --port %d --token %s --url "$url"; then
+    exit 0
+  fi
+done
+
+exit 1
+`, hostList, containerHelperBin, session.Port, session.Token)
 }
 
 func xdgOpenShim() string {
@@ -270,6 +290,23 @@ func normalizeHelperArch(value string) string {
 		return runtime.GOARCH
 	}
 	return value
+}
+
+func normalizeBridgeHosts(primary []string, extra []string) []string {
+	seen := map[string]struct{}{}
+	result := make([]string, 0, len(primary)+len(extra))
+	for _, host := range append(append([]string(nil), primary...), extra...) {
+		host = strings.TrimSpace(host)
+		if host == "" {
+			continue
+		}
+		if _, ok := seen[host]; ok {
+			continue
+		}
+		seen[host] = struct{}{}
+		result = append(result, host)
+	}
+	return result
 }
 
 func applySession(session *Session, merged spec.MergedConfig) spec.MergedConfig {

@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 	"testing"
@@ -836,6 +837,17 @@ func TestEnsureBackendSupportRejectsUnsupportedBridge(t *testing.T) {
 	}
 	if unsupported.Capability != "bridge integration" {
 		t.Fatalf("unexpected capability %#v", unsupported)
+	}
+}
+
+func TestBridgeHostsForBackendPrefersPodmanAlias(t *testing.T) {
+	t.Parallel()
+
+	if got := bridgeHostsForBackend("podman", ""); !reflect.DeepEqual(got, []string{"host.containers.internal", "host.docker.internal"}) {
+		t.Fatalf("unexpected podman bridge hosts %#v", got)
+	}
+	if got := bridgeHostsForBackend("docker", ""); !reflect.DeepEqual(got, []string{"host.docker.internal", "host.containers.internal"}) {
+		t.Fatalf("unexpected docker bridge hosts %#v", got)
 	}
 }
 

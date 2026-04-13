@@ -134,7 +134,7 @@ func Start(session *Session, containerID string) (*Session, error) {
 }
 
 func Serve(ctx context.Context, stateDir string, containerID string) error {
-	session, err := Prepare(stateDir, true, "", "", "")
+	session, err := Prepare(stateDir, true, "", "", nil)
 	if err != nil {
 		return err
 	}
@@ -490,7 +490,7 @@ func Stop(stateDir string) error {
 	if err == nil && strings.HasSuffix(exe, ".test") {
 		return nil
 	}
-	session, err := Prepare(stateDir, true, "", "", "")
+	session, err := Prepare(stateDir, true, "", "", nil)
 	if err != nil {
 		return err
 	}

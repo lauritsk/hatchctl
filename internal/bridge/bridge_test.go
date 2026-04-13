@@ -126,3 +126,12 @@ func TestDoctorReportsPersistedStatus(t *testing.T) {
 		t.Fatalf("unexpected bridge report details %#v", report)
 	}
 }
+
+func TestOpenShimTriesConfiguredHostsInOrder(t *testing.T) {
+	t.Parallel()
+
+	shim := openShim(&Session{Hosts: []string{"host.containers.internal", "host.docker.internal"}, Port: 41234, Token: "token-123"})
+	if !strings.Contains(shim, `for host in host.containers.internal host.docker.internal; do`) {
+		t.Fatalf("expected host fallback loop in shim, got %q", shim)
+	}
+}

@@ -8,8 +8,8 @@ import (
 	storefs "github.com/lauritsk/hatchctl/internal/store/fs"
 )
 
-func Prepare(stateDir string, helperArch string, backendID string, bridgeHost string) (*bridge.Session, error) {
-	return bridge.Prepare(stateDir, true, helperArch, backendID, bridgeHost)
+func Prepare(stateDir string, helperArch string, backendID string, bridgeHosts []string) (*bridge.Session, error) {
+	return bridge.Prepare(stateDir, true, helperArch, backendID, bridgeHosts)
 }
 
 func Preview(stateDir string, enabled bool) (*bridge.Session, error) {
