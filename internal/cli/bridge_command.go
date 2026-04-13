@@ -74,28 +74,22 @@ func (a *App) newBridgeDoctorCommand(global *globalOptions) *cobra.Command {
 			"hatchctl bridge doctor --json",
 		}, "\n"),
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			command, err := a.prepareCommand(cmd, global, jsonOut, workspace, configPath, featureTimeout, lockfilePolicy, nil, nil, nil, appcore.DotfilesOptions{})
-			if err != nil {
-				return err
-			}
-			defer command.Close()
-			report, err := a.service.BridgeDoctor(cmd.Context(), appcore.BridgeDoctorRequest{
-				Defaults: command.defaults,
-				Global:   command.global,
-				IO:       command.io,
-			})
-			if err != nil {
-				return err
-			}
-			if jsonOut {
-				return command.renderer.PrintJSON(report)
-			}
-			return command.renderer.PrintKeyValues([]ui.KeyValue{
-				{Key: "Bridge session", Value: report.ID},
-				{Key: "Bridge enabled", Value: fmt.Sprintf("%t", report.Enabled)},
-				{Key: "Current status", Value: report.Status},
-				{Key: "State path", Value: report.StatePath},
-				{Key: "Helper path", Value: report.HelperPath},
+			return a.withPreparedCommand(cmd, global, prepareOptions{jsonOut: jsonOut, workspace: workspace, configPath: configPath, featureTimeout: featureTimeout, lockfilePolicy: lockfilePolicy}, func(command *preparedCommand) error {
+				report, err := a.service.BridgeDoctor(cmd.Context(), appcore.BridgeDoctorRequest{
+					Defaults: command.defaults,
+					Global:   command.global,
+					IO:       command.io,
+				})
+				if err != nil {
+					return err
+				}
+				return printJSONOrKeyValues(command, jsonOut, report, []ui.KeyValue{
+					{Key: "Bridge session", Value: report.ID},
+					{Key: "Bridge enabled", Value: fmt.Sprintf("%t", report.Enabled)},
+					{Key: "Current status", Value: report.Status},
+					{Key: "State path", Value: report.StatePath},
+					{Key: "Helper path", Value: report.HelperPath},
+				})
 			})
 		},
 	}

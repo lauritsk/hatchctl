@@ -41,34 +41,32 @@ func (a *App) newUpCommand(global *globalOptions) *cobra.Command {
 			"hatchctl up --json",
 		}, "\n"),
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			command, err := a.prepareCommand(cmd, global, jsonOut, workspace, configPath, featureTimeout, lockfilePolicy, &bridgeEnabled, &trustWorkspace, &sshAgent, dotfiles)
-			if err != nil {
-				return err
-			}
-			defer command.Close()
-			result, err := a.service.Up(cmd.Context(), appcore.UpRequest{
-				Defaults:           command.defaults,
-				AllowHostLifecycle: allowHostLifecycle,
-				Recreate:           recreate,
-				Global:             command.global,
-				IO:                 command.io,
-			})
-			if err != nil {
-				return err
-			}
-			if jsonOut {
-				return command.renderer.PrintJSON(result)
-			}
-			if command.renderer.TTY() {
-				if err := command.renderer.PrintSummary("Devcontainer Ready", upResultFields(result)); err != nil {
+			return a.withPreparedCommand(cmd, global, prepareOptions{jsonOut: jsonOut, workspace: workspace, configPath: configPath, featureTimeout: featureTimeout, lockfilePolicy: lockfilePolicy, bridgeEnabled: &bridgeEnabled, trustWorkspace: &trustWorkspace, sshAgent: &sshAgent, dotfiles: dotfiles}, func(command *preparedCommand) error {
+				result, err := a.service.Up(cmd.Context(), appcore.UpRequest{
+					Defaults:           command.defaults,
+					AllowHostLifecycle: allowHostLifecycle,
+					Recreate:           recreate,
+					Global:             command.global,
+					IO:                 command.io,
+				})
+				if err != nil {
 					return err
 				}
-				return command.renderer.PrintCommandList("Next", upSuggestedCommands(command.defaults.Workspace, command.defaults.ConfigPath, command.defaults.FeatureTimeout, command.defaults.LockfilePolicy, command.defaults.SSHAgent))
-			}
-			if err := command.renderer.PrintKeyValues(upResultFields(result)); err != nil {
-				return err
-			}
-			return command.renderer.PrintText("\nNext:\n  " + strings.Join(upSuggestedCommands(command.defaults.Workspace, command.defaults.ConfigPath, command.defaults.FeatureTimeout, command.defaults.LockfilePolicy, command.defaults.SSHAgent), "\n  "))
+				if jsonOut {
+					return command.renderer.PrintJSON(result)
+				}
+				suggested := upSuggestedCommands(command.defaults.Workspace, command.defaults.ConfigPath, command.defaults.FeatureTimeout, command.defaults.LockfilePolicy, command.defaults.SSHAgent)
+				if command.renderer.TTY() {
+					if err := command.renderer.PrintSummary("Devcontainer Ready", upResultFields(result)); err != nil {
+						return err
+					}
+					return command.renderer.PrintCommandList("Next", suggested)
+				}
+				if err := command.renderer.PrintKeyValues(upResultFields(result)); err != nil {
+					return err
+				}
+				return command.renderer.PrintText("\nNext:\n  " + strings.Join(suggested, "\n  "))
+			})
 		},
 	}
 	addWorkspaceFlags(cmd, &workspace, &configPath)

@@ -34,26 +34,17 @@ func (a *App) newConfigCommand(global *globalOptions) *cobra.Command {
 			"hatchctl config --json",
 		}, "\n"),
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			command, err := a.prepareCommand(cmd, global, jsonOut, workspace, configPath, featureTimeout, lockfilePolicy, nil, &trustWorkspace, &sshAgent, dotfiles)
-			if err != nil {
-				return err
-			}
-			defer command.Close()
-			result, err := a.service.ReadConfig(cmd.Context(), appcore.ReadConfigRequest{
-				Defaults: command.defaults,
-				Global:   command.global,
-				IO:       command.io,
+			return a.withPreparedCommand(cmd, global, prepareOptions{jsonOut: jsonOut, workspace: workspace, configPath: configPath, featureTimeout: featureTimeout, lockfilePolicy: lockfilePolicy, trustWorkspace: &trustWorkspace, sshAgent: &sshAgent, dotfiles: dotfiles}, func(command *preparedCommand) error {
+				result, err := a.service.ReadConfig(cmd.Context(), appcore.ReadConfigRequest{
+					Defaults: command.defaults,
+					Global:   command.global,
+					IO:       command.io,
+				})
+				if err != nil {
+					return err
+				}
+				return printJSONOrSummary(command, jsonOut, result, "Configuration", configResultFields(result))
 			})
-			if err != nil {
-				return err
-			}
-			if jsonOut {
-				return command.renderer.PrintJSON(result)
-			}
-			if command.renderer.TTY() {
-				return command.renderer.PrintSummary("Configuration", configResultFields(result))
-			}
-			return command.renderer.PrintKeyValues(configResultFields(result))
 		},
 	}
 	addWorkspaceFlags(cmd, &workspace, &configPath)

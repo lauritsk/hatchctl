@@ -10,6 +10,18 @@ import (
 	ui "github.com/lauritsk/hatchctl/internal/display"
 )
 
+type prepareOptions struct {
+	jsonOut        bool
+	workspace      string
+	configPath     string
+	featureTimeout time.Duration
+	lockfilePolicy string
+	bridgeEnabled  *bool
+	trustWorkspace *bool
+	sshAgent       *bool
+	dotfiles       appcore.DotfilesOptions
+}
+
 func (a *App) newRenderer(jsonOut bool) *ui.Renderer {
 	return ui.NewRenderer(a.out, a.err, jsonOut)
 }
@@ -33,6 +45,49 @@ func (a *App) prepareCommand(cmd *cobra.Command, global *globalOptions, jsonOut 
 		return nil, err
 	}
 	return &preparedCommand{renderer: renderer, defaults: defaults, global: global.app(), io: a.newCommandIO(renderer)}, nil
+}
+
+func (a *App) withPreparedCommand(cmd *cobra.Command, global *globalOptions, opts prepareOptions, run func(*preparedCommand) error) error {
+	command, err := a.prepareCommand(cmd, global, opts.jsonOut, opts.workspace, opts.configPath, opts.featureTimeout, opts.lockfilePolicy, opts.bridgeEnabled, opts.trustWorkspace, opts.sshAgent, opts.dotfiles)
+	if err != nil {
+		return err
+	}
+	defer command.Close()
+	return run(command)
+}
+
+func printJSONOrSummary(command *preparedCommand, jsonOut bool, result any, title string, fields []ui.KeyValue) error {
+	if jsonOut {
+		return command.renderer.PrintJSON(result)
+	}
+	if command.renderer.TTY() {
+		return command.renderer.PrintSummary(title, fields)
+	}
+	return command.renderer.PrintKeyValues(fields)
+}
+
+func printJSONOrKeyValues(command *preparedCommand, jsonOut bool, result any, fields []ui.KeyValue) error {
+	if jsonOut {
+		return command.renderer.PrintJSON(result)
+	}
+	return command.renderer.PrintKeyValues(fields)
+}
+
+func printJSONOrSummaryText(command *preparedCommand, jsonOut bool, result any, title string, fields []ui.KeyValue, text string) error {
+	if jsonOut {
+		return command.renderer.PrintJSON(result)
+	}
+	if command.renderer.TTY() {
+		return command.renderer.PrintSummary(title, fields)
+	}
+	return command.renderer.PrintText(text)
+}
+
+func printJSONOrText(command *preparedCommand, jsonOut bool, result any, text string) error {
+	if jsonOut {
+		return command.renderer.PrintJSON(result)
+	}
+	return command.renderer.PrintText(text)
 }
 
 func (c *preparedCommand) Close() {

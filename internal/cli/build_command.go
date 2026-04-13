@@ -33,26 +33,17 @@ func (a *App) newBuildCommand(global *globalOptions) *cobra.Command {
 			"hatchctl build --json",
 		}, "\n"),
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			command, err := a.prepareCommand(cmd, global, jsonOut, workspace, configPath, featureTimeout, lockfilePolicy, nil, &trustWorkspace, nil, appcore.DotfilesOptions{})
-			if err != nil {
-				return err
-			}
-			defer command.Close()
-			result, err := a.service.Build(cmd.Context(), appcore.BuildRequest{
-				Defaults: command.defaults,
-				Global:   command.global,
-				IO:       command.io,
+			return a.withPreparedCommand(cmd, global, prepareOptions{jsonOut: jsonOut, workspace: workspace, configPath: configPath, featureTimeout: featureTimeout, lockfilePolicy: lockfilePolicy, trustWorkspace: &trustWorkspace}, func(command *preparedCommand) error {
+				result, err := a.service.Build(cmd.Context(), appcore.BuildRequest{
+					Defaults: command.defaults,
+					Global:   command.global,
+					IO:       command.io,
+				})
+				if err != nil {
+					return err
+				}
+				return printJSONOrSummaryText(command, jsonOut, result, "Image Ready", []ui.KeyValue{{Key: "Image", Value: result.Image}}, fmt.Sprintf("Devcontainer image ready: %s", result.Image))
 			})
-			if err != nil {
-				return err
-			}
-			if jsonOut {
-				return command.renderer.PrintJSON(result)
-			}
-			if command.renderer.TTY() {
-				return command.renderer.PrintSummary("Image Ready", []ui.KeyValue{{Key: "Image", Value: result.Image}})
-			}
-			return command.renderer.PrintText(fmt.Sprintf("Devcontainer image ready: %s", result.Image))
 		},
 	}
 	addWorkspaceFlags(cmd, &workspace, &configPath)

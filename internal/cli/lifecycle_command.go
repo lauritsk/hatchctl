@@ -36,25 +36,19 @@ func (a *App) newRunCommand(global *globalOptions) *cobra.Command {
 			"hatchctl run --json --phase create",
 		}, "\n"),
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			command, err := a.prepareCommand(cmd, global, jsonOut, workspace, configPath, featureTimeout, lockfilePolicy, nil, &trustWorkspace, nil, dotfiles)
-			if err != nil {
-				return err
-			}
-			defer command.Close()
-			result, err := a.service.RunLifecycle(cmd.Context(), appcore.RunLifecycleRequest{
-				Defaults:           command.defaults,
-				AllowHostLifecycle: allowHostLifecycle,
-				Phase:              phase,
-				Global:             command.global,
-				IO:                 command.io,
+			return a.withPreparedCommand(cmd, global, prepareOptions{jsonOut: jsonOut, workspace: workspace, configPath: configPath, featureTimeout: featureTimeout, lockfilePolicy: lockfilePolicy, trustWorkspace: &trustWorkspace, dotfiles: dotfiles}, func(command *preparedCommand) error {
+				result, err := a.service.RunLifecycle(cmd.Context(), appcore.RunLifecycleRequest{
+					Defaults:           command.defaults,
+					AllowHostLifecycle: allowHostLifecycle,
+					Phase:              phase,
+					Global:             command.global,
+					IO:                 command.io,
+				})
+				if err != nil {
+					return err
+				}
+				return printJSONOrText(command, jsonOut, result, fmt.Sprintf("Lifecycle phase %q completed for container %s.", result.Phase, result.ContainerID))
 			})
-			if err != nil {
-				return err
-			}
-			if jsonOut {
-				return command.renderer.PrintJSON(result)
-			}
-			return command.renderer.PrintText(fmt.Sprintf("Lifecycle phase %q completed for container %s.", result.Phase, result.ContainerID))
 		},
 	}
 	addWorkspaceFlags(cmd, &workspace, &configPath)
