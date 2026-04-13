@@ -23,7 +23,7 @@ func TestImageHelperFunctions(t *testing.T) {
 	t.Parallel()
 
 	features := []devcontainer.ResolvedFeature{{Metadata: spec.MetadataEntry{ID: "a"}}, {Metadata: spec.MetadataEntry{ID: "b", ContainerEnv: map[string]string{"A": "1"}}}}
-	if got := featureMetadata(features); len(got) != 2 || got[0].ID != "a" || got[1].ID != "b" {
+	if got := devcontainer.FeaturesMetadata(features); len(got) != 2 || got[0].ID != "a" || got[1].ID != "b" {
 		t.Fatalf("unexpected feature metadata %#v", got)
 	}
 	if mergeManagedImageMetadata(nil, nil) != nil {
@@ -42,6 +42,32 @@ func TestImageHelperFunctions(t *testing.T) {
 	}
 	if got := dockerfileQuotedValue("a\n$HOME\"\\b\r"); got != "\"a\\n\\$HOME\\\"\\\\b\"" {
 		t.Fatalf("unexpected dockerfile quoted value %q", got)
+	}
+}
+
+func TestMergedConfigWithRuntimeMetadataSkipsConfigReplayForManagedImages(t *testing.T) {
+	t.Parallel()
+
+	resolved := devcontainer.ResolvedConfig{
+		ImageName: "hatchctl-demo",
+		Config: spec.Config{
+			OnCreateCommand: spec.LifecycleCommand{Kind: "string", Value: "config-create", Exists: true},
+		},
+	}
+	metadata := []spec.MetadataEntry{
+		{ID: "mise"},
+		{OnCreateCommand: spec.LifecycleCommand{Kind: "string", Value: "config-create", Exists: true}},
+	}
+
+	merged := mergedConfigWithRuntimeMetadata(resolved, "hatchctl-demo", metadata)
+	if len(merged.OnCreateCommands) != 1 {
+		t.Fatalf("expected managed metadata to avoid replaying config commands, got %#v", merged.OnCreateCommands)
+	}
+	if merged.OnCreateCommands[0].Value != "config-create" {
+		t.Fatalf("unexpected managed onCreate commands %#v", merged.OnCreateCommands)
+	}
+	if got := merged.Config.OnCreateCommand.Value; got != "config-create" {
+		t.Fatalf("expected original config to remain attached, got %q", got)
 	}
 }
 

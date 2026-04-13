@@ -344,17 +344,12 @@ func (e *Executor) enrichExecResolvedConfig(ctx context.Context, session *Sessio
 		return nil
 	}
 	if inspect := session.ContainerInspect(); inspect != nil {
-		metadata, err := spec.MetadataFromLabel(inspect.Config.Labels[devcontainer.ImageMetadataLabel])
+		metadata, err := e.runtimeMetadataFromContainer(ctx, *resolved, inspect)
 		if err != nil {
 			return err
 		}
 		if len(metadata) > 0 {
-			metadata, err = e.mergeSourceImageMetadata(ctx, *resolved, inspect.Image, metadata)
-			if err != nil {
-				return err
-			}
-			resolved.Merged = spec.MergeMetadata(spec.Config{}, metadata)
-			resolved.Merged.Config = resolved.Config
+			resolved.Merged = mergedConfigWithRuntimeMetadata(*resolved, inspect.Image, metadata)
 			return nil
 		}
 		if inspect.Image != "" {
@@ -388,7 +383,7 @@ func (e *Executor) ReadConfig(ctx context.Context, workspacePlan workspaceplan.W
 		if !backend.IsNotFound(err) {
 			return ReadConfigResult{}, err
 		}
-		resolved.Merged = spec.MergeMetadata(resolved.Config, featureMetadata(resolved.Features))
+		resolved.Merged = spec.MergeMetadata(resolved.Config, devcontainer.FeaturesMetadata(resolved.Features))
 	}
 	if workspacePlan.Capabilities.SSHAgent.Enabled {
 		if resolved.Merged, err = injectSSHAgent(resolved.Merged); err != nil {

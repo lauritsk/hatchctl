@@ -255,7 +255,7 @@ func testResolvedConfig(opts testResolvedConfigOptions) devcontainer.ResolvedCon
 	if remoteWorkspace == "" {
 		remoteWorkspace = "/workspaces/demo"
 	}
-	merged := spec.MergeMetadata(opts.config, featureMetadata(opts.features))
+	merged := spec.MergeMetadata(opts.config, devcontainer.FeaturesMetadata(opts.features))
 	labels := opts.labels
 	if labels == nil {
 		labels = map[string]string{

@@ -13,6 +13,7 @@ import (
 const (
 	HostFolderLabel    = "devcontainer.local_folder"
 	ConfigFileLabel    = "devcontainer.config_file"
+	ImageMetadataLabel = spec.ImageMetadataLabel
 	ManagedByLabel     = "devcontainer.managed_by"
 	ManagedByValue     = "hatchctl"
 	BridgeEnabledLabel = "devcontainer.bridge.enabled"
@@ -185,18 +186,13 @@ func resolveFeaturesForWorkspace(ctx context.Context, workspaceSpec WorkspaceSpe
 }
 
 func buildResolvedConfig(workspaceSpec WorkspaceSpec, stateDir string, cacheDir string, features []ResolvedFeature) ResolvedConfig {
-	metadata := make([]spec.MetadataEntry, 0, len(features))
-	for _, feature := range features {
-		metadata = append(metadata, feature.Metadata)
-	}
-
 	return ResolvedConfig{
 		WorkspaceFolder: workspaceSpec.WorkspaceFolder,
 		ConfigPath:      workspaceSpec.ConfigPath,
 		ConfigDir:       workspaceSpec.ConfigDir,
 		Config:          workspaceSpec.Config,
 		Features:        features,
-		Merged:          spec.MergeMetadata(workspaceSpec.Config, metadata),
+		Merged:          spec.MergeMetadata(workspaceSpec.Config, FeaturesMetadata(features)),
 		StateDir:        stateDir,
 		CacheDir:        cacheDir,
 		WorkspaceMount:  workspaceSpec.WorkspaceMount,

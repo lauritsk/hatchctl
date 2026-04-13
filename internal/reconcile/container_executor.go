@@ -127,15 +127,11 @@ func (e *Executor) readManagedContainerState(ctx context.Context, prepared prepa
 	if inspect == nil {
 		return nil, fmt.Errorf("read managed container state for %s: container metadata is unavailable", prepared.containerID)
 	}
-	metadata, err := spec.MetadataFromLabel(inspect.Config.Labels[devcontainer.ImageMetadataLabel])
+	metadata, err := e.runtimeMetadataFromContainer(ctx, prepared.resolved, inspect)
 	if err != nil {
 		return nil, err
 	}
-	metadata, err = e.mergeSourceImageMetadata(ctx, prepared.resolved, inspect.Image, metadata)
-	if err != nil {
-		return nil, err
-	}
-	merged := spec.MergeMetadata(prepared.resolved.Config, metadata)
+	merged := mergedConfigWithRuntimeMetadata(prepared.resolved, inspect.Image, metadata)
 	effectiveUser := firstNonEmpty(merged.RemoteUser, merged.ContainerUser, inspect.Config.User)
 	return &ManagedContainer{
 		ID:            inspect.ID,

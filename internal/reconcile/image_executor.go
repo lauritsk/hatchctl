@@ -120,28 +120,14 @@ func (e *Executor) ReconcileImage(ctx context.Context, workspacePlan workspacepl
 }
 
 func (e *Executor) EnrichMergedConfig(ctx context.Context, resolved *devcontainer.ResolvedConfig, image string) error {
-	inspect, err := e.engine.InspectImage(ctx, image)
-	if err != nil {
-		if resolved.SourceKind == "compose" || isManagedImage(resolved, image) {
-			resolved.Merged = spec.MergeMetadata(resolved.Config, featureMetadata(resolved.Features))
-			return nil
-		}
-		return err
-	}
-	metadata, err := spec.MetadataFromLabel(inspect.Config.Labels[devcontainer.ImageMetadataLabel])
-	if err != nil {
-		return err
-	}
-	if isManagedImage(resolved, image) {
-		metadata, err = e.mergeSourceImageMetadata(ctx, *resolved, image, metadata)
-		if err != nil {
-			return err
-		}
-		resolved.Merged = spec.MergeMetadata(spec.Config{}, metadata)
-		resolved.Merged.Config = resolved.Config
+	if resolved == nil {
 		return nil
 	}
-	resolved.Merged = spec.MergeMetadata(resolved.Config, metadata)
+	metadata, err := e.runtimeMetadataFromImage(ctx, *resolved, image)
+	if err != nil {
+		return err
+	}
+	resolved.Merged = mergedConfigWithRuntimeMetadata(*resolved, image, metadata)
 	return nil
 }
 
@@ -168,17 +154,6 @@ func (e *Executor) InspectImageArchitecture(ctx context.Context, image string) (
 		return inspect.Architecture, nil
 	}
 	return stdruntime.GOARCH, nil
-}
-
-func featureMetadata(features []devcontainer.ResolvedFeature) []spec.MetadataEntry {
-	if len(features) == 0 {
-		return nil
-	}
-	result := make([]spec.MetadataEntry, 0, len(features))
-	for _, feature := range features {
-		result = append(result, feature.Metadata)
-	}
-	return result
 }
 
 func mergeManagedImageMetadata(base []spec.MetadataEntry, overlay []spec.MetadataEntry) []spec.MetadataEntry {
