@@ -83,7 +83,7 @@ func (a *App) newRootCommand() *cobra.Command {
 	cmd.CompletionOptions.DisableDefaultCmd = true
 	cmd.PersistentFlags().BoolVar(&global.Verbose, "verbose", false, "print progress while running")
 	cmd.PersistentFlags().BoolVar(&global.Debug, "debug", false, "print detailed execution diagnostics")
-	cmd.PersistentFlags().StringVar(&global.Backend, "backend", "", "container backend to use (for example: docker or podman)")
+	cmd.PersistentFlags().StringVar(&global.Backend, "backend", "", "container backend to use (for example: auto, docker, or podman)")
 	cmd.Flags().BoolVarP(&versionFlag, "version", "v", false, "print version information")
 	cmd.AddCommand(
 		a.newUpCommand(global),

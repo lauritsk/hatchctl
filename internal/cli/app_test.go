@@ -538,6 +538,21 @@ func TestRunUpAppliesTrustedWorkspaceConfigTomlHostDefaults(t *testing.T) {
 	}
 }
 
+func TestRunUpPassesAutoBackendFlag(t *testing.T) {
+	var got appcore.UpRequest
+	app, _, _ := newBufferedApp(t, stubUp(func(_ context.Context, opts appcore.UpRequest) (appcore.UpResult, error) {
+		got = opts
+		return appcore.UpResult{}, nil
+	}))
+
+	if err := app.Run(context.Background(), []string{"--backend", "auto", "up"}); err != nil {
+		t.Fatalf("run app: %v", err)
+	}
+	if got.Defaults.Backend != "auto" {
+		t.Fatalf("expected auto backend, got %#v", got.Defaults)
+	}
+}
+
 func TestRunRejectsInvalidLockfilePolicy(t *testing.T) {
 	app, _, _ := newBufferedApp(t, appcore.NewWithExecutorWithoutMutationLock(&reconcile.Executor{}))
 

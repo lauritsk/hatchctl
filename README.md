@@ -98,6 +98,7 @@ hatchctl up --json
 Common examples:
 
 ```sh
+hatchctl --backend auto up
 hatchctl up --dotfiles lauritsk/dotfiles
 hatchctl up --ssh
 hatchctl up --trust-workspace --allow-host-lifecycle
@@ -118,7 +119,7 @@ Workspace config is intentionally limited by default. Host-affecting settings su
 Example:
 
 ```toml
-backend = "docker"
+backend = "auto"
 config = ".devcontainer/devcontainer.json"
 feature_timeout = "2m"
 lockfile_policy = "auto"

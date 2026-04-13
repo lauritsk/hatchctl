@@ -60,6 +60,26 @@ func TestResolveDefaultsAppliesTrustedWorkspaceHostSettings(t *testing.T) {
 	}
 }
 
+func TestResolveDefaultsPreservesAutoBackendChoice(t *testing.T) {
+	workspace := t.TempDir()
+
+	got, err := ResolveDefaults(ResolveDefaultsRequest{
+		Backend:        FlagValue[string]{Value: "auto", Changed: true},
+		Workspace:      FlagValue[string]{Value: workspace, Changed: true},
+		FeatureTimeout: FlagValue[time.Duration]{Value: 90 * time.Second},
+		LockfilePolicy: FlagValue[string]{Value: "auto"},
+		BridgeEnabled:  &FlagValue[bool]{Value: false},
+		TrustWorkspace: &FlagValue[bool]{Value: false},
+		SSHAgent:       &FlagValue[bool]{Value: false},
+	})
+	if err != nil {
+		t.Fatalf("resolve defaults: %v", err)
+	}
+	if got.Backend != "auto" {
+		t.Fatalf("expected auto backend, got %q", got.Backend)
+	}
+}
+
 func writeConfigFixtures(t *testing.T) string {
 	t.Helper()
 	home := t.TempDir()

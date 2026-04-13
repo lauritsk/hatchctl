@@ -2,6 +2,9 @@ package factory
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/lauritsk/hatchctl/internal/backend"
@@ -15,6 +18,9 @@ func TestNormalizeNameDefaultsToDocker(t *testing.T) {
 	}
 	if got := NormalizeName(" docker "); got != "docker" {
 		t.Fatalf("expected whitespace to be trimmed, got %q", got)
+	}
+	if got := NormalizeName(" AUTO "); got != "auto" {
+		t.Fatalf("expected auto backend to normalize, got %q", got)
 	}
 }
 
@@ -43,5 +49,65 @@ func TestNewSupportsPodman(t *testing.T) {
 	}
 	if client.BridgeHost() != "host.containers.internal" {
 		t.Fatalf("unexpected podman bridge host %q", client.BridgeHost())
+	}
+}
+
+func TestDetectNamePrefersDockerThenPodman(t *testing.T) {
+	binDir := t.TempDir()
+	writeBackendBinary(t, binDir, "docker")
+	writeBackendBinary(t, binDir, "podman")
+	t.Setenv("PATH", binDir)
+
+	name, err := DetectName()
+	if err != nil {
+		t.Fatalf("detect backend: %v", err)
+	}
+	if name != "docker" {
+		t.Fatalf("expected docker preference, got %q", name)
+	}
+}
+
+func TestDetectNameReturnsPodmanWhenDockerMissing(t *testing.T) {
+	binDir := t.TempDir()
+	writeBackendBinary(t, binDir, "podman")
+	t.Setenv("PATH", binDir)
+
+	name, err := DetectName()
+	if err != nil {
+		t.Fatalf("detect backend: %v", err)
+	}
+	if name != "podman" {
+		t.Fatalf("expected podman fallback, got %q", name)
+	}
+}
+
+func TestNewAutoReturnsDetectedBackend(t *testing.T) {
+	binDir := t.TempDir()
+	writeBackendBinary(t, binDir, "podman")
+	t.Setenv("PATH", binDir)
+
+	client, err := New("auto")
+	if err != nil {
+		t.Fatalf("new auto backend: %v", err)
+	}
+	if client.ID() != "podman" {
+		t.Fatalf("expected detected podman backend, got %q", client.ID())
+	}
+}
+
+func TestDetectNameReturnsErrorWhenNoBackendExists(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+
+	_, err := DetectName()
+	if err == nil || !strings.Contains(err.Error(), "no supported backend") {
+		t.Fatalf("expected auto detect error, got %v", err)
+	}
+}
+
+func writeBackendBinary(t *testing.T, dir string, name string) {
+	t.Helper()
+	path := filepath.Join(dir, name)
+	if err := os.WriteFile(path, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatalf("write backend binary %s: %v", name, err)
 	}
 }
