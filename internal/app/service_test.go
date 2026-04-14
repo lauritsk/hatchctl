@@ -8,9 +8,16 @@ import (
 	"testing"
 
 	"github.com/lauritsk/hatchctl/internal/devcontainer"
+	workspaceplan "github.com/lauritsk/hatchctl/internal/plan"
 	"github.com/lauritsk/hatchctl/internal/reconcile"
 	storefs "github.com/lauritsk/hatchctl/internal/store/fs"
 )
+
+type fakeWorkspaceLock struct{ releaseErr error }
+
+func (l fakeWorkspaceLock) Release() error {
+	return l.releaseErr
+}
 
 func TestBuildReturnsBusyWhenWorkspaceLockIsHeld(t *testing.T) {
 	t.Parallel()
@@ -97,6 +104,45 @@ func TestBridgeDoctorRejectsInvalidLockfilePolicy(t *testing.T) {
 	_, err := service.BridgeDoctor(context.Background(), BridgeDoctorRequest{Defaults: defaults})
 	if err == nil {
 		t.Fatal("expected invalid lockfile policy error")
+	}
+}
+
+func TestWithMutationLockReturnsReleaseError(t *testing.T) {
+	releaseErr := errors.New("release failed")
+	service := &Service{
+		lockMutations: true,
+		acquireLock: func(context.Context, string, string) (workspaceLock, error) {
+			return fakeWorkspaceLock{releaseErr: releaseErr}, nil
+		},
+	}
+
+	_, err := withMutationLock(service, context.Background(), "build", func() (workspaceplan.WorkspacePlan, error) {
+		return workspaceplan.WorkspacePlan{LockProtected: workspaceplan.LockProtectedArtifacts{StateDir: t.TempDir()}}, nil
+	}, func(workspaceplan.WorkspacePlan) (string, error) {
+		return "ok", nil
+	})
+	if !errors.Is(err, releaseErr) {
+		t.Fatalf("expected release error, got %v", err)
+	}
+}
+
+func TestWithMutationLockJoinsRunAndReleaseErrors(t *testing.T) {
+	runErr := errors.New("run failed")
+	releaseErr := errors.New("release failed")
+	service := &Service{
+		lockMutations: true,
+		acquireLock: func(context.Context, string, string) (workspaceLock, error) {
+			return fakeWorkspaceLock{releaseErr: releaseErr}, nil
+		},
+	}
+
+	_, err := withMutationLock(service, context.Background(), "build", func() (workspaceplan.WorkspacePlan, error) {
+		return workspaceplan.WorkspacePlan{LockProtected: workspaceplan.LockProtectedArtifacts{StateDir: t.TempDir()}}, nil
+	}, func(workspaceplan.WorkspacePlan) (string, error) {
+		return "", runErr
+	})
+	if !errors.Is(err, runErr) || !errors.Is(err, releaseErr) {
+		t.Fatalf("expected joined run and release errors, got %v", err)
 	}
 }
 

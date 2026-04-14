@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 
@@ -18,7 +19,12 @@ import (
 type Service struct {
 	executor        *reconcile.Executor
 	executorFactory func(string) (*reconcile.Executor, error)
+	acquireLock     func(context.Context, string, string) (workspaceLock, error)
 	lockMutations   bool
+}
+
+type workspaceLock interface {
+	Release() error
 }
 
 type GlobalOptions struct {
@@ -278,24 +284,32 @@ func commandStreams(io CommandIO) reconcile.CommandStreams {
 	return reconcile.CommandStreams{Stdin: io.Stdin, Stdout: io.Stdout, Stderr: io.Stderr, Events: io.Events}
 }
 
-func withMutationLock[T any](s *Service, ctx context.Context, command string, buildPlan func() (workspaceplan.WorkspacePlan, error), run func(workspaceplan.WorkspacePlan) (T, error)) (T, error) {
-	var zero T
+func (s *Service) acquireWorkspaceLock(ctx context.Context, stateDir string, command string) (workspaceLock, error) {
+	if s != nil && s.acquireLock != nil {
+		return s.acquireLock(ctx, stateDir, command)
+	}
+	return storefs.AcquireWorkspaceLock(ctx, stateDir, command)
+}
+
+func withMutationLock[T any](s *Service, ctx context.Context, command string, buildPlan func() (workspaceplan.WorkspacePlan, error), run func(workspaceplan.WorkspacePlan) (T, error)) (result T, err error) {
 	workspacePlan, err := buildPlan()
 	if err != nil {
-		return zero, err
+		return result, err
 	}
 	if !s.lockMutations {
 		return run(workspacePlan)
 	}
-	lock, err := storefs.AcquireWorkspaceLock(ctx, workspacePlan.LockProtected.StateDir, command)
+	lock, err := s.acquireWorkspaceLock(ctx, workspacePlan.LockProtected.StateDir, command)
 	if err != nil {
-		return zero, err
+		return result, err
 	}
-	defer lock.Release()
+	defer func() {
+		err = errors.Join(err, lock.Release())
+	}()
 	if workspacePlan.LockProtected.RequiresRevalidation {
 		workspacePlan, err = buildPlan()
 		if err != nil {
-			return zero, err
+			return result, err
 		}
 	}
 	return run(workspacePlan)
