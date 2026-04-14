@@ -259,7 +259,7 @@ func (c *Client) ProjectConfig(ctx context.Context, req backend.ProjectConfigReq
 	plainArgs := append(c.composeBaseArgs(req.Target), "config")
 	plainOutput, plainErr := c.output(ctx, runOptions{Binary: c.composeBinaryValue(), Args: plainArgs, Dir: req.Target.Dir})
 	if plainErr != nil {
-		return backend.ProjectConfig{}, err
+		return backend.ProjectConfig{}, plainErr
 	}
 	return parseProjectConfig(plainOutput)
 }

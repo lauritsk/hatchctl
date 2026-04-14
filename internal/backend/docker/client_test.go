@@ -157,6 +157,35 @@ func TestProjectConfigUsesExternalComposeBinary(t *testing.T) {
 	}
 }
 
+func TestProjectConfigReturnsFallbackErrorWhenPlainComposeAlsoFails(t *testing.T) {
+	t.Parallel()
+
+	client := &Client{Binary: "podman", runner: fakeRunner{
+		outputFn: func(cmd command.Command) (string, string, error) {
+			switch strings.Join(cmd.Args, " ") {
+			case "compose -p demo config --format json":
+				return "", "unknown flag: --format", errors.New("json config failed")
+			case "compose -p demo config":
+				return "", "compose file missing", errors.New("plain config failed")
+			default:
+				t.Fatalf("unexpected output command %#v", cmd.Args)
+			}
+			return "", "", nil
+		},
+	}}
+
+	_, err := client.ProjectConfig(context.Background(), backend.ProjectConfigRequest{Target: backend.ProjectTarget{Project: "demo"}})
+	if err == nil {
+		t.Fatal("expected project config to fail")
+	}
+	if !strings.Contains(err.Error(), "compose file missing") {
+		t.Fatalf("expected fallback compose error, got %v", err)
+	}
+	if strings.Contains(err.Error(), "unknown flag: --format") {
+		t.Fatalf("expected fallback error to replace json format error, got %v", err)
+	}
+}
+
 func TestErrorNotFoundMatchesPodmanMessage(t *testing.T) {
 	t.Parallel()
 
