@@ -449,7 +449,7 @@ func stopExisting(session *Session) error {
 	if pid == os.Getpid() {
 		return nil
 	}
-	if !isPIDRunning(pid) {
+	if !processRunning(pid) {
 		return nil
 	}
 	if !canForceStopBridge(session, pid) {
@@ -465,7 +465,7 @@ func stopExisting(session *Session) error {
 		if done, err := pollProcessWait(waitCh); done {
 			return err
 		}
-		if !isPIDRunning(pid) {
+		if !processRunning(pid) {
 			return nil
 		}
 		time.Sleep(100 * time.Millisecond)
@@ -477,7 +477,7 @@ func stopExisting(session *Session) error {
 		if done, err := pollProcessWait(waitCh); done {
 			return err
 		}
-		if !isPIDRunning(pid) {
+		if !processRunning(pid) {
 			return nil
 		}
 		time.Sleep(100 * time.Millisecond)
@@ -495,17 +495,6 @@ func Stop(stateDir string) error {
 		return err
 	}
 	return stopExisting(session)
-}
-
-func isPIDRunning(pid int) bool {
-	if pid <= 0 {
-		return false
-	}
-	process, err := os.FindProcess(pid)
-	if err != nil {
-		return false
-	}
-	return process.Signal(syscall.Signal(0)) == nil
 }
 
 func waitForBridgeTCP(port int, timeout time.Duration) error {
@@ -585,12 +574,12 @@ func canForceStopBridge(session *Session, pid int) bool {
 func waitForPIDStop(pid int, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		if !isPIDRunning(pid) {
+		if !processRunning(pid) {
 			return nil
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	if !isPIDRunning(pid) {
+	if !processRunning(pid) {
 		return nil
 	}
 	return fmt.Errorf("bridge process %d did not stop", pid)

@@ -930,7 +930,7 @@ func TestStopExistingRefusesUnexpectedPIDWithoutBridgeStatus(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "refusing to signal unexpected bridge process") {
 		t.Fatalf("expected refusal for unexpected process, got %v", err)
 	}
-	if !isPIDRunning(cmd.Process.Pid) {
+	if !processRunning(cmd.Process.Pid) {
 		t.Fatalf("expected pid %d to still be running", cmd.Process.Pid)
 	}
 }
@@ -960,13 +960,13 @@ func TestStopReturnsNilInTestBinary(t *testing.T) {
 	}
 }
 
-func TestIsPIDRunningAndClosedListenerHelpers(t *testing.T) {
+func TestProcessRunningAndClosedListenerHelpers(t *testing.T) {
 	t.Parallel()
 
-	if !isPIDRunning(os.Getpid()) {
+	if !processRunning(os.Getpid()) {
 		t.Fatal("expected current pid to be running")
 	}
-	if isPIDRunning(0) {
+	if processRunning(0) {
 		t.Fatal("expected pid 0 not to be running")
 	}
 	if !isClosedListener(net.ErrClosed) {
