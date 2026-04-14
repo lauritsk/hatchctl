@@ -324,8 +324,8 @@ func (e *Executor) ensureFeaturesImageFromBase(ctx context.Context, resolved dev
 	if err != nil {
 		return "", err
 	}
-	containerUser := spec.FirstNonEmptyString(resolved.Merged.ContainerUser, imageUser, "root")
-	remoteUser := spec.FirstNonEmptyString(resolved.Merged.RemoteUser, containerUser)
+	containerUser := firstNonEmptyString(resolved.Merged.ContainerUser, imageUser, "root")
+	remoteUser := firstNonEmptyString(resolved.Merged.RemoteUser, containerUser)
 	buildDir, err := storefs.ResetFeatureBuildDir(resolved.StateDir)
 	if err != nil {
 		return "", err

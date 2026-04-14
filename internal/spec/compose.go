@@ -107,13 +107,13 @@ func ParseMountSpec(raw string) (MountSpec, bool) {
 		}
 		parts[strings.TrimSpace(key)] = normalizeMountValue(value)
 	}
-	target := FirstNonEmptyString(parts["target"], parts["dst"])
+	target := firstNonEmptyString(parts["target"], parts["dst"])
 	if target == "" {
 		return MountSpec{}, false
 	}
 	spec := MountSpec{
 		Type:            parts["type"],
-		Source:          FirstNonEmptyString(parts["source"], parts["src"]),
+		Source:          firstNonEmptyString(parts["source"], parts["src"]),
 		Target:          target,
 		ReadOnly:        parseMountBool(parts["readonly"]) || parseMountBool(parts["ro"]),
 		Consistency:     parts["consistency"],
@@ -142,7 +142,7 @@ func optionalMountBool(values map[string]string, key string) (*bool, bool) {
 	return &parsed, true
 }
 
-func FirstNonEmptyString(values ...string) string {
+func firstNonEmptyString(values ...string) string {
 	for _, value := range values {
 		if value != "" {
 			return value
@@ -151,7 +151,7 @@ func FirstNonEmptyString(values ...string) string {
 	return ""
 }
 
-func IsNumericString(value string) bool {
+func isNumericString(value string) bool {
 	if value == "" {
 		return false
 	}

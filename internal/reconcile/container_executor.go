@@ -132,7 +132,7 @@ func (e *Executor) readManagedContainerState(ctx context.Context, prepared prepa
 		return nil, err
 	}
 	merged := mergedConfigWithRuntimeMetadata(prepared.resolved, inspect.Image, metadata)
-	effectiveUser := spec.FirstNonEmptyString(merged.RemoteUser, merged.ContainerUser, inspect.Config.User)
+	effectiveUser := firstNonEmptyString(merged.RemoteUser, merged.ContainerUser, inspect.Config.User)
 	return &ManagedContainer{
 		ID:            inspect.ID,
 		Name:          strings.TrimPrefix(inspect.Name, "/"),

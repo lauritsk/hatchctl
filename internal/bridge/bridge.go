@@ -77,28 +77,6 @@ func ReportFromSession(session *Session) *Report {
 	}
 }
 
-func SessionFromReport(report *Report) *Session {
-	if report == nil || !report.Enabled {
-		return nil
-	}
-	return &Session{
-		ID:         report.ID,
-		Backend:    report.Backend,
-		Enabled:    report.Enabled,
-		HelperArch: report.HelperArch,
-		Host:       report.Host,
-		Port:       report.Port,
-		StatePath:  report.StatePath,
-		ConfigPath: report.ConfigPath,
-		PIDPath:    report.PIDPath,
-		StatusPath: report.StatusPath,
-		HelperPath: report.HelperPath,
-		MountPath:  report.MountPath,
-		BinPath:    report.BinPath,
-		Status:     report.Status,
-	}
-}
-
 const (
 	containerBridgeMountPath = "/var/run/hatchctl/bridge"
 	helperBinaryEnvVar       = "HATCHCTL_BRIDGE_HELPER"
@@ -117,9 +95,9 @@ func Prepare(stateDir string, enabled bool, helperArch string, backendID string,
 	}
 	binPath := paths.BinDir
 	helperPath := filepath.Join(binPath, "devcontainer-open")
-	hosts := NormalizeHosts(session.Hosts, bridgeHosts)
+	hosts := normalizeHosts(session.Hosts, bridgeHosts)
 	if session.Host != "" {
-		hosts = NormalizeHosts([]string{session.Host}, hosts)
+		hosts = normalizeHosts([]string{session.Host}, hosts)
 	}
 	if len(hosts) == 0 {
 		hosts = []string{defaultBridgeHost}
@@ -251,7 +229,7 @@ func Doctor(stateDir string) (Report, error) {
 func openShim(session *Session) string {
 	hosts := session.Hosts
 	if len(hosts) == 0 {
-		hosts = NormalizeHosts([]string{session.Host}, nil)
+		hosts = normalizeHosts([]string{session.Host}, nil)
 	}
 	hostList := strings.Join(hosts, " ")
 	return fmt.Sprintf(`#!/bin/sh
@@ -314,7 +292,7 @@ func normalizeHelperArch(value string) string {
 	return value
 }
 
-func NormalizeHosts(primary []string, extra []string) []string {
+func normalizeHosts(primary []string, extra []string) []string {
 	seen := map[string]struct{}{}
 	result := make([]string, 0, len(primary)+len(extra))
 	for _, host := range append(append([]string(nil), primary...), extra...) {
