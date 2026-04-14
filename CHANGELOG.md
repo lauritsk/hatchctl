@@ -2,6 +2,20 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## [v0.8.1](https://github.com/lauritsk/hatchctl/compare/5bbe596ab4801d0b7ed5e4637834b6f66517a810..v0.8.1) - 2026-04-14
+#### Bug Fixes
+- (**runtime**) Restore source image metadata fallback - ([fb9233d](https://github.com/lauritsk/hatchctl/commit/fb9233d3a9934a2c6a8deee1d3ae6fba29d32d9a)) - Karl Hans Laurits
+#### Refactoring
+- (**cli**) Share command setup helpers - ([ec761ec](https://github.com/lauritsk/hatchctl/commit/ec761ec07520a52e465f7e23c564d5d64d7a85ec)) - Karl Hans Laurits
+- (**runtime**) Keep helper ownership package-local - ([e5474e7](https://github.com/lauritsk/hatchctl/commit/e5474e77e04415de8fa7a97cd408bf2bc2d2b15a)) - Karl Hans Laurits
+- (**runtime**) Collapse state tracker persist helpers - ([7eb5877](https://github.com/lauritsk/hatchctl/commit/7eb587732795647886a7dede36c7f1e52c2e0096)) - Karl Hans Laurits
+- (**runtime**) Share bridge and compose helpers - ([e63bba2](https://github.com/lauritsk/hatchctl/commit/e63bba2441cf4d0547f005832214869598cb9e7c)) - Karl Hans Laurits
+- (**runtime**) Route state writes through tracker - ([96cac1d](https://github.com/lauritsk/hatchctl/commit/96cac1d802b326b75470360d70f700c46e5463c0)) - Karl Hans Laurits
+- (**runtime**) Centralize runtime metadata enrichment - ([5bbe596](https://github.com/lauritsk/hatchctl/commit/5bbe596ab4801d0b7ed5e4637834b6f66517a810)) - Karl Hans Laurits
+- (**store**) Centralize store file writers - ([bb828c7](https://github.com/lauritsk/hatchctl/commit/bb828c72043c5deeebe6135c638c14cf4637eda1)) - Karl Hans Laurits
+
+- - -
+
 ## [v0.8.0](https://github.com/lauritsk/hatchctl/compare/5b66255e77a33fbfebd2e9545f811d4c52744ed7..v0.8.0) - 2026-04-13
 #### Features
 - (**runtime**) Add bridge host fallbacks - ([af0f8dc](https://github.com/lauritsk/hatchctl/commit/af0f8dcb3e3fdf7bec02ad291d04ce4399cc2677)) - Karl Hans Laurits
