@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/lauritsk/hatchctl/internal/backend"
 	bridgecap "github.com/lauritsk/hatchctl/internal/capability/bridge"
@@ -216,7 +217,16 @@ func (o *Observer) RevalidateReadToken(ctx context.Context, observed ObservedSta
 }
 
 func readTokenMatchesInspect(token ReadToken, inspect backend.ContainerInspect) bool {
-	return true
+	if token.TargetKind != TargetKindManagedContainer {
+		return false
+	}
+	if token.ContainerName == "" {
+		return true
+	}
+	if inspect.Name == "" {
+		return true
+	}
+	return strings.TrimPrefix(inspect.Name, "/") == token.ContainerName
 }
 
 func (o *Observer) observeTarget(ctx context.Context, resolved devcontainer.ResolvedConfig, state storefs.WorkspaceState, inspectTarget bool, allowMissing bool) (RuntimeTarget, storefs.WorkspaceState, *backend.ContainerInspect, error) {

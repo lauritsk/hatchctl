@@ -89,17 +89,6 @@ func (e *Executor) ensureReusableContainer(ctx context.Context, containerID stri
 	return inspect.ID, true, nil
 }
 
-func (e *Executor) findContainer(ctx context.Context, resolved devcontainer.ResolvedConfig) (string, error) {
-	if resolved.SourceKind == "compose" {
-		return e.findComposeContainer(ctx, resolved)
-	}
-	result, err := e.engine.ListContainers(ctx, backend.ListContainersRequest{All: true, Quiet: true, Labels: resolved.Labels})
-	if err != nil {
-		return "", err
-	}
-	return e.selectBestContainerID(ctx, result)
-}
-
 func (e *Executor) removeContainer(ctx context.Context, containerID string, events ui.Sink) error {
 	stdout, stderr := e.progressWriters(events, phaseContainer, fmt.Sprintf("Removing managed container %s", containerID), e.stdout, e.stderr)
 	return e.engine.RemoveContainer(ctx, backend.RemoveContainerRequest{ContainerID: containerID, Force: true, Streams: backend.Streams{Stdout: stdout, Stderr: stderr}})
@@ -395,28 +384,4 @@ func (e *Executor) createComposeContainer(ctx context.Context, resolved devconta
 		return "", err
 	}
 	return e.findComposeContainer(ctx, resolved)
-}
-
-func (e *Executor) ensureComposeContainer(ctx context.Context, resolved devcontainer.ResolvedConfig, image string, containerKey string, bridgeEnabled bool, sshAgent bool, events ui.Sink) (string, bool, error) {
-	containerID, err := e.findComposeContainer(ctx, resolved)
-	if err != nil && !errors.Is(err, errManagedContainerNotFound) {
-		return "", false, err
-	}
-	if err == nil && containerID != "" {
-		reusedID, reused, err := e.ensureReusableContainer(ctx, containerID, containerReuseRequirements{BridgeEnabled: bridgeEnabled, SSHAgent: sshAgent}, events)
-		if err != nil {
-			return "", false, err
-		}
-		if reused {
-			return reusedID, false, nil
-		}
-	}
-	if err := e.startComposeService(ctx, resolved, image, containerKey, events); err != nil {
-		return "", false, err
-	}
-	containerID, err = e.findComposeContainer(ctx, resolved)
-	if err != nil {
-		return "", false, err
-	}
-	return containerID, true, nil
 }

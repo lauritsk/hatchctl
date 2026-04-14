@@ -184,6 +184,37 @@ func TestRevalidateReadTokenDetectsCoordinationChanges(t *testing.T) {
 	}
 }
 
+func TestRevalidateReadTokenDetectsManagedContainerIdentityChanges(t *testing.T) {
+	t.Parallel()
+
+	stateDir := t.TempDir()
+	lock, err := storefs.AcquireWorkspaceLock(context.Background(), stateDir, "up")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := lock.Release(); err != nil {
+		t.Fatal(err)
+	}
+	observer := NewObserver(fakeBackend{
+		inspectCont: func(_ context.Context, containerID string) (backend.ContainerInspect, error) {
+			return backend.ContainerInspect{ID: containerID, Name: "/other-container"}, nil
+		},
+	})
+	observed := ObservedState{
+		Resolved: devcontainer.ResolvedConfig{StateDir: stateDir},
+		ReadTarget: ReadToken{
+			TargetKind:             TargetKindManagedContainer,
+			ContainerName:          "expected-container",
+			PrimaryContainer:       "container-123",
+			CoordinationGeneration: 1,
+		},
+	}
+
+	if err := observer.RevalidateReadToken(context.Background(), observed); !errors.Is(err, ErrObservedStateStale) {
+		t.Fatalf("expected stale observed state, got %v", err)
+	}
+}
+
 func TestRevalidateReadTokenDetectsComposeIdentityChanges(t *testing.T) {
 	t.Parallel()
 
