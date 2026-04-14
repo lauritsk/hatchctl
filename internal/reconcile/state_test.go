@@ -13,22 +13,34 @@ func TestStateTrackerPersistsLifecycleBridgeAndDotfilesState(t *testing.T) {
 	tracker := NewStateTracker(stateDir, storefs.WorkspaceState{})
 	plan := LifecyclePlan{RunCreate: true, RunStart: true, RunAttach: true, Key: "lifecycle-key", TransitionKind: LifecyclePhaseAll}
 	dotfiles := DotfilesConfig{Repository: "github.com/example/dotfiles", InstallCommand: "install.sh", TargetPath: "$HOME/.dotfiles"}
-	if err := tracker.ApplyContainerAndPersist("container-123", "container-key", true); err != nil {
+	if err := tracker.persistUpdate(func() {
+		tracker.ApplyContainer("container-123", "container-key", true)
+	}); err != nil {
 		t.Fatalf("persist container state: %v", err)
 	}
-	if err := tracker.BeginBridgeAndPersist("start", "container-key"); err != nil {
+	if err := tracker.persistUpdate(func() {
+		tracker.BeginBridge("start", "container-key")
+	}); err != nil {
 		t.Fatalf("persist bridge transition: %v", err)
 	}
-	if err := tracker.BeginPlannedLifecycleAndPersist(plan, true); err != nil {
+	if err := tracker.persistUpdate(func() {
+		tracker.BeginPlannedLifecycle(plan, true)
+	}); err != nil {
 		t.Fatalf("persist lifecycle transition: %v", err)
 	}
-	if err := tracker.CompletePlannedLifecycleAndPersist(plan, dotfiles, true); err != nil {
+	if err := tracker.persistUpdate(func() {
+		tracker.CompletePlannedLifecycle(plan, dotfiles, true)
+	}); err != nil {
 		t.Fatalf("persist lifecycle completion: %v", err)
 	}
-	if err := tracker.EnableBridgeAndPersist("bridge-session"); err != nil {
+	if err := tracker.persistUpdate(func() {
+		tracker.EnableBridge("bridge-session")
+	}); err != nil {
 		t.Fatalf("persist bridge session: %v", err)
 	}
-	if err := tracker.SetTrustedRefsAndPersist([]string{"ghcr.io/example/feature@sha256:abc"}); err != nil {
+	if err := tracker.persistUpdate(func() {
+		tracker.SetTrustedRefs([]string{"ghcr.io/example/feature@sha256:abc"})
+	}); err != nil {
 		t.Fatalf("persist trusted refs: %v", err)
 	}
 

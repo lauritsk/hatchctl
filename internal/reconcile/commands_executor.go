@@ -105,7 +105,9 @@ func (e *Executor) Up(ctx context.Context, workspacePlan workspaceplan.Workspace
 		tracker.DisableBridge()
 	}
 	executor.emitPhaseProgress(opts.IO.Events, phaseState, "Writing workspace state")
-	if err := tracker.SetTrustedRefsAndPersist(executor.imageVerifier.TrustedRefs()); err != nil {
+	if err := tracker.persistUpdate(func() {
+		tracker.SetTrustedRefs(executor.imageVerifier.TrustedRefs())
+	}); err != nil {
 		return UpResult{}, err
 	}
 	return UpResult{ContainerID: containerID, Image: image, RemoteWorkspaceFolder: resolved.RemoteWorkspace, StateDir: resolved.StateDir, Bridge: bridgeReport}, nil
@@ -181,7 +183,9 @@ func (e *Executor) reconcileUpContainer(ctx context.Context, session *Session, t
 	if err != nil {
 		return "", "", false, err
 	}
-	if err := tracker.ApplyContainerAndPersist(containerID, containerKey, created); err != nil {
+	if err := tracker.persistUpdate(func() {
+		tracker.ApplyContainer(containerID, containerKey, created)
+	}); err != nil {
 		return "", "", false, err
 	}
 	session.SetState(tracker.State())
@@ -202,7 +206,9 @@ func (e *Executor) startUpBridge(ctx context.Context, tracker *StateTracker, bri
 	if bridgeSession == nil {
 		return nil, nil
 	}
-	if err := tracker.BeginBridgeAndPersist("start", containerKey); err != nil {
+	if err := tracker.persistUpdate(func() {
+		tracker.BeginBridge("start", containerKey)
+	}); err != nil {
 		return nil, err
 	}
 	e.emitPhaseProgress(events, phaseBridge, "Starting bridge session")
@@ -211,7 +217,9 @@ func (e *Executor) startUpBridge(ctx context.Context, tracker *StateTracker, bri
 		return nil, err
 	}
 	bridgeReport := bridge.ReportFromSession(startedBridge)
-	if err := tracker.EnableBridgeAndPersist(bridgeReport.ID); err != nil {
+	if err := tracker.persistUpdate(func() {
+		tracker.EnableBridge(bridgeReport.ID)
+	}); err != nil {
 		return nil, err
 	}
 	return bridgeReport, nil
@@ -226,14 +234,18 @@ func (e *Executor) runUpLifecycle(ctx context.Context, session *Session, tracker
 	observed := session.Observed()
 	lifecyclePlan := PlanUpLifecycle(observed, DesiredLifecycle{Key: lifecycleKey, Dotfiles: dotfiles, Created: created})
 	installDotfiles := DotfilesNeedsInstall(state, dotfiles)
-	if err := tracker.BeginPlannedLifecycleAndPersist(lifecyclePlan, installDotfiles); err != nil {
+	if err := tracker.persistUpdate(func() {
+		tracker.BeginPlannedLifecycle(lifecyclePlan, installDotfiles)
+	}); err != nil {
 		return err
 	}
 	e.emitPhaseProgress(events, phaseLifecycle, "Running lifecycle commands")
 	if err := e.RunLifecyclePlan(ctx, observed, state, dotfiles, workspacePlan.Trust.HostLifecycleAllowed, events, lifecyclePlan); err != nil {
 		return err
 	}
-	return tracker.CompletePlannedLifecycleAndPersist(lifecyclePlan, dotfiles, installDotfiles)
+	return tracker.persistUpdate(func() {
+		tracker.CompletePlannedLifecycle(lifecyclePlan, dotfiles, installDotfiles)
+	})
 }
 
 func (e *Executor) Build(ctx context.Context, workspacePlan workspaceplan.WorkspacePlan, opts BuildOptions) (BuildResult, error) {
@@ -261,7 +273,9 @@ func (e *Executor) Build(ctx context.Context, workspacePlan workspaceplan.Worksp
 	if err != nil {
 		return BuildResult{}, err
 	}
-	if err := tracker.SetTrustedRefsAndPersist(executor.imageVerifier.TrustedRefs()); err != nil {
+	if err := tracker.persistUpdate(func() {
+		tracker.SetTrustedRefs(executor.imageVerifier.TrustedRefs())
+	}); err != nil {
 		return BuildResult{}, err
 	}
 	return BuildResult{Image: image}, nil
@@ -428,7 +442,9 @@ func (e *Executor) RunLifecycle(ctx context.Context, workspacePlan workspaceplan
 	tracker := NewStateTracker(resolved.StateDir, state)
 	if lifecyclePlan.RunCreate {
 		installDotfiles := DotfilesNeedsInstall(state, dotfiles)
-		if err := tracker.BeginPlannedLifecycleAndPersist(lifecyclePlan, installDotfiles); err != nil {
+		if err := tracker.persistUpdate(func() {
+			tracker.BeginPlannedLifecycle(lifecyclePlan, installDotfiles)
+		}); err != nil {
 			return RunLifecycleResult{}, err
 		}
 	}
@@ -437,7 +453,9 @@ func (e *Executor) RunLifecycle(ctx context.Context, workspacePlan workspaceplan
 		return RunLifecycleResult{}, err
 	}
 	if lifecyclePlan.RunCreate {
-		if err := tracker.CompletePlannedLifecycleAndPersist(lifecyclePlan, dotfiles, DotfilesNeedsInstall(state, dotfiles)); err != nil {
+		if err := tracker.persistUpdate(func() {
+			tracker.CompletePlannedLifecycle(lifecyclePlan, dotfiles, DotfilesNeedsInstall(state, dotfiles))
+		}); err != nil {
 			return RunLifecycleResult{}, err
 		}
 	}
