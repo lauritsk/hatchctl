@@ -71,6 +71,32 @@ func TestMergedConfigWithRuntimeMetadataSkipsConfigReplayForManagedImages(t *tes
 	}
 }
 
+func TestRuntimeMetadataFromContainerFallsBackToSourceImageWhenLabelMissing(t *testing.T) {
+	t.Parallel()
+
+	sourceMetadataLabel, err := spec.MetadataLabelValue([]spec.MetadataEntry{{RemoteUser: "vscode"}})
+	if err != nil {
+		t.Fatalf("source metadata label: %v", err)
+	}
+
+	executor := &Executor{engine: &fakeExecutorEngine{inspectImageFunc: func(_ context.Context, req dockercli.InspectImageRequest) (docker.ImageInspect, error) {
+		if req.Reference != "mcr.microsoft.com/devcontainers/base:ubuntu" {
+			t.Fatalf("unexpected inspect image ref %q", req.Reference)
+		}
+		return docker.ImageInspect{Config: docker.InspectConfig{Labels: map[string]string{devcontainer.ImageMetadataLabel: sourceMetadataLabel}}}, nil
+	}}}
+	resolved := devcontainer.ResolvedConfig{Config: spec.Config{Image: "mcr.microsoft.com/devcontainers/base:ubuntu"}}
+	inspect := &backend.ContainerInspect{Image: "managed-image-id", Config: backend.InspectConfig{Labels: map[string]string{}}}
+
+	metadata, err := executor.runtimeMetadataFromContainer(context.Background(), resolved, inspect)
+	if err != nil {
+		t.Fatalf("runtime metadata from container: %v", err)
+	}
+	if len(metadata) != 1 || metadata[0].RemoteUser != "vscode" {
+		t.Fatalf("expected source image fallback metadata, got %#v", metadata)
+	}
+}
+
 func TestInspectImageArchitectureAndLocalImageHandling(t *testing.T) {
 	t.Parallel()
 

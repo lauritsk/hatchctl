@@ -43,8 +43,5 @@ func (e *Executor) runtimeMetadataFromContainer(ctx context.Context, resolved de
 	if err != nil {
 		return nil, err
 	}
-	if len(metadata) == 0 {
-		return nil, nil
-	}
 	return e.mergeSourceImageMetadata(ctx, resolved, inspect.Image, metadata)
 }
