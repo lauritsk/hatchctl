@@ -13,7 +13,6 @@ import (
 	"testing"
 
 	"github.com/lauritsk/hatchctl/internal/featurefetch"
-	"github.com/lauritsk/hatchctl/internal/spec"
 	storefs "github.com/lauritsk/hatchctl/internal/store/fs"
 )
 
@@ -33,7 +32,7 @@ func TestLoadSupportsJSONC(t *testing.T) {
 	}`
 	writeTestFile(t, configPath, contents)
 
-	config, err := spec.Load(configPath)
+	config, err := Load(configPath)
 	if err != nil {
 		t.Fatalf("load config: %v", err)
 	}
@@ -62,7 +61,7 @@ func TestLoadWrapsJSONCParseErrorsWithContext(t *testing.T) {
 	}`
 	writeTestFile(t, configPath, contents)
 
-	_, err := spec.Load(configPath)
+	_, err := Load(configPath)
 	if err == nil {
 		t.Fatal("expected load error")
 	}
@@ -127,10 +126,10 @@ func TestMergeMetadataMatchesExpectedPrecedence(t *testing.T) {
 
 	falseValue := false
 	trueValue := true
-	merged := spec.MergeMetadata(spec.Config{
+	merged := MergeMetadata(Config{
 		RemoteUser:    "config-remote",
 		ContainerUser: "config-container",
-		ForwardPorts:  spec.ForwardPorts{"localhost:3000", "service:9000"},
+		ForwardPorts:  ForwardPorts{"localhost:3000", "service:9000"},
 		RemoteEnv: map[string]string{
 			"BASE":   "config",
 			"CONFIG": "yes",
@@ -146,18 +145,18 @@ func TestMergeMetadataMatchesExpectedPrecedence(t *testing.T) {
 		CapAdd:          []string{"SYS_PTRACE"},
 		SecurityOpt:     []string{"seccomp=unconfined"},
 		OverrideCommand: &falseValue,
-		OnCreateCommand: spec.LifecycleCommand{Kind: "string", Value: "config-create", Exists: true},
-	}, []spec.MetadataEntry{{
+		OnCreateCommand: LifecycleCommand{Kind: "string", Value: "config-create", Exists: true},
+	}, []MetadataEntry{{
 		RemoteUser:      "image-remote",
 		ContainerUser:   "image-container",
-		ForwardPorts:    spec.ForwardPorts{"localhost:3000", "localhost:8080"},
+		ForwardPorts:    ForwardPorts{"localhost:3000", "localhost:8080"},
 		RemoteEnv:       map[string]string{"BASE": "image", "IMAGE": "yes"},
 		ContainerEnv:    map[string]string{"KEEP": "image", "IMAGE": "yes"},
 		Mounts:          []string{"type=bind,source=/image,target=/shared", "type=volume,target=/image-only"},
 		CapAdd:          []string{"NET_ADMIN"},
 		SecurityOpt:     []string{"label=disable"},
 		OverrideCommand: &trueValue,
-		OnCreateCommand: spec.LifecycleCommand{Kind: "string", Value: "image-create", Exists: true},
+		OnCreateCommand: LifecycleCommand{Kind: "string", Value: "image-create", Exists: true},
 	}})
 
 	if merged.RemoteUser != "config-remote" {
@@ -198,7 +197,7 @@ func TestMergeMetadataMatchesExpectedPrecedence(t *testing.T) {
 func TestMetadataFromLabelSupportsSingleAndArray(t *testing.T) {
 	t.Parallel()
 
-	entries, err := spec.MetadataFromLabel(`[ {"remoteUser":"vscode"}, {"remoteUser":"dev"} ]`)
+	entries, err := MetadataFromLabel(`[ {"remoteUser":"vscode"}, {"remoteUser":"dev"} ]`)
 	if err != nil {
 		t.Fatalf("parse array metadata: %v", err)
 	}
@@ -206,7 +205,7 @@ func TestMetadataFromLabelSupportsSingleAndArray(t *testing.T) {
 		t.Fatalf("unexpected metadata entries %#v", entries)
 	}
 
-	entries, err = spec.MetadataFromLabel(`{"remoteEnv":{"A":"B"}}`)
+	entries, err = MetadataFromLabel(`{"remoteEnv":{"A":"B"}}`)
 	if err != nil {
 		t.Fatalf("parse single metadata: %v", err)
 	}
@@ -218,7 +217,7 @@ func TestMetadataFromLabelSupportsSingleAndArray(t *testing.T) {
 func TestMetadataLabelValueUsesObjectForSingleEntryAndArrayForMultiple(t *testing.T) {
 	t.Parallel()
 
-	single, err := spec.MetadataLabelValue([]spec.MetadataEntry{{RemoteUser: "root"}})
+	single, err := MetadataLabelValue([]MetadataEntry{{RemoteUser: "root"}})
 	if err != nil {
 		t.Fatalf("marshal single metadata: %v", err)
 	}
@@ -226,7 +225,7 @@ func TestMetadataLabelValueUsesObjectForSingleEntryAndArrayForMultiple(t *testin
 		t.Fatalf("unexpected single metadata label %q", single)
 	}
 
-	multi, err := spec.MetadataLabelValue([]spec.MetadataEntry{{RemoteUser: "root"}, {RemoteUser: "vscode"}})
+	multi, err := MetadataLabelValue([]MetadataEntry{{RemoteUser: "root"}, {RemoteUser: "vscode"}})
 	if err != nil {
 		t.Fatalf("marshal multiple metadata entries: %v", err)
 	}
@@ -246,7 +245,7 @@ func TestLoadNormalizesForwardPorts(t *testing.T) {
 	}`
 	writeTestFile(t, configPath, contents)
 
-	config, err := spec.Load(configPath)
+	config, err := Load(configPath)
 	if err != nil {
 		t.Fatalf("load config: %v", err)
 	}
@@ -321,7 +320,7 @@ func TestResolveSupportsContainerfile(t *testing.T) {
 	if resolved.SourceKind != "dockerfile" {
 		t.Fatalf("unexpected source kind %q", resolved.SourceKind)
 	}
-	if got := spec.EffectiveDockerfile(resolved.Config); got != "Containerfile" {
+	if got := EffectiveDockerfile(resolved.Config); got != "Containerfile" {
 		t.Fatalf("unexpected effective dockerfile %q", got)
 	}
 }
@@ -501,10 +500,10 @@ func TestResolveSupportsBuildDockerfileAndContextFiles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolve build config: %v", err)
 	}
-	if got := spec.EffectiveDockerfile(resolved.Config); got != "Containerfile" {
+	if got := EffectiveDockerfile(resolved.Config); got != "Containerfile" {
 		t.Fatalf("unexpected build dockerfile %q", got)
 	}
-	if got := spec.EffectiveContext(resolved.Config); got != "../container-context" {
+	if got := EffectiveContext(resolved.Config); got != "../container-context" {
 		t.Fatalf("unexpected build context %q", got)
 	}
 }
@@ -577,10 +576,10 @@ func TestResolveFixtureBuildContainerfileContext(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolve dockerfile fixture: %v", err)
 	}
-	if got := spec.EffectiveDockerfile(resolved.Config); got != "Containerfile" {
+	if got := EffectiveDockerfile(resolved.Config); got != "Containerfile" {
 		t.Fatalf("unexpected fixture dockerfile %q", got)
 	}
-	if got := spec.EffectiveContext(resolved.Config); got != "../container-context" {
+	if got := EffectiveContext(resolved.Config); got != "../container-context" {
 		t.Fatalf("unexpected fixture context %q", got)
 	}
 }

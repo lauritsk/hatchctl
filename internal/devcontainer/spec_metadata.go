@@ -1,9 +1,8 @@
-package spec
+package devcontainer
 
 import (
 	"encoding/json"
 	"fmt"
-	"maps"
 	"slices"
 	"sort"
 	"strings"
@@ -356,20 +355,6 @@ func reverseEntries(entries []MetadataEntry) []MetadataEntry {
 	result := cloneEntries(entries)
 	slices.Reverse(result)
 	return result
-}
-
-func cloneSlice(values []string) []string {
-	if len(values) == 0 {
-		return nil
-	}
-	return slices.Clone(values)
-}
-
-func cloneMap(values map[string]string) map[string]string {
-	if len(values) == 0 {
-		return nil
-	}
-	return maps.Clone(values)
 }
 
 func cloneForwardPorts(values ForwardPorts) ForwardPorts {

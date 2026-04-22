@@ -1,4 +1,4 @@
-package spec
+package devcontainer
 
 import (
 	"fmt"
