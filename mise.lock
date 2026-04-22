@@ -111,23 +111,39 @@ url = "https://github.com/sigstore/cosign/releases/download/v3.0.6/cosign-window
 provenance = "cosign"
 
 [[tools."github:lauritsk/hatchctl"]]
-version = "0.6.17"
+version = "0.8.1"
 backend = "github:lauritsk/hatchctl"
 
 [tools."github:lauritsk/hatchctl"."platforms.linux-arm64"]
-checksum = "sha256:7858f6a0bc7f3f1f23351335924b35781c934d7a14af265037581328c044c177"
-url = "https://github.com/lauritsk/hatchctl/releases/download/v0.6.17/hatchctl_Linux_arm64.tar.gz"
-url_api = "https://api.github.com/repos/lauritsk/hatchctl/releases/assets/394901625"
+checksum = "sha256:2dfae0db7ae76bed366e3516518b86024dcd009da4553f5d7388edde3b83d46c"
+url = "https://github.com/lauritsk/hatchctl/releases/download/v0.8.1/hatchctl_Linux_arm64.tar.gz"
+url_api = "https://api.github.com/repos/lauritsk/hatchctl/releases/assets/396126255"
+
+[tools."github:lauritsk/hatchctl"."platforms.linux-arm64-musl"]
+checksum = "sha256:2dfae0db7ae76bed366e3516518b86024dcd009da4553f5d7388edde3b83d46c"
+url = "https://github.com/lauritsk/hatchctl/releases/download/v0.8.1/hatchctl_Linux_arm64.tar.gz"
+url_api = "https://api.github.com/repos/lauritsk/hatchctl/releases/assets/396126255"
 
 [tools."github:lauritsk/hatchctl"."platforms.linux-x64"]
-checksum = "sha256:238f203a11fd8b2bc472c14f9ef935f813018206b4806cb33e1f75a702ae3fdd"
-url = "https://github.com/lauritsk/hatchctl/releases/download/v0.6.17/hatchctl_Linux_x86_64.tar.gz"
-url_api = "https://api.github.com/repos/lauritsk/hatchctl/releases/assets/394901622"
+checksum = "sha256:dbf0caf0d8caf43de6d76697f66f0d17a3b48abdd125617c6d6ebd3697caa4a7"
+url = "https://github.com/lauritsk/hatchctl/releases/download/v0.8.1/hatchctl_Linux_x86_64.tar.gz"
+url_api = "https://api.github.com/repos/lauritsk/hatchctl/releases/assets/396126259"
+provenance = "github-attestations"
+
+[tools."github:lauritsk/hatchctl"."platforms.linux-x64-musl"]
+checksum = "sha256:dbf0caf0d8caf43de6d76697f66f0d17a3b48abdd125617c6d6ebd3697caa4a7"
+url = "https://github.com/lauritsk/hatchctl/releases/download/v0.8.1/hatchctl_Linux_x86_64.tar.gz"
+url_api = "https://api.github.com/repos/lauritsk/hatchctl/releases/assets/396126259"
 
 [tools."github:lauritsk/hatchctl"."platforms.macos-arm64"]
-checksum = "sha256:acb739acb08c5476c821826a1b32810de43925f3b072f6250bcd9deea60490ef"
-url = "https://github.com/lauritsk/hatchctl/releases/download/v0.6.17/hatchctl_Darwin_arm64.tar.gz"
-url_api = "https://api.github.com/repos/lauritsk/hatchctl/releases/assets/394901623"
+checksum = "sha256:cd943dd2f831d79ba51635a7cd7250938610b1a44a20d9610a6b4acded99fdab"
+url = "https://github.com/lauritsk/hatchctl/releases/download/v0.8.1/hatchctl_Darwin_arm64.tar.gz"
+url_api = "https://api.github.com/repos/lauritsk/hatchctl/releases/assets/396126257"
+
+[tools."github:lauritsk/hatchctl"."platforms.macos-x64"]
+checksum = "sha256:48a0c23f7cfeedac42d003d42c3ea432964844c74f49846e473192ea285869b9"
+url = "https://github.com/lauritsk/hatchctl/releases/download/v0.8.1/hatchctl_Darwin_x86_64.tar.gz"
+url_api = "https://api.github.com/repos/lauritsk/hatchctl/releases/assets/396126258"
 
 [[tools.gitleaks]]
 version = "8.30.1"
@@ -194,7 +210,7 @@ checksum = "sha256:98eb3570bade15cb826b0909338df6cc6d2cf590bc39c471142002db3832b
 url = "https://dl.google.com/go/go1.26.2.windows-amd64.zip"
 
 [[tools."go:golang.org/x/vuln/cmd/govulncheck"]]
-version = "1.1.4"
+version = "1.2.0"
 backend = "go:golang.org/x/vuln/cmd/govulncheck"
 
 [[tools.gofumpt]]
@@ -230,42 +246,42 @@ checksum = "sha256:067236b55a8ef4547ddc7d78fbb7a38169de15bab02a1763cde6a132c59dd
 url = "https://github.com/mvdan/gofumpt/releases/download/v0.9.2/gofumpt_v0.9.2_windows_amd64.exe"
 
 [[tools.goreleaser]]
-version = "2.15.2"
+version = "2.15.4"
 backend = "aqua:goreleaser/goreleaser"
 
 [tools.goreleaser."platforms.linux-arm64"]
-checksum = "sha256:5db66761a98f6693161e49e1a95d28d2673a892ba60cb4a5e16736cafd41c4c9"
-url = "https://github.com/goreleaser/goreleaser/releases/download/v2.15.2/goreleaser_Linux_arm64.tar.gz"
+checksum = "sha256:de01ca1497571e9b348413cd2e7f74be49b8d57696ae386f7eedd06176544a88"
+url = "https://github.com/goreleaser/goreleaser/releases/download/v2.15.4/goreleaser_Linux_arm64.tar.gz"
 provenance = "github-attestations"
 
 [tools.goreleaser."platforms.linux-arm64-musl"]
-checksum = "sha256:5db66761a98f6693161e49e1a95d28d2673a892ba60cb4a5e16736cafd41c4c9"
-url = "https://github.com/goreleaser/goreleaser/releases/download/v2.15.2/goreleaser_Linux_arm64.tar.gz"
+checksum = "sha256:de01ca1497571e9b348413cd2e7f74be49b8d57696ae386f7eedd06176544a88"
+url = "https://github.com/goreleaser/goreleaser/releases/download/v2.15.4/goreleaser_Linux_arm64.tar.gz"
 provenance = "github-attestations"
 
 [tools.goreleaser."platforms.linux-x64"]
-checksum = "sha256:0ebdbf0353aba566b969dde746cc4e4806f96c27aa2f3971b229a9df7611fedc"
-url = "https://github.com/goreleaser/goreleaser/releases/download/v2.15.2/goreleaser_Linux_x86_64.tar.gz"
+checksum = "sha256:aae00c71a4a6d55e08cce9273a1516bdce33c1e07cffb7e502fa6fec4377dede"
+url = "https://github.com/goreleaser/goreleaser/releases/download/v2.15.4/goreleaser_Linux_x86_64.tar.gz"
 provenance = "github-attestations"
 
 [tools.goreleaser."platforms.linux-x64-musl"]
-checksum = "sha256:0ebdbf0353aba566b969dde746cc4e4806f96c27aa2f3971b229a9df7611fedc"
-url = "https://github.com/goreleaser/goreleaser/releases/download/v2.15.2/goreleaser_Linux_x86_64.tar.gz"
+checksum = "sha256:aae00c71a4a6d55e08cce9273a1516bdce33c1e07cffb7e502fa6fec4377dede"
+url = "https://github.com/goreleaser/goreleaser/releases/download/v2.15.4/goreleaser_Linux_x86_64.tar.gz"
 provenance = "github-attestations"
 
 [tools.goreleaser."platforms.macos-arm64"]
-checksum = "sha256:0e6bd67688ac949780bf1166813a91f89856898ef4c40d7d46c2c74ebaa4b9ee"
-url = "https://github.com/goreleaser/goreleaser/releases/download/v2.15.2/goreleaser_Darwin_all.tar.gz"
+checksum = "sha256:82d730f3366350c90d7e5df3cf9e8e425fd1c84bf7d7e3e564f92d97c5ea9ea4"
+url = "https://github.com/goreleaser/goreleaser/releases/download/v2.15.4/goreleaser_Darwin_all.tar.gz"
 provenance = "github-attestations"
 
 [tools.goreleaser."platforms.macos-x64"]
-checksum = "sha256:0e6bd67688ac949780bf1166813a91f89856898ef4c40d7d46c2c74ebaa4b9ee"
-url = "https://github.com/goreleaser/goreleaser/releases/download/v2.15.2/goreleaser_Darwin_all.tar.gz"
+checksum = "sha256:82d730f3366350c90d7e5df3cf9e8e425fd1c84bf7d7e3e564f92d97c5ea9ea4"
+url = "https://github.com/goreleaser/goreleaser/releases/download/v2.15.4/goreleaser_Darwin_all.tar.gz"
 provenance = "github-attestations"
 
 [tools.goreleaser."platforms.windows-x64"]
-checksum = "sha256:7459832946dbe122c144f8d7f87484d8572ca005b779310aa6bb03346e8de17a"
-url = "https://github.com/goreleaser/goreleaser/releases/download/v2.15.2/goreleaser_Windows_x86_64.zip"
+checksum = "sha256:146695f49717dfd79d64d5d6f4b1d25e2b56d73e723bbf68a8dc13ce5cf69693"
+url = "https://github.com/goreleaser/goreleaser/releases/download/v2.15.4/goreleaser_Windows_x86_64.zip"
 provenance = "github-attestations"
 
 [[tools.shellcheck]]
