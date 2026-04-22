@@ -2,6 +2,30 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## [v0.8.2](https://github.com/lauritsk/hatchctl/compare/e040fd1bae25797eb5a9d6000eb309991565c604..v0.8.2) - 2026-04-22
+#### Bug Fixes
+- (**deps**) update module charm.land/lipgloss/v2 to v2.0.3 - ([55db8a5](https://github.com/lauritsk/hatchctl/commit/55db8a5abc2b870630a79f1bb2851539fa4208ca)) - renovate[bot]
+- (**runtime**) Return fallback compose config errors - ([a084d75](https://github.com/lauritsk/hatchctl/commit/a084d75c45f9e8ed199f92e53be4cbab5328c0a2)) - Karl Hans Laurits
+- (**runtime**) Surface workspace lock release failures - ([1ecb1cb](https://github.com/lauritsk/hatchctl/commit/1ecb1cbb3a936a1f5df877b255a136c823729391)) - Karl Hans Laurits
+- (**runtime**) Revalidate managed container reads - ([e040fd1](https://github.com/lauritsk/hatchctl/commit/e040fd1bae25797eb5a9d6000eb309991565c604)) - Karl Hans Laurits
+#### Documentation
+- remove temporary backlog file - ([591653f](https://github.com/lauritsk/hatchctl/commit/591653f596c6d221c771d041c387866e86e8bdda)) - Karl Hans Laurits
+#### Refactoring
+- (**devcontainer**) Move spec implementation into devcontainer - ([edb185e](https://github.com/lauritsk/hatchctl/commit/edb185ee87770be3a1914c794daf77caf4da6353)) - Karl Hans Laurits
+- (**devcontainer**) Move spec implementation into devcontainer - ([695ed58](https://github.com/lauritsk/hatchctl/commit/695ed58bba12364338c331d246d2a098a10e9bc3)) - Karl Hans Laurits
+- (**runtime**) Share bridge process liveness checks - ([a4aa302](https://github.com/lauritsk/hatchctl/commit/a4aa302a5ad3047f59be412a78e1276ae0ece3df)) - Karl Hans Laurits
+#### Miscellaneous Chores
+- (**deps**) update go lockfile - ([bb8c084](https://github.com/lauritsk/hatchctl/commit/bb8c0842106b88198a474e34e76b0597455fefe5)) - Karl Hans Laurits
+- (**deps**) update alpine docker tag to v3.23.4 - ([1321c0b](https://github.com/lauritsk/hatchctl/commit/1321c0b9df1692bbaa67de480cd10452457523d0)) - renovate[bot]
+- (**deps**) update module github.com/sigstore/timestamp-authority/v2 to v2.0.6 [security] - ([5d840c2](https://github.com/lauritsk/hatchctl/commit/5d840c2e736f12a1460db5fc276e177dbe032444)) - renovate[bot]
+- (**deps**) update module go:golang.org/x/vuln/cmd/govulncheck to v1.2.0 - ([250ab8a](https://github.com/lauritsk/hatchctl/commit/250ab8afc94298c6dd1f389f59f97fb02a853029)) - renovate[bot]
+- (**deps**) update dependency github:lauritsk/hatchctl to v0.8.1 - ([e6b026d](https://github.com/lauritsk/hatchctl/commit/e6b026d726f80e46bf9f36ab599ca51daa0de1c4)) - renovate[bot]
+- (**deps**) update actions/cache action to v5.0.5 - ([1a780d9](https://github.com/lauritsk/hatchctl/commit/1a780d9fb7db7e9d2cb2d10d7508fb10049bbd31)) - renovate[bot]
+- initialise beads for this project - ([efce37a](https://github.com/lauritsk/hatchctl/commit/efce37a8908f8d978475ed5fdf60fe34c9e1fa47)) - Karl Hans Laurits
+- update dependencies and vendor go modules into project - ([3a536e6](https://github.com/lauritsk/hatchctl/commit/3a536e6034fb21322ad9a525c8263f709d41d459)) - Karl Hans Laurits
+
+- - -
+
 ## [v0.8.1](https://github.com/lauritsk/hatchctl/compare/5bbe596ab4801d0b7ed5e4637834b6f66517a810..v0.8.1) - 2026-04-14
 #### Bug Fixes
 - (**runtime**) Restore source image metadata fallback - ([fb9233d](https://github.com/lauritsk/hatchctl/commit/fb9233d3a9934a2c6a8deee1d3ae6fba29d32d9a)) - Karl Hans Laurits
