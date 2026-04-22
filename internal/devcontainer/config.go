@@ -6,29 +6,25 @@ import (
 	"time"
 
 	"github.com/lauritsk/hatchctl/internal/security"
-	"github.com/lauritsk/hatchctl/internal/spec"
 	storefs "github.com/lauritsk/hatchctl/internal/store/fs"
 )
 
 const (
 	HostFolderLabel    = "devcontainer.local_folder"
 	ConfigFileLabel    = "devcontainer.config_file"
-	ImageMetadataLabel = spec.ImageMetadataLabel
 	ManagedByLabel     = "devcontainer.managed_by"
 	ManagedByValue     = "hatchctl"
 	BridgeEnabledLabel = "devcontainer.bridge.enabled"
 	SSHAgentLabel      = "devcontainer.ssh_agent.enabled"
 )
 
-type WorkspaceSpec = spec.WorkspaceSpec
-
 type ResolvedConfig struct {
 	WorkspaceFolder string
 	ConfigPath      string
 	ConfigDir       string
-	Config          spec.Config
+	Config          Config
 	Features        []ResolvedFeature
-	Merged          spec.MergedConfig
+	Merged          MergedConfig
 	StateDir        string
 	CacheDir        string
 	WorkspaceMount  string
@@ -138,7 +134,7 @@ func ResolveWorkspaceSpecWithOptions(ctx context.Context, workspaceSpec Workspac
 }
 
 func resolveWorkspaceSpecAndDirs(workspaceArg string, configArg string, opts ResolveOptions) (WorkspaceSpec, string, string, error) {
-	workspaceSpec, err := spec.ResolveWorkspaceSpec(workspaceArg, configArg)
+	workspaceSpec, err := ResolveWorkspaceSpec(workspaceArg, configArg)
 	if err != nil {
 		return WorkspaceSpec{}, "", "", err
 	}
@@ -192,7 +188,7 @@ func buildResolvedConfig(workspaceSpec WorkspaceSpec, stateDir string, cacheDir 
 		ConfigDir:       workspaceSpec.ConfigDir,
 		Config:          workspaceSpec.Config,
 		Features:        features,
-		Merged:          spec.MergeMetadata(workspaceSpec.Config, FeaturesMetadata(features)),
+		Merged:          MergeMetadata(workspaceSpec.Config, FeaturesMetadata(features)),
 		StateDir:        stateDir,
 		CacheDir:        cacheDir,
 		WorkspaceMount:  workspaceSpec.WorkspaceMount,
@@ -202,7 +198,7 @@ func buildResolvedConfig(workspaceSpec WorkspaceSpec, stateDir string, cacheDir 
 		ContainerName:   storefs.ContainerName(workspaceSpec.WorkspaceFolder, workspaceSpec.ConfigPath),
 		ComposeFiles:    workspaceSpec.ComposeFiles,
 		ComposeService:  workspaceSpec.ComposeService,
-		ComposeProject:  spec.ComposeProjectName(workspaceSpec.WorkspaceFolder, workspaceSpec.ConfigPath),
+		ComposeProject:  ComposeProjectName(workspaceSpec.WorkspaceFolder, workspaceSpec.ConfigPath),
 		Labels: map[string]string{
 			HostFolderLabel: workspaceSpec.WorkspaceFolder,
 			ConfigFileLabel: workspaceSpec.ConfigPath,

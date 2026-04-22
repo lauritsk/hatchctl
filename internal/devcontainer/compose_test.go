@@ -2,14 +2,12 @@ package devcontainer
 
 import (
 	"testing"
-
-	"github.com/lauritsk/hatchctl/internal/spec"
 )
 
 func TestParseMountSpecSupportsAliasesAndOptions(t *testing.T) {
 	t.Parallel()
 
-	mountSpec, ok := spec.ParseMountSpec("type=bind,src=/workspace,dst=/workspaces/demo,ro=1,bind-propagation=rshared,create-host-path=false")
+	mountSpec, ok := ParseMountSpec("type=bind,src=/workspace,dst=/workspaces/demo,ro=1,bind-propagation=rshared,create-host-path=false")
 	if !ok {
 		t.Fatal("expected mount spec to parse")
 	}

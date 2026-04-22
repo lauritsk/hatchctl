@@ -30,12 +30,12 @@ run = "cog commit"
 [tasks.format]
 # tools.gofumpt = "0.9.2"
 description = "Format Go source files"
-run = "files=$(git ls-files --cached --modified --others --exclude-standard -- '*.go' | while IFS= read -r file; do [ -e \"$file\" ] && printf '%s\n' \"$file\"; done); [ -z \"$files\" ] || gofumpt -w $files"
+run = "files=$(git ls-files --cached --modified --others --exclude-standard -- '*.go' ':(exclude)vendor/**' | while IFS= read -r file; do [ -e \"$file\" ] && printf '%s\n' \"$file\"; done); [ -z \"$files\" ] || gofumpt -w $files"
 
 [tasks."lint:go"]
 # tools.gofumpt = "0.9.2"
 description = "Check Go formatting and vet packages"
-run = "files=$(git ls-files --cached --modified --others --exclude-standard -- '*.go' | while IFS= read -r file; do [ -e \"$file\" ] && printf '%s\n' \"$file\"; done); test -z \"$( [ -z \"$files\" ] || gofumpt -l $files )\" && go vet ./..."
+run = "files=$(git ls-files --cached --modified --others --exclude-standard -- '*.go' ':(exclude)vendor/**' | while IFS= read -r file; do [ -e \"$file\" ] && printf '%s\n' \"$file\"; done); test -z \"$( [ -z \"$files\" ] || gofumpt -l $files )\" && go vet ./..."
 
 [tasks."lint:actions"]
 # tools.actionlint = "1.7.12"

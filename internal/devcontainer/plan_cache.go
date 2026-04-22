@@ -11,7 +11,6 @@ import (
 	"sort"
 
 	"github.com/lauritsk/hatchctl/internal/featurefetch"
-	"github.com/lauritsk/hatchctl/internal/spec"
 	storefs "github.com/lauritsk/hatchctl/internal/store/fs"
 )
 
@@ -25,7 +24,7 @@ func writeResolvedPlanCache(cacheDir string, key string, resolved ResolvedConfig
 	return storefs.WriteResolvedPlanCache(cacheDir, key, resolvedPlanCacheVersion, resolved)
 }
 
-func resolvedPlanCacheKey(configPath string, configDir string, config spec.Config, composeFiles []string) (string, error) {
+func resolvedPlanCacheKey(configPath string, configDir string, config Config, composeFiles []string) (string, error) {
 	h := sha256.New()
 	writeHashString(h, filepath.Clean(configPath))
 	if err := hashFile(h, configPath); err != nil {

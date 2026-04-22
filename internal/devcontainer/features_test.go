@@ -15,7 +15,6 @@ import (
 	"testing"
 
 	"github.com/lauritsk/hatchctl/internal/security"
-	"github.com/lauritsk/hatchctl/internal/spec"
 )
 
 var featureResolveOpts = FeatureResolveOptions{AllowNetwork: true, WriteLockFile: true}
@@ -74,7 +73,7 @@ func TestResolveFeaturesOrdersDependenciesAndInstallsAfter(t *testing.T) {
 	if got := strings.Join(featureIDs(features), ","); got != "alpha,beta,gamma" {
 		t.Fatalf("unexpected feature order %q", got)
 	}
-	merged := spec.MergeMetadata(spec.Config{}, featureMetadataForTest(features))
+	merged := MergeMetadata(Config{}, featureMetadataForTest(features))
 	if got := strings.Join(merged.Mounts, ","); got != "type=volume,source=beta,target=/workspace-tools" {
 		t.Fatalf("unexpected merged mounts %q", got)
 	}
@@ -388,8 +387,8 @@ func featureIDs(features []ResolvedFeature) []string {
 	return ids
 }
 
-func featureMetadataForTest(features []ResolvedFeature) []spec.MetadataEntry {
-	entries := make([]spec.MetadataEntry, 0, len(features))
+func featureMetadataForTest(features []ResolvedFeature) []MetadataEntry {
+	entries := make([]MetadataEntry, 0, len(features))
 	for _, feature := range features {
 		entries = append(entries, feature.Metadata)
 	}
