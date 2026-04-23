@@ -60,8 +60,8 @@ local preCommitSteps = new Mapping<String, Step> {
   ["taplo"] = Builtins.taplo
   ["taplo-format"] = Builtins.taplo_format
   ["mise"] = Builtins.mise
-  ["pkl"] = Builtins.pkl
-  ["pkl-format"] = Builtins.pkl_format
+  // ["pkl"] = Builtins.pkl
+  // ["pkl-format"] = Builtins.pkl_format
   ["markdown-lint"] = (Builtins.markdown_lint) {
     exclude = List("AGENTS.md", "CHANGELOG.md")
   }
