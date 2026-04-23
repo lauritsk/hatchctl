@@ -25,6 +25,10 @@ local preCommitSteps = new Mapping<String, Step> {
   ["markdown-lint"] = (Builtins.markdown_lint) {
     exclude = List("AGENTS.md", "CHANGELOG.md")
   }
+  ["goreleaser-check"] = new Step {
+    glob = ".goreleaser.yaml"
+    check = "goreleaser check"
+  }
 
   ["actionlint"] = Builtins.actionlint
   ["ghalint-action"] = Builtins.ghalint_action

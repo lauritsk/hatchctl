@@ -86,17 +86,9 @@ chmod 0755 internal/bridge/generated/assets/linux_amd64/hatchctl internal/bridge
 description = "Run hk-managed security audits"
 run = "hk check --all --profile slow --step go-vuln-check --step go-sec --step trivy-fs"
 
-[tasks."check:commits"]
-description = "Check conventional commits for new commits"
-run = "cog check"
-
 [tasks."release:version"]
 description = "Create the next version and tag"
 run = "cog bump --auto"
-
-[tasks."release:check"]
-description = "Validate GoReleaser configuration"
-run = "goreleaser check"
 
 [tasks."release:verify"]
 description = "Verify release prerequisites are clean"
@@ -123,4 +115,4 @@ depends = ["release:publish"]
 
 [tasks.check]
 description = "Run project checks"
-depends = ["lint", "test", "build", "audit", "check:commits", "release:check"]
+depends = ["lint", "test", "build", "audit"]
