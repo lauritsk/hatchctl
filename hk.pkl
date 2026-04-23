@@ -63,7 +63,13 @@ local preCommitSteps = new Mapping<String, Step> {
   // ["pkl"] = Builtins.pkl
   // ["pkl-format"] = Builtins.pkl_format
   ["markdown-lint"] = (Builtins.markdown_lint) {
-    exclude = List("AGENTS.md", "CHANGELOG.md")
+    exclude =
+      List(
+        "AGENTS.md",
+        "CHANGELOG.md",
+        "SECURITY.md",
+        ".beads/**",
+      )
   }
   ["goreleaser-check"] = new Step {
     glob = ".goreleaser.yaml"
