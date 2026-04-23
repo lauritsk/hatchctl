@@ -1,29 +1,38 @@
 # Contributing
 
-## Development
+## Development setup
 
-This repository uses `mise` for local tooling and task orchestration.
+This repository uses `mise` for local tooling and task orchestration. Assume only `mise` is installed globally.
 
-Common tasks:
+```bash
+mise install
+mise run setup
+```
 
-- `mise run format`
-- `mise run check`
-- `mise run test`
-- `mise run test:coverage`
-- `mise run test:integration`
-- `mise run test:race`
-- `mise run check:commits`
-- `mise run release:check`
-- `mise run release:verify`
-- `mise run run -- <args>`
+`mise run setup` downloads Go dependencies and installs the git pre-commit hook.
 
-Renovate updates dependencies and GitHub Actions. Regular updates wait at least 7 days before PR creation, then automerge after CI passes. Vulnerability fixes are handled separately and are not delayed. Review `mise.toml` changes carefully when they affect CI, release, or security tooling.
+## Common tasks
+
+| Goal | Command |
+| --- | --- |
+| Format project files | `mise run format` |
+| Lint Go, Actions, and shell scripts | `mise run lint` |
+| Run the fast test suite | `mise run test` |
+| Run tests with coverage | `mise run test:coverage` |
+| Run integration tests | `mise run test:integration` |
+| Run race-detector tests | `mise run test:race` |
+| Build packages | `mise run build` |
+| Run the CLI from source | `mise run run -- <args>` |
+| Run the full local check suite | `mise run check` |
+| Generate an SBOM | `mise run sbom` |
+
+If you touch embedded bridge helper assets, also run `mise run build:bridge-helpers`.
 
 ## Commits
 
-Commits must follow Conventional Commits. Cocogitto enforces this in local checks and CI.
+Commits must follow Conventional Commits. Cocogitto enforces this locally and in CI.
 
-Create commits with Cocogitto through `mise`:
+Create commits through `mise`:
 
 - `mise exec cocogitto -- cog commit <type> "<message>" [scope]`
 - add `-B` for breaking changes
@@ -31,27 +40,26 @@ Create commits with Cocogitto through `mise`:
 
 Examples:
 
-- `feat: add browser bridge support`
+- `feat: add backend capability detection`
 - `fix: preserve localhost redirect handling`
 - `docs: clarify release verification`
 
-## Pull Requests
+## Pull requests
 
 Before opening a pull request:
 
 - run `mise run check`
 - use a Conventional Commit title for the pull request
-- update tests and documentation when behavior changes
+- update tests and docs when behavior changes
 - keep changes focused and small when possible
 
-If the change is intended to ship in a release, use a bump-worthy commit type such as `feat:` or `fix:`. Commits like `docs:` and `chore:` usually will not produce a version bump with the current Cocogitto defaults.
+If the change is intended to ship in a release, use a bump-worthy commit type such as `feat:` or `fix:`. Commits like `docs:` and `chore:` usually do not produce a version bump with the current Cocogitto defaults.
 
 ## Releases
 
 Releases are created from git tags and published through GitHub Actions.
 
 - `mise run release:version` prepares the next release version and tag
+- `mise run release:check` validates GoReleaser configuration
+- `mise run release:verify` verifies release prerequisites from a clean worktree
 - push the resulting commit and `v*` tag to trigger the release workflow
-- `cog.toml` configures Cocogitto to generate `v`-prefixed tags and the repository changelog
-
-`mise run release:version` may legitimately do nothing if the current commit history does not contain a release-worthy Conventional Commit.
