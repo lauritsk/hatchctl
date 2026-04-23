@@ -11,7 +11,31 @@ local preCommitSteps = new Mapping<String, Step> {
   ["trailing-whitespace"] = Builtins.trailing_whitespace
   ["mixed-line-ending"] = Builtins.mixed_line_ending
   ["newlines"] = Builtins.newlines
-  ["typos"] = Builtins.typos
+  ["typos"] = (Builtins.typos) {
+    exclude =
+      List(
+        ".beads/**",
+        ".devcontainer/devcontainer.json",
+        ".github/CODEOWNERS",
+        ".github/workflows/check.yml",
+        ".github/workflows/release.yml",
+        ".gitignore",
+        ".goreleaser.yaml",
+        "AGENTS.md",
+        "CHANGELOG.md",
+        "CONTRIBUTING.md",
+        "LICENSE",
+        "README.md",
+        "SECURITY.md",
+        "cmd/hatchctl/main.go",
+        "cmd/hatchctl/main_test.go",
+        "cog.toml",
+        "go.mod",
+        "go.sum",
+        "hk.pkl",
+        "internal/**",
+      )
+  }
 
   ["shellcheck"] = Builtins.shellcheck
   ["shfmt"] = Builtins.shfmt
