@@ -6,10 +6,9 @@ This repository uses `mise` for local tooling and task orchestration. Assume onl
 
 ```bash
 mise install
-mise run setup
 ```
 
-`mise install` installs the project tools and hk-managed git hooks. `mise run setup` downloads Go dependencies. `mise run format`, `mise run lint`, and `mise run fix` all use `hk.pkl` as their source of truth.
+`mise install` installs the project tools and hk-managed git hooks. Go commands fetch dependencies as needed. `mise run format`, `mise run lint`, and `mise run fix` all use `hk.pkl` as their source of truth.
 
 ## Common tasks
 
@@ -18,6 +17,7 @@ mise run setup
 | Run hk formatters across the repo | `mise run format` |
 | Run the hk pre-commit hook manually | `mise run pre-commit` |
 | Run hk lint checks across the repo | `mise run lint` |
+| Run hk slow-profile checks across the repo | `mise run lint:slow` |
 | Run hk fixers across the repo | `mise run fix` |
 | Run the fast test suite | `mise run test` |
 | Run tests with coverage | `mise run test:coverage` |

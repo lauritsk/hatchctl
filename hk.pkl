@@ -8,6 +8,9 @@ local preCommitSteps = new Mapping<String, Step> {
         glob = List("cmd/**/*.go", "internal/**/*.go")
     }
     ["go-vet"] = Builtins.go_vet
+    ["go-vuln-check"] = (Builtins.go_vuln_check) {
+        profiles = List("slow")
+    }
 }
 
 hooks {

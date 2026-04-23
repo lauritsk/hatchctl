@@ -25,7 +25,6 @@ jobs:
         with:
           fetch-depth: 0
       - uses: ./.github/actions/setup-mise-go-cache
-      - run: mise run setup
       - run: mise run check
 
   macos-smoke:
