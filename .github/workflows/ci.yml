@@ -25,6 +25,7 @@ jobs:
         with:
           fetch-depth: 0
       - uses: ./.github/actions/setup-mise-go-cache
+      - run: mise run setup
       - run: mise run check
 
   macos-smoke:
@@ -37,7 +38,7 @@ jobs:
       - uses: ./.github/actions/setup-mise-go-cache
       - run: mise run test
       - run: mise run build
-      - run: mise run hatchctl -- bridge doctor --workspace . --config .devcontainer/devcontainer.json --json
+      - run: mise run run -- bridge doctor --workspace . --config .devcontainer/devcontainer.json --json
 
   runtime-integration:
     runs-on: ubuntu-24.04

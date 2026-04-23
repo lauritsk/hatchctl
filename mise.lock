@@ -39,6 +39,38 @@ checksum = "sha256:6e7241b51e6817ea6a047693d8e6fed13b31819c9a0dd6c5a726e1592d22f
 url = "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_windows_amd64.zip"
 provenance = "github-attestations"
 
+[[tools."aqua:gastownhall/beads"]]
+version = "1.0.2"
+backend = "aqua:gastownhall/beads"
+
+[tools."aqua:gastownhall/beads"."platforms.linux-arm64"]
+checksum = "sha256:f7b60c2398305bdb18d4ece1c84b87951e5bbcd6966fa0d607ac16f9d6e11a4d"
+url = "https://github.com/gastownhall/beads/releases/download/v1.0.2/beads_1.0.2_linux_arm64.tar.gz"
+
+[tools."aqua:gastownhall/beads"."platforms.linux-arm64-musl"]
+checksum = "sha256:f7b60c2398305bdb18d4ece1c84b87951e5bbcd6966fa0d607ac16f9d6e11a4d"
+url = "https://github.com/gastownhall/beads/releases/download/v1.0.2/beads_1.0.2_linux_arm64.tar.gz"
+
+[tools."aqua:gastownhall/beads"."platforms.linux-x64"]
+checksum = "sha256:66280bca14581218684027fee000810c2e40a9c6fe00e876ff64bdcb01a036c0"
+url = "https://github.com/gastownhall/beads/releases/download/v1.0.2/beads_1.0.2_linux_amd64.tar.gz"
+
+[tools."aqua:gastownhall/beads"."platforms.linux-x64-musl"]
+checksum = "sha256:66280bca14581218684027fee000810c2e40a9c6fe00e876ff64bdcb01a036c0"
+url = "https://github.com/gastownhall/beads/releases/download/v1.0.2/beads_1.0.2_linux_amd64.tar.gz"
+
+[tools."aqua:gastownhall/beads"."platforms.macos-arm64"]
+checksum = "sha256:f3b27edd4ed43ce8aa792837145f324e4b8a3cbf9dc0c81d144682da46189038"
+url = "https://github.com/gastownhall/beads/releases/download/v1.0.2/beads_1.0.2_darwin_arm64.tar.gz"
+
+[tools."aqua:gastownhall/beads"."platforms.macos-x64"]
+checksum = "sha256:7d9de37b544ecc55ccc798da6778051344dba839834943957942f38412d7a13a"
+url = "https://github.com/gastownhall/beads/releases/download/v1.0.2/beads_1.0.2_darwin_amd64.tar.gz"
+
+[tools."aqua:gastownhall/beads"."platforms.windows-x64"]
+checksum = "sha256:24c12852d91fc6fb210e3f0415c003f4dd09a2bc1920ecffa8710633f9966abf"
+url = "https://github.com/gastownhall/beads/releases/download/v1.0.2/beads_1.0.2_windows_amd64.zip"
+
 [[tools.cocogitto]]
 version = "7.0.0"
 backend = "aqua:cocogitto/cocogitto"
@@ -110,73 +142,6 @@ checksum = "sha256:9b85a88ebff2d9dd30ff4984a6f61f2cedc232dd87d81fa7f2ff3c0ed96c2
 url = "https://github.com/sigstore/cosign/releases/download/v3.0.6/cosign-windows-amd64.exe"
 provenance = "cosign"
 
-[[tools."github:lauritsk/hatchctl"]]
-version = "0.8.1"
-backend = "github:lauritsk/hatchctl"
-
-[tools."github:lauritsk/hatchctl"."platforms.linux-arm64"]
-checksum = "sha256:2dfae0db7ae76bed366e3516518b86024dcd009da4553f5d7388edde3b83d46c"
-url = "https://github.com/lauritsk/hatchctl/releases/download/v0.8.1/hatchctl_Linux_arm64.tar.gz"
-url_api = "https://api.github.com/repos/lauritsk/hatchctl/releases/assets/396126255"
-
-[tools."github:lauritsk/hatchctl"."platforms.linux-arm64-musl"]
-checksum = "sha256:2dfae0db7ae76bed366e3516518b86024dcd009da4553f5d7388edde3b83d46c"
-url = "https://github.com/lauritsk/hatchctl/releases/download/v0.8.1/hatchctl_Linux_arm64.tar.gz"
-url_api = "https://api.github.com/repos/lauritsk/hatchctl/releases/assets/396126255"
-
-[tools."github:lauritsk/hatchctl"."platforms.linux-x64"]
-checksum = "sha256:dbf0caf0d8caf43de6d76697f66f0d17a3b48abdd125617c6d6ebd3697caa4a7"
-url = "https://github.com/lauritsk/hatchctl/releases/download/v0.8.1/hatchctl_Linux_x86_64.tar.gz"
-url_api = "https://api.github.com/repos/lauritsk/hatchctl/releases/assets/396126259"
-provenance = "github-attestations"
-
-[tools."github:lauritsk/hatchctl"."platforms.linux-x64-musl"]
-checksum = "sha256:dbf0caf0d8caf43de6d76697f66f0d17a3b48abdd125617c6d6ebd3697caa4a7"
-url = "https://github.com/lauritsk/hatchctl/releases/download/v0.8.1/hatchctl_Linux_x86_64.tar.gz"
-url_api = "https://api.github.com/repos/lauritsk/hatchctl/releases/assets/396126259"
-
-[tools."github:lauritsk/hatchctl"."platforms.macos-arm64"]
-checksum = "sha256:cd943dd2f831d79ba51635a7cd7250938610b1a44a20d9610a6b4acded99fdab"
-url = "https://github.com/lauritsk/hatchctl/releases/download/v0.8.1/hatchctl_Darwin_arm64.tar.gz"
-url_api = "https://api.github.com/repos/lauritsk/hatchctl/releases/assets/396126257"
-
-[tools."github:lauritsk/hatchctl"."platforms.macos-x64"]
-checksum = "sha256:48a0c23f7cfeedac42d003d42c3ea432964844c74f49846e473192ea285869b9"
-url = "https://github.com/lauritsk/hatchctl/releases/download/v0.8.1/hatchctl_Darwin_x86_64.tar.gz"
-url_api = "https://api.github.com/repos/lauritsk/hatchctl/releases/assets/396126258"
-
-[[tools.gitleaks]]
-version = "8.30.1"
-backend = "aqua:gitleaks/gitleaks"
-
-[tools.gitleaks."platforms.linux-arm64"]
-checksum = "sha256:e4a487ee7ccd7d3a7f7ec08657610aa3606637dab924210b3aee62570fb4b080"
-url = "https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_arm64.tar.gz"
-
-[tools.gitleaks."platforms.linux-arm64-musl"]
-checksum = "sha256:e4a487ee7ccd7d3a7f7ec08657610aa3606637dab924210b3aee62570fb4b080"
-url = "https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_arm64.tar.gz"
-
-[tools.gitleaks."platforms.linux-x64"]
-checksum = "sha256:551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
-url = "https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz"
-
-[tools.gitleaks."platforms.linux-x64-musl"]
-checksum = "sha256:551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
-url = "https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz"
-
-[tools.gitleaks."platforms.macos-arm64"]
-checksum = "sha256:b40ab0ae55c505963e365f271a8d3846efbc170aa17f2607f13df610a9aeb6a5"
-url = "https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_darwin_arm64.tar.gz"
-
-[tools.gitleaks."platforms.macos-x64"]
-checksum = "sha256:dfe101a4db2255fc85120ac7f3d25e4342c3c20cf749f2c20a18081af1952709"
-url = "https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_darwin_x64.tar.gz"
-
-[tools.gitleaks."platforms.windows-x64"]
-checksum = "sha256:d29144deff3a68aa93ced33dddf84b7fdc26070add4aa0f4513094c8332afc4e"
-url = "https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_windows_x64.zip"
-
 [[tools.go]]
 version = "1.26.2"
 backend = "core:go"
@@ -210,7 +175,7 @@ checksum = "sha256:98eb3570bade15cb826b0909338df6cc6d2cf590bc39c471142002db3832b
 url = "https://dl.google.com/go/go1.26.2.windows-amd64.zip"
 
 [[tools."go:golang.org/x/vuln/cmd/govulncheck"]]
-version = "1.2.0"
+version = "1.3.0"
 backend = "go:golang.org/x/vuln/cmd/govulncheck"
 
 [[tools.gofumpt]]
@@ -317,33 +282,72 @@ checksum = "sha256:8a4e35ab0b331c85d73567b12f2a444df187f483e5079ceffa6bda1faa2e7
 url = "https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.zip"
 
 [[tools.syft]]
-version = "1.42.4"
+version = "1.43.0"
 backend = "aqua:anchore/syft"
 
 [tools.syft."platforms.linux-arm64"]
-checksum = "sha256:5029bad1ed372649527b1e443cbceef7f5d6ae1cfe52c16e721559f94267128b"
-url = "https://github.com/anchore/syft/releases/download/v1.42.4/syft_1.42.4_linux_arm64.tar.gz"
+checksum = "sha256:afe92510c467f952a009b994f2d998ff8f9dd266dc26eca55d14a0dd46fec7f2"
+url = "https://github.com/anchore/syft/releases/download/v1.43.0/syft_1.43.0_linux_arm64.tar.gz"
 
 [tools.syft."platforms.linux-arm64-musl"]
-checksum = "sha256:5029bad1ed372649527b1e443cbceef7f5d6ae1cfe52c16e721559f94267128b"
-url = "https://github.com/anchore/syft/releases/download/v1.42.4/syft_1.42.4_linux_arm64.tar.gz"
+checksum = "sha256:afe92510c467f952a009b994f2d998ff8f9dd266dc26eca55d14a0dd46fec7f2"
+url = "https://github.com/anchore/syft/releases/download/v1.43.0/syft_1.43.0_linux_arm64.tar.gz"
 
 [tools.syft."platforms.linux-x64"]
-checksum = "sha256:590650c2743b83f327d1bf9bec64f6f83b7fec504187bb84f500c862bf8f2a0f"
-url = "https://github.com/anchore/syft/releases/download/v1.42.4/syft_1.42.4_linux_amd64.tar.gz"
+checksum = "sha256:7b98251d2d08926bb5d4639b56b1f0996a58ef6667c5830e3fe3cd3ad5f4214a"
+url = "https://github.com/anchore/syft/releases/download/v1.43.0/syft_1.43.0_linux_amd64.tar.gz"
 
 [tools.syft."platforms.linux-x64-musl"]
-checksum = "sha256:590650c2743b83f327d1bf9bec64f6f83b7fec504187bb84f500c862bf8f2a0f"
-url = "https://github.com/anchore/syft/releases/download/v1.42.4/syft_1.42.4_linux_amd64.tar.gz"
+checksum = "sha256:7b98251d2d08926bb5d4639b56b1f0996a58ef6667c5830e3fe3cd3ad5f4214a"
+url = "https://github.com/anchore/syft/releases/download/v1.43.0/syft_1.43.0_linux_amd64.tar.gz"
 
 [tools.syft."platforms.macos-arm64"]
-checksum = "sha256:0797b64cf8841c904682e6007a695f9cd3e72103f064dd286723c0a56a2273e2"
-url = "https://github.com/anchore/syft/releases/download/v1.42.4/syft_1.42.4_darwin_arm64.tar.gz"
+checksum = "sha256:3640e2181c8be7a56377f3c96e520d5380c924dbafd115ee3c8d45fcbc89cac2"
+url = "https://github.com/anchore/syft/releases/download/v1.43.0/syft_1.43.0_darwin_arm64.tar.gz"
 
 [tools.syft."platforms.macos-x64"]
-checksum = "sha256:4a14affad1b90f0bfa38fdb784279f01598b6099df40686391d814620e9de226"
-url = "https://github.com/anchore/syft/releases/download/v1.42.4/syft_1.42.4_darwin_amd64.tar.gz"
+checksum = "sha256:08fd18f55037f999f50b2c2256a9285f0146978a0b16cdc58662ecdc85d0e3c0"
+url = "https://github.com/anchore/syft/releases/download/v1.43.0/syft_1.43.0_darwin_amd64.tar.gz"
 
 [tools.syft."platforms.windows-x64"]
-checksum = "sha256:a712f912e8fc83ce2bf6a7cea213c2d5185778d66ea2e07d42c767817f77e381"
-url = "https://github.com/anchore/syft/releases/download/v1.42.4/syft_1.42.4_windows_amd64.zip"
+checksum = "sha256:c51695d171c61460369dabdd5c71b8f350ef8618466818356a30808d7105c710"
+url = "https://github.com/anchore/syft/releases/download/v1.43.0/syft_1.43.0_windows_amd64.zip"
+
+[[tools.trivy]]
+version = "0.70.0"
+backend = "aqua:aquasecurity/trivy"
+
+[tools.trivy."platforms.linux-arm64"]
+checksum = "sha256:2f6bb988b553a1bbac6bdd1ce890f5e412439564e17522b88a4541b4f364fc8d"
+url = "https://github.com/aquasecurity/trivy/releases/download/v0.70.0/trivy_0.70.0_Linux-ARM64.tar.gz"
+provenance = "cosign"
+
+[tools.trivy."platforms.linux-arm64-musl"]
+checksum = "sha256:2f6bb988b553a1bbac6bdd1ce890f5e412439564e17522b88a4541b4f364fc8d"
+url = "https://github.com/aquasecurity/trivy/releases/download/v0.70.0/trivy_0.70.0_Linux-ARM64.tar.gz"
+provenance = "cosign"
+
+[tools.trivy."platforms.linux-x64"]
+checksum = "sha256:8b4376d5d6befe5c24d503f10ff136d9e0c49f9127a4279fd110b727929a5aa9"
+url = "https://github.com/aquasecurity/trivy/releases/download/v0.70.0/trivy_0.70.0_Linux-64bit.tar.gz"
+provenance = "cosign"
+
+[tools.trivy."platforms.linux-x64-musl"]
+checksum = "sha256:8b4376d5d6befe5c24d503f10ff136d9e0c49f9127a4279fd110b727929a5aa9"
+url = "https://github.com/aquasecurity/trivy/releases/download/v0.70.0/trivy_0.70.0_Linux-64bit.tar.gz"
+provenance = "cosign"
+
+[tools.trivy."platforms.macos-arm64"]
+checksum = "sha256:68e543c51dcc96e1c344053a4fde9660cf602c25565d9f09dc17dd41e13b838a"
+url = "https://github.com/aquasecurity/trivy/releases/download/v0.70.0/trivy_0.70.0_macOS-ARM64.tar.gz"
+provenance = "cosign"
+
+[tools.trivy."platforms.macos-x64"]
+checksum = "sha256:52d531452b19e7593da29366007d02a810e1e0080d02f9cf6a1afb46c35aaa93"
+url = "https://github.com/aquasecurity/trivy/releases/download/v0.70.0/trivy_0.70.0_macOS-64bit.tar.gz"
+provenance = "cosign"
+
+[tools.trivy."platforms.windows-x64"]
+checksum = "sha256:eea5442eab86f9e26cd718d7618d43899e72a83767619e8bee47911bddbfb825"
+url = "https://github.com/aquasecurity/trivy/releases/download/v0.70.0/trivy_0.70.0_windows-64bit.zip"
+provenance = "cosign"

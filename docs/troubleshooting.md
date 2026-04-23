@@ -36,8 +36,8 @@ Bridge support is only active on macOS.
 
 ## Release Verification Failures
 
-`mise run release:verify` runs from a detached worktree and expects `go mod tidy` and `go generate ./...` to leave no changes behind.
+`mise run release:verify` runs from a detached worktree, runs `go mod tidy`, and then checks that the worktree stays clean.
 
-- run `go mod tidy` and `go generate ./...` locally to reproduce the exact failure
-- inspect changes to `go.mod`, `go.sum`, and generated files before tagging a release
-- review `mise.toml`, `.goreleaser.yaml`, and embedded bridge assets together when release-only failures appear after toolchain updates
+- run `go mod tidy` locally to reproduce the exact failure
+- inspect changes to `go.mod` and `go.sum` before tagging a release
+- if release tooling still fails after verification passes, run `mise run release:check` and review `mise.toml`, `.goreleaser.yaml`, and embedded bridge assets together

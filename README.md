@@ -170,15 +170,18 @@ See [SECURITY.md](./SECURITY.md) for the full policy and threat model.
 
 This repository uses `mise` for local tooling and task orchestration.
 
-Common commands:
+Common contributor commands:
 
 ```sh
 mise run check
 mise run test
+mise run test:integration
 mise run test:coverage
 mise run test:race
+mise run check:commits
 mise run build
-mise run hatchctl -- up
+mise run release:verify
+mise run run -- up
 ```
 
 For contributor workflow, commits, and release process details, see [CONTRIBUTING.md](./CONTRIBUTING.md).
