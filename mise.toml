@@ -1,5 +1,6 @@
 [env]
 HK_MISE = 1
+HK_PKL_BACKEND = "pklr"
 
 [tools]
 "aqua:gastownhall/beads" = "1.0.2"
@@ -13,7 +14,6 @@ shfmt = "3.13.1"
 yamllint = "1.38.0"
 yamlfmt = "0.21.0"
 taplo = "0.10.0"
-pkl = "0.31.1"
 "npm:markdownlint-cli" = "0.48.0"
 
 actionlint = "1.7.12"
@@ -69,11 +69,6 @@ run = "go test -race ./internal/app ./internal/reconcile ./internal/store/fs"
 description = "Build Go packages"
 run = "go build ./..."
 
-
-[tasks."release:version"]
-description = "Create the next version and tag"
-run = "cog bump --auto"
-
 [tasks."release:verify"]
 description = "Verify release prerequisites are clean"
 run = """
@@ -88,14 +83,19 @@ git worktree add --quiet --detach "$tmp" HEAD
 )
 """
 
+[tasks."release:version"]
+description = "Create, tag, and push the next version"
+depends = ["release:verify"]
+run = "cog bump --auto && git push && git push --tags"
+
+[tasks.release]
+description = "Verify, version, and push the next release"
+depends = ["release:verify", "release:version"]
+
 [tasks."release:publish"]
 description = "Publish release artifacts for the current tag"
 depends = ["check", "release:verify"]
 run = "goreleaser release --clean"
-
-[tasks.release]
-description = "Publish the current tagged release"
-depends = ["release:publish"]
 
 [tasks.check]
 description = "Run project checks"
