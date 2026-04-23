@@ -69,6 +69,13 @@ local preCommitSteps = new Mapping<String, Step> {
     check =
       "trivy fs --scanners vuln,misconfig,secret --severity HIGH,CRITICAL --ignore-unfixed --skip-dirs internal/devcontainer/testdata --exit-code 1 ."
   }
+  ["lychee"] = (Builtins.lychee) {
+    exclude =
+      List(
+        ".beads/**",
+        "internal/**",
+      )
+  }
 }
 
 hooks {

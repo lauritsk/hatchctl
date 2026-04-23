@@ -42,10 +42,6 @@ run = "hk check --all"
 description = "Run hk-managed fixers across the repository"
 run = "hk fix --all"
 
-[tasks.links]
-description = "Check repository links"
-run = "lychee ."
-
 [tasks.test]
 description = "Run fast Go tests"
 run = "go test ./..."
