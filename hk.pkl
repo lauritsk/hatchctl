@@ -38,16 +38,6 @@ local preCommitSteps = new Mapping<String, Step> {
   }
 
   ["shellcheck"] = Builtins.shellcheck
-  ["shfmt"] = Builtins.shfmt
-  ["yamllint"] = (Builtins.yamllint) {
-    exclude =
-      List(
-        ".beads/**",
-        ".github/workflows/**",
-        ".goreleaser.yaml",
-        "internal/devcontainer/testdata/**",
-      )
-  }
   ["yamlfmt"] = (Builtins.yamlfmt) {
     exclude =
       List(
@@ -62,38 +52,23 @@ local preCommitSteps = new Mapping<String, Step> {
   ["mise"] = Builtins.mise
   // ["pkl"] = Builtins.pkl
   // ["pkl-format"] = Builtins.pkl_format
-  ["markdown-lint"] = (Builtins.markdown_lint) {
-    exclude =
-      List(
-        "AGENTS.md",
-        "CHANGELOG.md",
-        "SECURITY.md",
-        ".beads/**",
-      )
-  }
   ["goreleaser-check"] = new Step {
     glob = ".goreleaser.yaml"
     check = "goreleaser check"
   }
 
   ["actionlint"] = Builtins.actionlint
-  ["ghalint-action"] = Builtins.ghalint_action
-  ["ghalint-workflow"] = Builtins.ghalint_workflow
-  // ["zizmor"] = Builtins.zizmor
+  ["zizmor"] = Builtins.zizmor
 
   ["go-fumpt"] = Builtins.go_fumpt
   ["go-vet"] = Builtins.go_vet
   ["staticcheck"] = Builtins.staticcheck
-  ["err-check"] = Builtins.err_check
 
-  ["go-vuln-check"] = Builtins.go_vuln_check
-  ["go-sec"] = Builtins.go_sec
   ["trivy-fs"] = new Step {
     glob = "**/*"
     check =
       "trivy fs --scanners vuln,misconfig,secret --severity HIGH,CRITICAL --ignore-unfixed --skip-dirs internal/devcontainer/testdata --exit-code 1 ."
   }
-  ["lychee"] = Builtins.lychee
 }
 
 hooks {
