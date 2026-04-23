@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## [v0.8.4](https://github.com/lauritsk/hatchctl/compare/19eb55d304a405f399babb14a199296fe80ae8ba..v0.8.4) - 2026-04-23
+#### Bug Fixes
+- ensure mise gets installed for all actions - ([19eb55d](https://github.com/lauritsk/hatchctl/commit/19eb55d304a405f399babb14a199296fe80ae8ba)) - Karl Hans Laurits
+
+- - -
+
 ## [v0.8.3](https://github.com/lauritsk/hatchctl/compare/b4f9e5de237e93d7f9c325460a7595b0fa0657b4..v0.8.3) - 2026-04-23
 #### Bug Fixes
 - (**formatting**) rename ci to check and space out files - ([259636a](https://github.com/lauritsk/hatchctl/commit/259636a19934d2d641a1e3318aee9f12a8a0cd62)) - Karl Hans Laurits
