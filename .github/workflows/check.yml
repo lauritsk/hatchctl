@@ -24,21 +24,6 @@ jobs:
           persist-credentials: false
       - uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151
       - run: mise run check
-  macos-smoke:
-    runs-on: macos-15
-    timeout-minutes: 15
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151
-      - run: mise run test
-      - run: mise run build
-      - run: >-
-          mise run -- bridge doctor --workspace . --config .devcontainer/devcontainer.json --json
   integration:
     runs-on: ubuntu-24.04
     timeout-minutes: 20

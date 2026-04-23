@@ -37,7 +37,7 @@ goreleaser = "2.15.4"
 [hooks]
 postinstall = "hk install --mise"
 
-[tasks.run]
+[tasks.hatchctl]
 description = "Run project app from source"
 run = "go run ./cmd/hatchctl"
 
