@@ -90,8 +90,8 @@ description = "Audit Go dependencies and code with hk slow-profile checks"
 run = "hk check --all --profile slow --step go-vuln-check --step go-sec"
 
 [tasks."audit:trivy"]
-description = "Audit repository files with Trivy, including secrets"
-run = "trivy fs --scanners vuln,misconfig,secret --severity HIGH,CRITICAL --ignore-unfixed --skip-dirs internal/devcontainer/testdata --exit-code 1 ."
+description = "Audit repository files with the hk-managed Trivy filesystem scan"
+run = "hk check --all --profile slow --step trivy-fs"
 
 [tasks.audit]
 description = "Run all audit checks"

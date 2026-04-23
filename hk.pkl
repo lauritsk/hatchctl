@@ -42,6 +42,12 @@ local preCommitSteps = new Mapping<String, Step> {
   ["go-sec"] = (Builtins.go_sec) {
     profiles = List("slow")
   }
+  ["trivy-fs"] = new Step {
+    glob = "**/*"
+    check =
+      "trivy fs --scanners vuln,misconfig,secret --severity HIGH,CRITICAL --ignore-unfixed --skip-dirs internal/devcontainer/testdata --exit-code 1 ."
+    profiles = List("slow")
+  }
   ["lychee"] = (Builtins.lychee) {
     profiles = List("slow")
   }
