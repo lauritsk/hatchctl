@@ -1,6 +1,0 @@
-# .yamllint
-extends: default
-
-ignore: |
-  .github/workflows/
-  .beads/

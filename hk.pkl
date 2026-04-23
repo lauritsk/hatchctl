@@ -15,8 +15,24 @@ local preCommitSteps = new Mapping<String, Step> {
 
   ["shellcheck"] = Builtins.shellcheck
   ["shfmt"] = Builtins.shfmt
-  ["yamllint"] = Builtins.yamllint
-  ["yamlfmt"] = Builtins.yamlfmt
+  ["yamllint"] = (Builtins.yamllint) {
+    exclude =
+      List(
+        ".beads/**",
+        ".github/workflows/**",
+        ".goreleaser.yaml",
+        "internal/devcontainer/testdata/**",
+      )
+  }
+  ["yamlfmt"] = (Builtins.yamlfmt) {
+    exclude =
+      List(
+        ".beads/**",
+        ".github/workflows/**",
+        ".goreleaser.yaml",
+        "internal/devcontainer/testdata/**",
+      )
+  }
   ["taplo"] = Builtins.taplo
   ["taplo-format"] = Builtins.taplo_format
   ["mise"] = Builtins.mise
