@@ -9,13 +9,13 @@ mise install
 mise run setup
 ```
 
-`mise install` installs the project tools and hk-managed git hooks. `mise run setup` downloads Go dependencies. `mise run lint` and `mise run fix` both use `hk.pkl` as their source of truth.
+`mise install` installs the project tools and hk-managed git hooks. `mise run setup` downloads Go dependencies. `mise run format`, `mise run lint`, and `mise run fix` all use `hk.pkl` as their source of truth.
 
 ## Common tasks
 
 | Goal | Command |
 | --- | --- |
-| Format project files | `mise run format` |
+| Run hk formatters across the repo | `mise run format` |
 | Run the hk pre-commit hook manually | `mise run pre-commit` |
 | Run hk lint checks across the repo | `mise run lint` |
 | Run hk fixers across the repo | `mise run fix` |

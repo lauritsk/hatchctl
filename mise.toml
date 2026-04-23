@@ -31,12 +31,8 @@ description = "Run project app from source"
 run = "go run ./cmd/hatchctl"
 
 [tasks.format]
-description = "Format project source files"
-depends = ["format:go"]
-
-[tasks."format:go"]
-description = "Format Go source files"
-run = "gofumpt -w ."
+description = "Run hk-managed formatters across the repository"
+run = "hk fix --all --step go-fumpt"
 
 [tasks.lint]
 description = "Run hk-managed lint checks across the repository"
