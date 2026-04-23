@@ -2,6 +2,22 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## [v0.8.5](https://github.com/lauritsk/hatchctl/compare/a6db53d44f49d60b95c27418ba4e8b823622978e..v0.8.5) - 2026-04-23
+#### Bug Fixes
+- (**tooling**) keep lychee under hk - ([76700fa](https://github.com/lauritsk/hatchctl/commit/76700faf2a2f7239b7897c3ef54c87d067f6fe42)) - Karl Hans Laurits
+- ignore more formatting errors - ([6b52c0d](https://github.com/lauritsk/hatchctl/commit/6b52c0d467f8cf5a783020ea001a9da2cca9be80)) - Karl Hans Laurits
+- remove pkl checks - ([eef86e2](https://github.com/lauritsk/hatchctl/commit/eef86e2a3e81c636be7aa9642474d02dae0e67cb)) - Karl Hans Laurits
+- ignore more formatting errors - ([b70674a](https://github.com/lauritsk/hatchctl/commit/b70674a347f7776c54f95927158a8bf73ccb5734)) - Karl Hans Laurits
+- ignore more formatting errors - ([084827c](https://github.com/lauritsk/hatchctl/commit/084827c9961c6596a5e1ea9e972f6716d224b545)) - Karl Hans Laurits
+- disable zizmor for now - ([b592430](https://github.com/lauritsk/hatchctl/commit/b59243002efce910ddac1f2412daae712cfa270e)) - Karl Hans Laurits
+- fix all ci errors maybe - ([a6db53d](https://github.com/lauritsk/hatchctl/commit/a6db53d44f49d60b95c27418ba4e8b823622978e)) - Karl Hans Laurits
+#### Miscellaneous Chores
+- (**tooling**) simplify hk toolchain - ([9c61cc8](https://github.com/lauritsk/hatchctl/commit/9c61cc8477300eddd7b86e9d982e22747d33e769)) - Karl Hans Laurits
+- re-initialise beads - ([b74a33b](https://github.com/lauritsk/hatchctl/commit/b74a33b064fbe48f1f0ffa2a341055cfb3b0cc15)) - Karl Hans Laurits
+- disable zizmor - ([f9d14d0](https://github.com/lauritsk/hatchctl/commit/f9d14d049788cc7fd0e773a60d656216d394cb19)) - Karl Hans Laurits
+
+- - -
+
 ## [v0.8.4](https://github.com/lauritsk/hatchctl/compare/19eb55d304a405f399babb14a199296fe80ae8ba..v0.8.4) - 2026-04-23
 #### Bug Fixes
 - ensure mise gets installed for all actions - ([19eb55d](https://github.com/lauritsk/hatchctl/commit/19eb55d304a405f399babb14a199296fe80ae8ba)) - Karl Hans Laurits
