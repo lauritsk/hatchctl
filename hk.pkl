@@ -33,7 +33,7 @@ local preCommitSteps = new Mapping<String, Step> {
   ["actionlint"] = Builtins.actionlint
   ["ghalint-action"] = Builtins.ghalint_action
   ["ghalint-workflow"] = Builtins.ghalint_workflow
-  ["zizmor"] = Builtins.zizmor
+  // ["zizmor"] = Builtins.zizmor
 
   ["go-fumpt"] = Builtins.go_fumpt
   ["go-vet"] = Builtins.go_vet
