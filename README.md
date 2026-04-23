@@ -210,7 +210,6 @@ mise run test:integration
 mise run test:coverage
 mise run test:race
 mise run build
-mise run audit
 mise run check
 mise run release:verify
 mise run run -- up

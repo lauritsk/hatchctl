@@ -19,10 +19,8 @@ Common tasks:
 
 - `mise run fix`
 - `mise run lint`
-- `mise run lint:slow`
 - `mise run test`
 - `mise run build`
-- `mise run audit`
 
 ## Commits
 

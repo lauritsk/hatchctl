@@ -42,12 +42,8 @@ description = "Run project app from source"
 run = "go run ./cmd/hatchctl"
 
 [tasks.lint]
-description = "Run hk-managed lint checks across the repository"
+description = "Run hk-managed checks across the repository"
 run = "hk check --all"
-
-[tasks."lint:slow"]
-description = "Run hk slow-profile checks across the repository"
-run = "hk check --all --profile slow"
 
 [tasks.fix]
 description = "Run hk-managed fixers across the repository"
@@ -73,18 +69,6 @@ run = "go test -race ./internal/app ./internal/reconcile ./internal/store/fs"
 description = "Build Go packages"
 run = "go build ./..."
 
-[tasks."build:bridge-helpers"]
-description = "Build embedded Linux bridge helpers"
-run = """
-mkdir -p internal/bridge/generated/assets/linux_amd64 internal/bridge/generated/assets/linux_arm64 && \
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o internal/bridge/generated/assets/linux_amd64/hatchctl ./cmd/hatchctl && \
-CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o internal/bridge/generated/assets/linux_arm64/hatchctl ./cmd/hatchctl && \
-chmod 0755 internal/bridge/generated/assets/linux_amd64/hatchctl internal/bridge/generated/assets/linux_arm64/hatchctl
-"""
-
-[tasks.audit]
-description = "Run hk-managed security audits"
-run = "hk check --all --profile slow --step go-vuln-check --step go-sec --step trivy-fs"
 
 [tasks."release:version"]
 description = "Create the next version and tag"
@@ -115,4 +99,4 @@ depends = ["release:publish"]
 
 [tasks.check]
 description = "Run project checks"
-depends = ["lint", "test", "build", "audit"]
+depends = ["lint", "test", "build"]

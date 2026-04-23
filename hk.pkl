@@ -40,21 +40,14 @@ local preCommitSteps = new Mapping<String, Step> {
   ["staticcheck"] = Builtins.staticcheck
   ["err-check"] = Builtins.err_check
 
-  ["go-vuln-check"] = (Builtins.go_vuln_check) {
-    profiles = List("slow")
-  }
-  ["go-sec"] = (Builtins.go_sec) {
-    profiles = List("slow")
-  }
+  ["go-vuln-check"] = Builtins.go_vuln_check
+  ["go-sec"] = Builtins.go_sec
   ["trivy-fs"] = new Step {
     glob = "**/*"
     check =
       "trivy fs --scanners vuln,misconfig,secret --severity HIGH,CRITICAL --ignore-unfixed --skip-dirs internal/devcontainer/testdata --exit-code 1 ."
-    profiles = List("slow")
   }
-  ["lychee"] = (Builtins.lychee) {
-    profiles = List("slow")
-  }
+  ["lychee"] = Builtins.lychee
 }
 
 hooks {

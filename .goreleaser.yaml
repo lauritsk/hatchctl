@@ -1,15 +1,24 @@
 # yaml-language-server: $schema=https://goreleaser.com/static/schema.json
-# vim: set ts=2 sw=2 tw=0 fo=cnqoj
-
+# yamllint disable rule:document-start rule:line-length
 version: 2
-
-env:
-  - BRIDGE_HELPERS_DIR=internal/bridge/generated/assets
-
 before:
   hooks:
-    - mise run build:bridge-helpers
-
+    - |
+      set -eu
+      mkdir -p \
+        internal/bridge/generated/assets/linux_amd64 \
+        internal/bridge/generated/assets/linux_arm64
+      CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+        go build \
+        -o internal/bridge/generated/assets/linux_amd64/hatchctl \
+        ./cmd/hatchctl
+      CGO_ENABLED=0 GOOS=linux GOARCH=arm64 \
+        go build \
+        -o internal/bridge/generated/assets/linux_arm64/hatchctl \
+        ./cmd/hatchctl
+      chmod 0755 \
+        internal/bridge/generated/assets/linux_amd64/hatchctl \
+        internal/bridge/generated/assets/linux_arm64/hatchctl
 builds:
   - main: ./...
     tags:
@@ -17,45 +26,29 @@ builds:
     env:
       - CGO_ENABLED=0
     ldflags:
-      - -s -w -X github.com/lauritsk/hatchctl/internal/version.Version={{ .Version }}
+      - >-
+        -s -w -X github.com/lauritsk/hatchctl/internal/version.Version={{ .Version }}
     goos:
       - linux
       - darwin
     goarch:
       - arm64
       - amd64
-
 archives:
   - formats: [tar.gz]
     name_template: >-
-      {{ .ProjectName }}_
-      {{- title .Os }}_
-      {{- if eq .Arch "amd64" }}x86_64
-      {{- else }}{{ .Arch }}{{ end }}
-      {{- if .Arm }}v{{ .Arm }}{{ end }}
-
+      {{ .ProjectName }}_ {{- title .Os }}_ {{- if eq .Arch "amd64" }}x86_64 {{- else }}{{ .Arch }}{{ end }} {{- if .Arm }}v{{ .Arm }}{{ end }}
 sboms:
   - artifacts: archive
-
 report_sizes: true
-
 changelog:
   sort: asc
   filters:
     exclude:
       - "^docs:"
       - "^test:"
-
-release:
-  footer: >-
-
-    ---
-
-    Released by [GoReleaser](https://github.com/goreleaser/goreleaser).
-
 checksum:
   name_template: "{{ .ProjectName }}_checksums.txt"
-
 signs:
   - cmd: cosign
     signature: "${artifact}.sigstore.json"
