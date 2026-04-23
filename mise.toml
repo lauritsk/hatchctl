@@ -7,7 +7,6 @@ hk = "1.43.0"
 pkl = "0.31.1"
 cocogitto = "7.0.0"
 trivy = "0.70.0"
-shellcheck = "0.11.0"
 actionlint = "1.7.12"
 cosign = "3.0.6"
 syft = "1.43.0"
@@ -39,22 +38,13 @@ depends = ["format:go"]
 description = "Format Go source files"
 run = "gofumpt -w ."
 
-[tasks."lint:go"]
-description = "Check Go formatting and vet packages"
-run = "test -z \"$(gofumpt -l .)\" && go vet ./..."
-
-[tasks."lint:actions"]
-description = "Lint GitHub Actions workflows"
-run = "actionlint"
-
-[tasks."lint:shell"]
-description = "Lint shell scripts"
-# run = "find . -type f -name '*.sh' -exec shellcheck {} +"
-run = "printf 'not configured yet!'"
-
 [tasks.lint]
-description = "Run all lint checks"
-depends = ["lint:go", "lint:actions", "lint:shell"]
+description = "Run hk-managed lint checks across the repository"
+run = "hk check --all"
+
+[tasks.fix]
+description = "Run hk-managed fixers across the repository"
+run = "hk fix --all"
 
 [tasks.test]
 description = "Run fast Go tests"
