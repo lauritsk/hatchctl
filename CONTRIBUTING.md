@@ -17,11 +17,12 @@ mise run check
 
 Common tasks:
 
-- `mise run format`
+- `mise run fix`
 - `mise run lint`
+- `mise run lint:slow`
 - `mise run test`
 - `mise run build`
-- `mise run pre-commit`
+- `mise run audit`
 
 ## Commits
 

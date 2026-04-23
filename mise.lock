@@ -402,38 +402,6 @@ url = "https://github.com/apple/pkl/releases/download/0.31.1/pkl-macos-amd64"
 checksum = "sha256:a8834481667325b44c539dbb758d7365a16389070f343c04b639bbe525ede013"
 url = "https://github.com/apple/pkl/releases/download/0.31.1/pkl-windows-amd64.exe"
 
-[[tools.revive]]
-version = "1.15.0"
-backend = "aqua:mgechev/revive"
-
-[tools.revive."platforms.linux-arm64"]
-checksum = "sha256:9420579d8594e21bdacd1aaec9f2d7f13829fee1c0c5981b00c6f4dbfe4f73e3"
-url = "https://github.com/mgechev/revive/releases/download/v1.15.0/revive_linux_arm64.tar.gz"
-
-[tools.revive."platforms.linux-arm64-musl"]
-checksum = "sha256:9420579d8594e21bdacd1aaec9f2d7f13829fee1c0c5981b00c6f4dbfe4f73e3"
-url = "https://github.com/mgechev/revive/releases/download/v1.15.0/revive_linux_arm64.tar.gz"
-
-[tools.revive."platforms.linux-x64"]
-checksum = "sha256:b9b03a625a40c79edf53c20447881095d4bf4c26afdaed090c399fdb32d2d3e2"
-url = "https://github.com/mgechev/revive/releases/download/v1.15.0/revive_linux_amd64.tar.gz"
-
-[tools.revive."platforms.linux-x64-musl"]
-checksum = "sha256:b9b03a625a40c79edf53c20447881095d4bf4c26afdaed090c399fdb32d2d3e2"
-url = "https://github.com/mgechev/revive/releases/download/v1.15.0/revive_linux_amd64.tar.gz"
-
-[tools.revive."platforms.macos-arm64"]
-checksum = "sha256:627f6a4561be15bae619f9d43997695385a6261a575ea67a64c084c9a09d572d"
-url = "https://github.com/mgechev/revive/releases/download/v1.15.0/revive_darwin_arm64.tar.gz"
-
-[tools.revive."platforms.macos-x64"]
-checksum = "sha256:8146f2aed999a03b24ba5c51be396f3609a900d1a2be10d6fb5132774247cf9b"
-url = "https://github.com/mgechev/revive/releases/download/v1.15.0/revive_darwin_amd64.tar.gz"
-
-[tools.revive."platforms.windows-x64"]
-checksum = "sha256:8ad1ae138792ab372f847aa8b0e0b5d5c1e20c9d01585b9db43c7c02e0b0a5a3"
-url = "https://github.com/mgechev/revive/releases/download/v1.15.0/revive_windows_amd64.tar.gz"
-
 [[tools.shellcheck]]
 version = "0.11.0"
 backend = "aqua:koalaman/shellcheck"
