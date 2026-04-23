@@ -77,7 +77,7 @@ run = "hk check --all --profile slow --step go-vuln-check"
 
 [tasks."audit:trivy"]
 description = "Audit repository files with Trivy, including secrets"
-run = "trivy fs --scanners vuln,misconfig,secret --severity HIGH,CRITICAL --ignore-unfixed --skip-dirs vendor --skip-dirs internal/devcontainer/testdata --exit-code 1 ."
+run = "trivy fs --scanners vuln,misconfig,secret --severity HIGH,CRITICAL --ignore-unfixed --skip-dirs internal/devcontainer/testdata --exit-code 1 ."
 
 [tasks.audit]
 description = "Run all audit checks"
