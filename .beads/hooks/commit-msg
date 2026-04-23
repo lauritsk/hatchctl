@@ -1,0 +1,2 @@
+#!/bin/sh
+test "${HK:-1}" = "0" || exec mise x -- hk run commit-msg "$@"
