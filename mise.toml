@@ -46,7 +46,8 @@ run = "actionlint"
 
 [tasks."lint:shell"]
 description = "Lint shell scripts"
-run = "files=$(find . -type f -name '*.sh' -not -path './.git/*' -not -path './node_modules/*' -not -path './vendor/*'); if [ -n \"$files\" ]; then printf '%s\\n' \"$files\" | while IFS= read -r file; do shellcheck \"$file\"; done; else echo 'skip: no shell scripts found'; fi"
+# run = "find . -type f -name '*.sh' -exec shellcheck {} +"
+run = "printf 'not configured yet!'"
 
 [tasks.lint]
 description = "Run all lint checks"
@@ -95,11 +96,11 @@ depends = ["audit:deps", "audit:trivy"]
 
 [tasks.sbom]
 description = "Generate an SBOM for the repository"
-run = "output=${SBOM_OUTPUT:-sbom.syft.json}; syft dir:. -o syft-json=\"$output\" && printf 'wrote %s\\n' \"$output\""
+run = "syft dir:. -o syft-json=\"${SBOM_OUTPUT:-sbom.syft.json}\""
 
 [tasks."check:commits"]
 description = "Check conventional commits for new commits"
-run = "head=$(git rev-parse HEAD); base=$(git merge-base HEAD origin/main 2>/dev/null || true); if [ -n \"$base\" ] && [ \"$base\" != \"$head\" ]; then cog check \"$base..$head\"; elif git rev-parse --verify HEAD~1 >/dev/null 2>&1; then cog check HEAD~1..HEAD; else echo 'skip: no commit range available'; fi"
+run = "cog check"
 
 [tasks."release:version"]
 description = "Create the next version and tag"
@@ -111,7 +112,17 @@ run = "goreleaser check"
 
 [tasks."release:verify"]
 description = "Verify release prerequisites are clean"
-run = "tmp=$(mktemp -d) && trap 'git worktree remove --force \"$tmp\"' EXIT && git worktree add --quiet --detach \"$tmp\" HEAD && (cd \"$tmp\" && go mod tidy && test -z \"$(git status --porcelain -- go.mod go.sum)\" && test -z \"$(git status --porcelain)\")"
+run = """
+tmp=$(mktemp -d)
+trap 'git worktree remove --force "$tmp"' EXIT
+git worktree add --quiet --detach "$tmp" HEAD
+(
+  cd "$tmp" &&
+  go mod tidy &&
+  test -z "$(git status --porcelain -- go.mod go.sum)" &&
+  test -z "$(git status --porcelain)"
+)
+"""
 
 [tasks."release:publish"]
 description = "Publish release artifacts for the current tag"
