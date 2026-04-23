@@ -2,6 +2,34 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## [v0.8.3](https://github.com/lauritsk/hatchctl/compare/b4f9e5de237e93d7f9c325460a7595b0fa0657b4..v0.8.3) - 2026-04-23
+#### Bug Fixes
+- (**formatting**) rename ci to check and space out files - ([259636a](https://github.com/lauritsk/hatchctl/commit/259636a19934d2d641a1e3318aee9f12a8a0cd62)) - Karl Hans Laurits
+- remove quotes from github actions on element - ([6efc262](https://github.com/lauritsk/hatchctl/commit/6efc26202d6f13c6a34b9bdbc8f7b9818716c162)) - Karl Hans Laurits
+#### Documentation
+- add contributing guide - ([2108333](https://github.com/lauritsk/hatchctl/commit/210833329525479dc5496a927abe75786af774b3)) - Karl Hans Laurits
+- rewrite README - ([cd71b8c](https://github.com/lauritsk/hatchctl/commit/cd71b8cedd97e674aeabafbdac0b6c1f10473ec6)) - Karl Hans Laurits
+#### Refactoring
+- inline release helper build and simplify hk tasks - ([c9dc8fd](https://github.com/lauritsk/hatchctl/commit/c9dc8fd68e6248f0b2fb5d40de3f8c7ce1b27c69)) - Karl Hans Laurits
+#### Miscellaneous Chores
+- (**tooling**) simplify release orchestration - ([1dda178](https://github.com/lauritsk/hatchctl/commit/1dda1780f47a0d05bb7971a1f3dce598dd0d24c8)) - Karl Hans Laurits
+- (**tooling**) move goreleaser checks into hk and remove docs - ([02ce686](https://github.com/lauritsk/hatchctl/commit/02ce6862e74da85b729454432ce328dbe2581a25)) - Karl Hans Laurits
+- (**tooling**) remove manual sbom task - ([040b981](https://github.com/lauritsk/hatchctl/commit/040b981e9da45ab87dd22c17369bd86106dac166)) - Karl Hans Laurits
+- (**tooling**) simplify mise tasks around hk - ([ffca9ab](https://github.com/lauritsk/hatchctl/commit/ffca9ab1548219896d937c6859edad6e0c622d64)) - Karl Hans Laurits
+- (**tooling**) add hk-managed trivy scan - ([da9f599](https://github.com/lauritsk/hatchctl/commit/da9f5993c37a2c53a533e504a2bedafcfbc08983)) - Karl Hans Laurits
+- (**tooling**) reorder hk checks by scope - ([a0dafb1](https://github.com/lauritsk/hatchctl/commit/a0dafb1207b1391f71375c13070a5009e15f132d)) - Karl Hans Laurits
+- (**tooling**) expand hk builtins and update contributing - ([2633655](https://github.com/lauritsk/hatchctl/commit/26336556163ef0fd2c19f978fc2532615957f697)) - Karl Hans Laurits
+- remove vendored go modules - ([1ac7cc2](https://github.com/lauritsk/hatchctl/commit/1ac7cc2cf5f365f47672740f59d16af011010a52)) - Karl Hans Laurits
+- simplify setup and slow hk checks - ([519932f](https://github.com/lauritsk/hatchctl/commit/519932fde66f949e628b3bdddd88d555ff782a94)) - Karl Hans Laurits
+- simplify format task with hk - ([f65d485](https://github.com/lauritsk/hatchctl/commit/f65d48569d3c05fa4ade6bdb5b7396d0314872d4)) - Karl Hans Laurits
+- simplify lint tasks with hk - ([53b870b](https://github.com/lauritsk/hatchctl/commit/53b870bad1a87cf9bcbc9a5e75f89224e7db648b)) - Karl Hans Laurits
+- simplify hk hook setup - ([91ed923](https://github.com/lauritsk/hatchctl/commit/91ed9236b87d3e8e1550ca9c52008c3fb21e7813)) - Karl Hans Laurits
+- simplify mise tasks - ([e61fde0](https://github.com/lauritsk/hatchctl/commit/e61fde01c24258fef05672c06178b7d7cb174126)) - Karl Hans Laurits
+- add devcontainer config - ([64ae1a8](https://github.com/lauritsk/hatchctl/commit/64ae1a8605ff47699b9f6c5f71c930cd1af7599b)) - Karl Hans Laurits
+- standardize repo automation - ([b4f9e5d](https://github.com/lauritsk/hatchctl/commit/b4f9e5de237e93d7f9c325460a7595b0fa0657b4)) - Karl Hans Laurits
+
+- - -
+
 ## [v0.8.2](https://github.com/lauritsk/hatchctl/compare/e040fd1bae25797eb5a9d6000eb309991565c604..v0.8.2) - 2026-04-22
 #### Bug Fixes
 - (**deps**) update module charm.land/lipgloss/v2 to v2.0.3 - ([55db8a5](https://github.com/lauritsk/hatchctl/commit/55db8a5abc2b870630a79f1bb2851539fa4208ca)) - renovate[bot]
