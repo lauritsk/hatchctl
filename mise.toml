@@ -86,10 +86,6 @@ chmod 0755 internal/bridge/generated/assets/linux_amd64/hatchctl internal/bridge
 description = "Run hk-managed security audits"
 run = "hk check --all --profile slow --step go-vuln-check --step go-sec --step trivy-fs"
 
-[tasks.sbom]
-description = "Generate an SBOM for the repository"
-run = "syft dir:. -o syft-json=\"${SBOM_OUTPUT:-sbom.syft.json}\""
-
 [tasks."check:commits"]
 description = "Check conventional commits for new commits"
 run = "cog check"
