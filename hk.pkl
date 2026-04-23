@@ -1,0 +1,33 @@
+amends "package://github.com/jdx/hk/releases/download/v1.43.0/hk@1.43.0#/Config.pkl"
+import "package://github.com/jdx/hk/releases/download/v1.43.0/hk@1.43.0#/Builtins.pkl"
+
+local preCommitSteps = new Mapping<String, Step> {
+    ["check-merge-conflict"] = Builtins.check_merge_conflict
+    ["actionlint"] = Builtins.actionlint
+    ["go-fumpt"] = (Builtins.go_fumpt) {
+        glob = List("cmd/**/*.go", "internal/**/*.go")
+    }
+    ["go-vet"] = Builtins.go_vet
+}
+
+hooks {
+    ["pre-commit"] {
+        fix = true
+        stash = "git"
+        steps = preCommitSteps
+    }
+    ["commit-msg"] {
+        steps {
+            ["conventional-commit"] {
+                check = "hk util check-conventional-commit {{commit_msg_file}}"
+            }
+        }
+    }
+    ["fix"] {
+        fix = true
+        steps = preCommitSteps
+    }
+    ["check"] {
+        steps = preCommitSteps
+    }
+}

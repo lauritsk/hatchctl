@@ -9,13 +9,14 @@ mise install
 mise run setup
 ```
 
-`mise run setup` downloads Go dependencies and installs the git pre-commit hook.
+`mise install` installs the project tools and hk-managed git hooks. `mise run setup` downloads Go dependencies.
 
 ## Common tasks
 
 | Goal | Command |
 | --- | --- |
 | Format project files | `mise run format` |
+| Run the hk pre-commit hook manually | `mise run pre-commit` |
 | Lint Go, Actions, and shell scripts | `mise run lint` |
 | Run the fast test suite | `mise run test` |
 | Run tests with coverage | `mise run test:coverage` |
@@ -33,6 +34,10 @@ If you touch embedded bridge helper assets, also run `mise run build:bridge-help
 Commits must follow Conventional Commits. Cocogitto enforces this locally and in CI.
 
 Create commits through `mise`:
+
+> [!TIP]
+> On Git 2.54+, you can also install hk once globally with `hk install --global`. This repo keeps `hk install --mise` in `mise.toml` so `mise install` also wires hooks per clone.
+
 
 - `mise exec cocogitto -- cog commit <type> "<message>" [scope]`
 - add `-B` for breaking changes
