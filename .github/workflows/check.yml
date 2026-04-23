@@ -1,21 +1,16 @@
 name: check
-
 on:
   workflow_dispatch:
   pull_request:
   push:
     branches: ["main"]
-
 permissions:
   contents: read
-
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
-
 env:
   MISE_EXPERIMENTAL: true
-
 jobs:
   check:
     runs-on: ubuntu-24.04
@@ -27,8 +22,8 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+      - uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151
       - run: mise run check
-
   macos-smoke:
     runs-on: macos-15
     timeout-minutes: 15
@@ -39,11 +34,11 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+      - uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151
       - run: mise run test
       - run: mise run build
       - run: >-
           mise run -- bridge doctor --workspace . --config .devcontainer/devcontainer.json --json
-
   integration:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -54,8 +49,8 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+      - uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151
       - run: mise run test:integration
-
   race:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -66,8 +61,8 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+      - uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151
       - run: mise run test:race
-
   coverage:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -78,4 +73,5 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+      - uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151
       - run: mise run test:coverage
