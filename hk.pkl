@@ -2,68 +2,69 @@ amends "package://github.com/jdx/hk/releases/download/v1.43.0/hk@1.43.0#/Config.
 import "package://github.com/jdx/hk/releases/download/v1.43.0/hk@1.43.0#/Builtins.pkl"
 
 local preCommitSteps = new Mapping<String, Step> {
-  ["check-merge-conflict"] = Builtins.check_merge_conflict
-  ["check-case-conflict"] = Builtins.check_case_conflict
+  ["byte-order-marker"] = Builtins.byte_order_marker
   ["check-added-large-files"] = Builtins.check_added_large_files
-  ["detect-private-key"] = Builtins.detect_private_key
+  ["check-case-conflict"] = Builtins.check_case_conflict
   ["check-executables-have-shebangs"] = Builtins.check_executables_have_shebangs
-
-  ["trailing-whitespace"] = Builtins.trailing_whitespace
+  ["check-merge-conflict"] = Builtins.check_merge_conflict
+  ["check-symlinks"] = Builtins.check_symlinks
+  ["fix-smart-quotes"] = Builtins.fix_smart_quotes
   ["mixed-line-ending"] = Builtins.mixed_line_ending
-  ["newlines"] = Builtins.newlines
-  ["typos"] = (Builtins.typos) {
+  ["end-of-file-fixer"] = Builtins.newlines
+  ["trailing-whitespace"] = Builtins.trailing_whitespace
+  // ["no-commit-to-branch"] = Builtins.no_commit_to_branch
+
+  ["mise"] = Builtins.mise
+  ["actionlint"] = Builtins.actionlint
+  ["zizmor"] = Builtins.zizmor
+  ["pkl"] = Builtins.pkl
+  ["pkl-format"] = Builtins.pkl_format
+  ["jq"] = Builtins.jq
+  ["rumdl"] = (Builtins.rumdl) {
     exclude =
       List(
         ".beads/**",
-        ".devcontainer/devcontainer.json",
-        ".github/CODEOWNERS",
-        ".github/workflows/check.yml",
-        ".github/workflows/release.yml",
-        ".gitignore",
-        ".goreleaser.yaml",
-        "AGENTS.md",
         "CHANGELOG.md",
-        "CONTRIBUTING.md",
-        "LICENSE",
-        "README.md",
-        "SECURITY.md",
-        "cmd/hatchctl/main.go",
-        "cmd/hatchctl/main_test.go",
-        "cog.toml",
-        "go.mod",
-        "go.sum",
-        "hk.pkl",
-        "internal/**",
       )
   }
-
   ["shellcheck"] = Builtins.shellcheck
+  ["shfmt"] = Builtins.shfmt
+  ["tombi"] = Builtins.tombi
+  ["tombi-format"] = Builtins.tombi_format
+  ["yamllint"] = (Builtins.yamllint) {
+    exclude =
+      List(
+        ".beads/**",
+        ".github/**",
+      )
+  }
   ["yamlfmt"] = (Builtins.yamlfmt) {
     exclude =
       List(
         ".beads/**",
-        ".github/workflows/**",
-        ".goreleaser.yaml",
-        "internal/devcontainer/testdata/**",
+        ".github/**",
       )
   }
-  ["taplo"] = Builtins.taplo
-  ["taplo-format"] = Builtins.taplo_format
-  ["mise"] = Builtins.mise
-  // ["pkl"] = Builtins.pkl
-  // ["pkl-format"] = Builtins.pkl_format
+  // ["yq"] = Builtins.yq
   ["goreleaser-check"] = new Step {
     glob = ".goreleaser.yaml"
     check = "goreleaser check"
   }
 
-  ["actionlint"] = Builtins.actionlint
-  ["zizmor"] = Builtins.zizmor
-
+  ["gomod-tidy"] = Builtins.gomod_tidy
   ["go-fumpt"] = Builtins.go_fumpt
   ["go-vet"] = Builtins.go_vet
-  ["staticcheck"] = Builtins.staticcheck
 
+  ["betterleaks"] = Builtins.betterleaks
+  ["harper"] = (Builtins.harper) {
+    glob =
+      List(
+        "README.md",
+        "AGENTS.md",
+        "CONTRIBUTING.md",
+        "SECURITY.md",
+      )
+  }
   ["trivy-fs"] = new Step {
     glob = "**/*"
     check =
@@ -74,6 +75,7 @@ local preCommitSteps = new Mapping<String, Step> {
       List(
         ".beads/**",
         "internal/**",
+        "mise.lock",
       )
   }
 }

@@ -1,7 +1,0 @@
-{
-  "database": "dolt",
-  "backend": "dolt",
-  "dolt_mode": "embedded",
-  "dolt_database": "hatchctl",
-  "project_id": "0e909e1c-7c00-4e65-a059-242e8a1fe9d0"
-}

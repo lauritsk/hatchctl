@@ -1,27 +1,31 @@
 [env]
 HK_MISE = 1
-HK_PKL_BACKEND = "pklr"
 
 [tools]
 "aqua:gastownhall/beads" = "1.0.2"
-hk = "1.43.0"
-cocogitto = "7.0.0"
-
-typos = "1.45.1"
-
-shellcheck = "0.11.0"
-yamlfmt = "0.21.0"
-taplo = "0.10.0"
+hk = "1.44.0"
 
 actionlint = "1.7.12"
 zizmor = "1.24.1"
+pkl = "0.31.1"
+jq = "1.8.1"
+rumdl = "0.1.80"
+shellcheck = "0.11.0"
+shfmt = "3.13.1"
+tombi = "0.9.22"
+yamllint = "1.38.0"
+yamlfmt = "0.21.0"
+yq = "4.53.2"
 
 go = "1.26.2"
 gofumpt = "0.9.2"
-staticcheck = "2026.1"
 
+"aqua:betterleaks/betterleaks" = "1.1.2"
+harper-cli = "2.0.0"
 trivy = "0.70.0"
 lychee = "0.23.0"
+
+cocogitto = "7.0.0"
 
 cosign = "3.0.6"
 syft = "1.43.0"

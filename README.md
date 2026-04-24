@@ -1,35 +1,35 @@
-# hatchctl
+# Hatch Control
 
-Run devcontainers from the terminal.
+Run Dev Containers from the terminal.
 
 [![CI][badge-ci]][link-actions]
 [![GitHub release][badge-release]][link-releases]
 ![Go 1.26+][badge-go]
 ![macOS and Linux][badge-platform]
 
-[Install](#install) • [Quick start](#quick-start) • [Commands](#commands) •
-[Configuration](#configuration) • [Security model](#security-model) •
+[Install](#install) • [Quick Start](#quick-start) • [Commands](#commands) •
+[Configuration](#configuration) • [Security Model](#security-model) •
 [Development](#development)
 
 `hatchctl` is a Go CLI for creating, inspecting, and using
-devcontainer-based workspaces without depending on editor integration. It is
-built for terminal-first workflows: start a workspace, open a shell, inspect
-resolved config, and re-run lifecycle hooks from the command line.
+Dev Container based workspaces without depending on editor integration. It is
+built for terminal-first workflows that start a workspace, open a shell,
+show resolved configuration, and run life cycle hooks again from the command line.
 
 > [!NOTE]
-> `hatchctl` supports macOS and Linux. The optional bridge for browser-open and
+> `hatchctl` supports macOS and Linux. The optional bridge for browser opening and
 > localhost callback forwarding is macOS-only.
 
-## Why hatchctl
+## Why the CLI
 
-- **Terminal-first devcontainers**: use devcontainers without opening VS Code
+- **Terminal-first Dev Containers**: use Dev Containers without opening VS Code
 - **Repeatable workflows**: build, start, inspect, and exec through a single CLI
 - **Script-friendly output**: use JSON output for automation and CI-style
   tooling
-- **Backend flexibility**: supports Docker by default, with Podman support
+- **Backend flexibility**: supports Docker by default, with `Podman` support
   available
 - **Safer defaults**: trust-sensitive repo settings stay gated behind explicit
-  opt-in flags
+  trust flags
 
 ## Install
 
@@ -55,15 +55,15 @@ API directly.
 
 You will need:
 
-- Docker or Podman available on `PATH`
-- a Linux container runtime target for devcontainers
+- Docker or `Podman` available on `PATH`
+- A Linux container runtime target for Dev Containers
 - Compose support from your selected backend when using compose-based
-  devcontainers
-- macOS if you want bridge support
+  Dev Containers
+- macOS to use bridge support
 
-## Quick start
+## Quick Start
 
-Create or reuse the devcontainer for the current workspace:
+Create or reuse the Dev Container for the current workspace:
 
 ```sh
 hatchctl up
@@ -87,7 +87,7 @@ Inspect the resolved config and detected runtime state:
 hatchctl config
 ```
 
-Re-run lifecycle hooks:
+Run life cycle hooks again:
 
 ```sh
 hatchctl run --phase start
@@ -107,12 +107,12 @@ hatchctl exec --json -- sh -lc 'go test ./...'
 
 ## Commands
 
-- `hatchctl up`: resolve config, build if needed, and create or reconnect to
-  the managed devcontainer
-- `hatchctl build`: build the devcontainer image without starting it
+- `hatchctl up`: resolve configuration, then create or reconnect to the managed
+  Dev Container, building it first when needed
+- `hatchctl build`: build the Dev Container image without starting it
 - `hatchctl exec`: open a shell or run a command inside the managed container
 - `hatchctl config`: show merged config and detected runtime state
-- `hatchctl run`: re-run devcontainer lifecycle phases in an existing container
+- `hatchctl run`: run Dev Container life cycle phases again in an existing container
 - `hatchctl bridge doctor`: inspect bridge availability and current bridge
   session state
 - `hatchctl version`: print version information
@@ -170,7 +170,7 @@ Useful environment variables:
 - `HATCHCTL_DOTFILES_INSTALL_COMMAND`
 - `HATCHCTL_DOTFILES_TARGET_PATH`
 
-## Security model
+## Security Model
 
 `hatchctl` assumes `devcontainer.json` and workspace-local config may come from
 a repository you do not fully trust yet.
@@ -181,18 +181,18 @@ a repository you do not fully trust yet.
 
 Security defaults include:
 
-- host-side `initializeCommand` is blocked unless you pass
+- Host-side `initializeCommand` is blocked unless you pass
   `--allow-host-lifecycle`
-- repo-controlled backend settings that expand host access are blocked unless
+- Repo-controlled backend settings that expand host access are blocked unless
   you pass `--trust-workspace`
-- unsigned images warn by default; set `HATCHCTL_COSIGN_STRICT=1` to fail
-  closed
-- unsigned remote OCI features fail by default in non-interactive runs
-- direct tarball features must use `https`, except loopback `http` for local
+- Unsigned images warn by default; enable `HATCHCTL_COSIGN_STRICT=1` to block
+  execution
+- Unsigned remote `OCI` features fail by default in unattended runs
+- Direct tarball features must use `https`, except loopback `http` for local
   development and tests
-- the macOS bridge binds to loopback only
+- The macOS bridge uses only loopback addresses
 
-See [SECURITY.md](./SECURITY.md) for the project security policy and
+See the [security policy](./SECURITY.md) for the project security policy and
 reporting contact.
 
 ## Development
@@ -216,11 +216,11 @@ mise run run -- up
 ```
 
 For contributor workflow and release details, see
-[CONTRIBUTING.md](./CONTRIBUTING.md).
+the [contributor guide](./CONTRIBUTING.md).
 
-## Verifying releases
+## Verifying Releases
 
-Release checksums are signed with keyless Cosign using GitHub Actions OIDC.
+Release checksums are signed without keys by Cosign using GitHub Actions `OIDC`.
 
 ```sh
 cosign verify-blob hatchctl_checksums.txt \

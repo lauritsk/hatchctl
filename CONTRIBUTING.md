@@ -32,9 +32,9 @@ mise exec cocogitto -- cog commit <type> "<message>" [scope]
 
 Use `-B` for breaking changes.
 
-## Pull requests
+## Pull Requests
 
-- run `mise run check`
-- keep changes focused
-- update tests and docs when behavior changes
-- use a Conventional Commit title
+- Run `mise run check`
+- Keep changes focused
+- Update tests and docs when behavior changes
+- Use a Conventional Commit title
