@@ -72,36 +72,36 @@ checksum = "sha256:e149c86d00fb99cce8d87def2cd1ff046c6889a0e912007d44668df5980ce
 url = "https://github.com/betterleaks/betterleaks/releases/download/v1.1.2/betterleaks_1.1.2_windows_x64.zip"
 
 [[tools."aqua:gastownhall/beads"]]
-version = "1.0.2"
+version = "1.0.3"
 backend = "aqua:gastownhall/beads"
 
 [tools."aqua:gastownhall/beads"."platforms.linux-arm64"]
-checksum = "sha256:f7b60c2398305bdb18d4ece1c84b87951e5bbcd6966fa0d607ac16f9d6e11a4d"
-url = "https://github.com/gastownhall/beads/releases/download/v1.0.2/beads_1.0.2_linux_arm64.tar.gz"
+checksum = "sha256:243a9c75012e794888fcafb957e7624b8fefdfef033d14cd03ebc9831c3bc12f"
+url = "https://github.com/gastownhall/beads/releases/download/v1.0.3/beads_1.0.3_linux_arm64.tar.gz"
 
 [tools."aqua:gastownhall/beads"."platforms.linux-arm64-musl"]
-checksum = "sha256:f7b60c2398305bdb18d4ece1c84b87951e5bbcd6966fa0d607ac16f9d6e11a4d"
-url = "https://github.com/gastownhall/beads/releases/download/v1.0.2/beads_1.0.2_linux_arm64.tar.gz"
+checksum = "sha256:243a9c75012e794888fcafb957e7624b8fefdfef033d14cd03ebc9831c3bc12f"
+url = "https://github.com/gastownhall/beads/releases/download/v1.0.3/beads_1.0.3_linux_arm64.tar.gz"
 
 [tools."aqua:gastownhall/beads"."platforms.linux-x64"]
-checksum = "sha256:66280bca14581218684027fee000810c2e40a9c6fe00e876ff64bdcb01a036c0"
-url = "https://github.com/gastownhall/beads/releases/download/v1.0.2/beads_1.0.2_linux_amd64.tar.gz"
+checksum = "sha256:1ef5dca818d7e81574df9e9f9fc2a16ab711da09b0fa7b822ae162d9a81c8912"
+url = "https://github.com/gastownhall/beads/releases/download/v1.0.3/beads_1.0.3_linux_amd64.tar.gz"
 
 [tools."aqua:gastownhall/beads"."platforms.linux-x64-musl"]
-checksum = "sha256:66280bca14581218684027fee000810c2e40a9c6fe00e876ff64bdcb01a036c0"
-url = "https://github.com/gastownhall/beads/releases/download/v1.0.2/beads_1.0.2_linux_amd64.tar.gz"
+checksum = "sha256:1ef5dca818d7e81574df9e9f9fc2a16ab711da09b0fa7b822ae162d9a81c8912"
+url = "https://github.com/gastownhall/beads/releases/download/v1.0.3/beads_1.0.3_linux_amd64.tar.gz"
 
 [tools."aqua:gastownhall/beads"."platforms.macos-arm64"]
-checksum = "sha256:f3b27edd4ed43ce8aa792837145f324e4b8a3cbf9dc0c81d144682da46189038"
-url = "https://github.com/gastownhall/beads/releases/download/v1.0.2/beads_1.0.2_darwin_arm64.tar.gz"
+checksum = "sha256:fe6e4465751f46d9f3a670c3cf656714a171e44c8bc318fe19054f513b8306ed"
+url = "https://github.com/gastownhall/beads/releases/download/v1.0.3/beads_1.0.3_darwin_arm64.tar.gz"
 
 [tools."aqua:gastownhall/beads"."platforms.macos-x64"]
-checksum = "sha256:7d9de37b544ecc55ccc798da6778051344dba839834943957942f38412d7a13a"
-url = "https://github.com/gastownhall/beads/releases/download/v1.0.2/beads_1.0.2_darwin_amd64.tar.gz"
+checksum = "sha256:6bd75ac056288a5e8bbb203750e95af5a441d5ad1d20ca5511e60cd6c813e54b"
+url = "https://github.com/gastownhall/beads/releases/download/v1.0.3/beads_1.0.3_darwin_amd64.tar.gz"
 
 [tools."aqua:gastownhall/beads"."platforms.windows-x64"]
-checksum = "sha256:24c12852d91fc6fb210e3f0415c003f4dd09a2bc1920ecffa8710633f9966abf"
-url = "https://github.com/gastownhall/beads/releases/download/v1.0.2/beads_1.0.2_windows_amd64.zip"
+checksum = "sha256:96e377419e2a127fc53fb6ba15bde20b0778e58ef267247cd7715852ee25b02a"
+url = "https://github.com/gastownhall/beads/releases/download/v1.0.3/beads_1.0.3_windows_amd64.zip"
 
 [[tools.cocogitto]]
 version = "7.0.0"
@@ -278,64 +278,64 @@ url = "https://github.com/goreleaser/goreleaser/releases/download/v2.15.4/gorele
 provenance = "github-attestations"
 
 [[tools.harper-cli]]
-version = "2.0.0"
+version = "2.1.0"
 backend = "aqua:Automattic/harper/harper-cli"
 
 [tools.harper-cli."platforms.linux-arm64"]
-checksum = "sha256:c9a41cbe6ef5ee5d91ea4b739bea3a505788b0ce96a36d963c11a372292fb1e8"
-url = "https://github.com/Automattic/harper/releases/download/v2.0.0/harper-cli-aarch64-unknown-linux-gnu.tar.gz"
+checksum = "sha256:74903f12a364f6f6c3d68fd18115d264f5badab1bccfabcd1dca9eb5c13ac71c"
+url = "https://github.com/Automattic/harper/releases/download/v2.1.0/harper-cli-aarch64-unknown-linux-gnu.tar.gz"
 
 [tools.harper-cli."platforms.linux-arm64-musl"]
-checksum = "sha256:c9a41cbe6ef5ee5d91ea4b739bea3a505788b0ce96a36d963c11a372292fb1e8"
-url = "https://github.com/Automattic/harper/releases/download/v2.0.0/harper-cli-aarch64-unknown-linux-gnu.tar.gz"
+checksum = "sha256:74903f12a364f6f6c3d68fd18115d264f5badab1bccfabcd1dca9eb5c13ac71c"
+url = "https://github.com/Automattic/harper/releases/download/v2.1.0/harper-cli-aarch64-unknown-linux-gnu.tar.gz"
 
 [tools.harper-cli."platforms.linux-x64"]
-checksum = "sha256:48e6a3edd00174bb7d6a21ebd130c344eb1f93817cdd5b26eba58c0aea860611"
-url = "https://github.com/Automattic/harper/releases/download/v2.0.0/harper-cli-x86_64-unknown-linux-gnu.tar.gz"
+checksum = "sha256:dc07737050a2c83a993727809ae33b3334523802c9011153d990a75d1ceff851"
+url = "https://github.com/Automattic/harper/releases/download/v2.1.0/harper-cli-x86_64-unknown-linux-gnu.tar.gz"
 
 [tools.harper-cli."platforms.linux-x64-musl"]
-checksum = "sha256:48e6a3edd00174bb7d6a21ebd130c344eb1f93817cdd5b26eba58c0aea860611"
-url = "https://github.com/Automattic/harper/releases/download/v2.0.0/harper-cli-x86_64-unknown-linux-gnu.tar.gz"
+checksum = "sha256:dc07737050a2c83a993727809ae33b3334523802c9011153d990a75d1ceff851"
+url = "https://github.com/Automattic/harper/releases/download/v2.1.0/harper-cli-x86_64-unknown-linux-gnu.tar.gz"
 
 [tools.harper-cli."platforms.macos-arm64"]
-checksum = "sha256:8062598c7497ec70cfb7de4a363768affd9a665430d055e0a5172a8cd8d80956"
-url = "https://github.com/Automattic/harper/releases/download/v2.0.0/harper-cli-aarch64-apple-darwin.tar.gz"
+checksum = "sha256:0fe2999effe5b9fe5f3acc491ef47a3f28bd07b6d3d0c7e072d2f489146d1f64"
+url = "https://github.com/Automattic/harper/releases/download/v2.1.0/harper-cli-aarch64-apple-darwin.tar.gz"
 
 [tools.harper-cli."platforms.macos-x64"]
-checksum = "sha256:0f35045f6834cf4a81cb6501f2e7804d6d3fcead615c7643be0d0387da0c2e13"
-url = "https://github.com/Automattic/harper/releases/download/v2.0.0/harper-cli-x86_64-apple-darwin.tar.gz"
+checksum = "sha256:91fec3f5edf5cae11d6927bc47c7a54caa0d624e0c70c7e3027fef832b7aca8f"
+url = "https://github.com/Automattic/harper/releases/download/v2.1.0/harper-cli-x86_64-apple-darwin.tar.gz"
 
 [tools.harper-cli."platforms.windows-x64"]
-checksum = "sha256:926b52b9a1fef7bfc994b0fc984ea5732fb993dc9663f2e0e63e2b5cfd1c65f0"
-url = "https://github.com/Automattic/harper/releases/download/v2.0.0/harper-cli-x86_64-pc-windows-msvc.zip"
+checksum = "sha256:75389e13cdd84f36727361c25315f93941a60d5f9a99b498ffdf23d7a9f6c11c"
+url = "https://github.com/Automattic/harper/releases/download/v2.1.0/harper-cli-x86_64-pc-windows-msvc.zip"
 
 [[tools.hk]]
-version = "1.44.0"
+version = "1.44.1"
 backend = "aqua:jdx/hk"
 
 [tools.hk."platforms.linux-arm64"]
-checksum = "sha256:0dbca69b6d2141bf60aa9b5cd54e59232ba5b10855a9c7b52426a9645211809f"
-url = "https://github.com/jdx/hk/releases/download/v1.44.0/hk-aarch64-unknown-linux-gnu.tar.gz"
+checksum = "sha256:248fae1d0cbc859c67f9e867e67e0cf69e5f93404c62c96efbe83f9ffe691442"
+url = "https://github.com/jdx/hk/releases/download/v1.44.1/hk-aarch64-unknown-linux-gnu.tar.gz"
 
 [tools.hk."platforms.linux-arm64-musl"]
-checksum = "sha256:0dbca69b6d2141bf60aa9b5cd54e59232ba5b10855a9c7b52426a9645211809f"
-url = "https://github.com/jdx/hk/releases/download/v1.44.0/hk-aarch64-unknown-linux-gnu.tar.gz"
+checksum = "sha256:248fae1d0cbc859c67f9e867e67e0cf69e5f93404c62c96efbe83f9ffe691442"
+url = "https://github.com/jdx/hk/releases/download/v1.44.1/hk-aarch64-unknown-linux-gnu.tar.gz"
 
 [tools.hk."platforms.linux-x64"]
-checksum = "sha256:cb093bf2d31f0d21c3166b143fe671ddb22cd2cad5069596bfa22d7a541f2270"
-url = "https://github.com/jdx/hk/releases/download/v1.44.0/hk-x86_64-unknown-linux-gnu.tar.gz"
+checksum = "sha256:6c50ef086268b5470a0da421505f0694d6cefcc8271abb8b50f2e4e4ded35eb6"
+url = "https://github.com/jdx/hk/releases/download/v1.44.1/hk-x86_64-unknown-linux-gnu.tar.gz"
 
 [tools.hk."platforms.linux-x64-musl"]
-checksum = "sha256:cb093bf2d31f0d21c3166b143fe671ddb22cd2cad5069596bfa22d7a541f2270"
-url = "https://github.com/jdx/hk/releases/download/v1.44.0/hk-x86_64-unknown-linux-gnu.tar.gz"
+checksum = "sha256:6c50ef086268b5470a0da421505f0694d6cefcc8271abb8b50f2e4e4ded35eb6"
+url = "https://github.com/jdx/hk/releases/download/v1.44.1/hk-x86_64-unknown-linux-gnu.tar.gz"
 
 [tools.hk."platforms.macos-arm64"]
-checksum = "sha256:6a1de3c576487983e46d0458b3c9f20af51c4c785d22b96e3396be5c164a1e04"
-url = "https://github.com/jdx/hk/releases/download/v1.44.0/hk-aarch64-apple-darwin.tar.gz"
+checksum = "sha256:c8e317df71ef6f2faa646db1e433b2208e2a4de54a6298e0c510f27d8191924b"
+url = "https://github.com/jdx/hk/releases/download/v1.44.1/hk-aarch64-apple-darwin.tar.gz"
 
 [tools.hk."platforms.windows-x64"]
-checksum = "sha256:8a0fb733ccae1e83234be60998e1de7df64c728cc9d1e4ebd40c9642fc8b0b3c"
-url = "https://github.com/jdx/hk/releases/download/v1.44.0/hk-x86_64-pc-windows-msvc.zip"
+checksum = "sha256:1ded329d70266fc3c4fe319ca48678614532ea7187ffd785d820e01bcdbf7f58"
+url = "https://github.com/jdx/hk/releases/download/v1.44.1/hk-x86_64-pc-windows-msvc.zip"
 
 [[tools.jq]]
 version = "1.8.1"
@@ -437,49 +437,49 @@ checksum = "sha256:a8834481667325b44c539dbb758d7365a16389070f343c04b639bbe525ede
 url = "https://github.com/apple/pkl/releases/download/0.31.1/pkl-windows-amd64.exe"
 
 [[tools.rumdl]]
-version = "0.1.80"
+version = "0.1.83"
 backend = "github:rvben/rumdl"
 
 [tools.rumdl."platforms.linux-arm64"]
-checksum = "sha256:a6bb603c291cc9c7c2034fe8646f5f8c6d2b89754b676ff67293088e23f73944"
-url = "https://github.com/rvben/rumdl/releases/download/v0.1.80/rumdl-v0.1.80-aarch64-unknown-linux-gnu.tar.gz"
-url_api = "https://api.github.com/repos/rvben/rumdl/releases/assets/402753111"
+checksum = "sha256:8281610cf5596edfdb0e2b7ec6b65baa0f2d4c02ed03ba65af2691c812aa465f"
+url = "https://github.com/rvben/rumdl/releases/download/v0.1.83/rumdl-v0.1.83-aarch64-unknown-linux-gnu.tar.gz"
+url_api = "https://api.github.com/repos/rvben/rumdl/releases/assets/406068228"
 provenance = "github-attestations"
 
 [tools.rumdl."platforms.linux-arm64-musl"]
-checksum = "sha256:12c2e749f2a46d76ad30acaafdfed9114e10f7d752ceb364f154e4a9997af5a5"
-url = "https://github.com/rvben/rumdl/releases/download/v0.1.80/rumdl-v0.1.80-aarch64-unknown-linux-musl.tar.gz"
-url_api = "https://api.github.com/repos/rvben/rumdl/releases/assets/402753103"
+checksum = "sha256:0991912871809170a6c780690bac58b22147e210558623e9bcf23fe2a07c603f"
+url = "https://github.com/rvben/rumdl/releases/download/v0.1.83/rumdl-v0.1.83-aarch64-unknown-linux-musl.tar.gz"
+url_api = "https://api.github.com/repos/rvben/rumdl/releases/assets/406068237"
 provenance = "github-attestations"
 
 [tools.rumdl."platforms.linux-x64"]
-checksum = "sha256:697a692cfbd148a498c8e00cd1b2f05fcde00078f31128cfca74db3505590a71"
-url = "https://github.com/rvben/rumdl/releases/download/v0.1.80/rumdl-v0.1.80-x86_64-unknown-linux-gnu.tar.gz"
-url_api = "https://api.github.com/repos/rvben/rumdl/releases/assets/402753108"
+checksum = "sha256:fe072a2df7857188c8a326b02a13f2942c87cda08fd1a33b9d0d92f1407ce18d"
+url = "https://github.com/rvben/rumdl/releases/download/v0.1.83/rumdl-v0.1.83-x86_64-unknown-linux-gnu.tar.gz"
+url_api = "https://api.github.com/repos/rvben/rumdl/releases/assets/406068230"
 provenance = "github-attestations"
 
 [tools.rumdl."platforms.linux-x64-musl"]
-checksum = "sha256:fbcf3ce4c96247ddff62f9549df06dfafe49cbd12224c59e5370b9a7184894c4"
-url = "https://github.com/rvben/rumdl/releases/download/v0.1.80/rumdl-v0.1.80-x86_64-unknown-linux-musl.tar.gz"
-url_api = "https://api.github.com/repos/rvben/rumdl/releases/assets/402753105"
+checksum = "sha256:5bbe124101d85a75c4ce170dc3bef701205b7c31cb61628d0f0731d5fe43e945"
+url = "https://github.com/rvben/rumdl/releases/download/v0.1.83/rumdl-v0.1.83-x86_64-unknown-linux-musl.tar.gz"
+url_api = "https://api.github.com/repos/rvben/rumdl/releases/assets/406068227"
 provenance = "github-attestations"
 
 [tools.rumdl."platforms.macos-arm64"]
-checksum = "sha256:ceda068c9ad386e17aa368180e3d632e0b535629964fcbf72418bf3328f16c03"
-url = "https://github.com/rvben/rumdl/releases/download/v0.1.80/rumdl-v0.1.80-aarch64-apple-darwin.tar.gz"
-url_api = "https://api.github.com/repos/rvben/rumdl/releases/assets/402753116"
+checksum = "sha256:6f853bb7bf1397a490ee382ab22e23cb2d3332037f050ccf6d09028659f7f562"
+url = "https://github.com/rvben/rumdl/releases/download/v0.1.83/rumdl-v0.1.83-aarch64-apple-darwin.tar.gz"
+url_api = "https://api.github.com/repos/rvben/rumdl/releases/assets/406068225"
 provenance = "github-attestations"
 
 [tools.rumdl."platforms.macos-x64"]
-checksum = "sha256:83f62d4e33e775f4bdd51a20d221546944d77242c91a3fdfa25de3863ca8739e"
-url = "https://github.com/rvben/rumdl/releases/download/v0.1.80/rumdl-v0.1.80-x86_64-apple-darwin.tar.gz"
-url_api = "https://api.github.com/repos/rvben/rumdl/releases/assets/402753114"
+checksum = "sha256:217676cbbdff24be588e0dac661918f196a15f8f95d6a3212c46806fce23243d"
+url = "https://github.com/rvben/rumdl/releases/download/v0.1.83/rumdl-v0.1.83-x86_64-apple-darwin.tar.gz"
+url_api = "https://api.github.com/repos/rvben/rumdl/releases/assets/406068226"
 provenance = "github-attestations"
 
 [tools.rumdl."platforms.windows-x64"]
-checksum = "sha256:87dc9daeb6a9d9efb0a99bc5766a28a0875bbf58982763139d77fe1e6e34cbb4"
-url = "https://github.com/rvben/rumdl/releases/download/v0.1.80/rumdl-v0.1.80-x86_64-pc-windows-msvc.zip"
-url_api = "https://api.github.com/repos/rvben/rumdl/releases/assets/402753109"
+checksum = "sha256:9c585326265ed5591ca543c76d3787eb95a77af812738918f6f5e15b62def161"
+url = "https://github.com/rvben/rumdl/releases/download/v0.1.83/rumdl-v0.1.83-x86_64-pc-windows-msvc.zip"
+url_api = "https://api.github.com/repos/rvben/rumdl/releases/assets/406068234"
 provenance = "github-attestations"
 
 [[tools.shellcheck]]
@@ -579,36 +579,36 @@ checksum = "sha256:c51695d171c61460369dabdd5c71b8f350ef8618466818356a30808d7105c
 url = "https://github.com/anchore/syft/releases/download/v1.43.0/syft_1.43.0_windows_amd64.zip"
 
 [[tools.tombi]]
-version = "0.9.22"
+version = "0.9.24"
 backend = "aqua:tombi-toml/tombi"
 
 [tools.tombi."platforms.linux-arm64"]
-checksum = "sha256:a6ad4c84d2d1634071005f544552e1beeff4ac71cb6fcff0bc357574e38c13e2"
-url = "https://github.com/tombi-toml/tombi/releases/download/v0.9.22/tombi-cli-0.9.22-aarch64-unknown-linux-musl.gz"
+checksum = "sha256:abf65df01b3a16e059c18b5b8fdb9931c0b941a5bebb4f577cfd4ca46c05011d"
+url = "https://github.com/tombi-toml/tombi/releases/download/v0.9.24/tombi-cli-0.9.24-aarch64-unknown-linux-musl.tar.gz"
 
 [tools.tombi."platforms.linux-arm64-musl"]
-checksum = "sha256:a6ad4c84d2d1634071005f544552e1beeff4ac71cb6fcff0bc357574e38c13e2"
-url = "https://github.com/tombi-toml/tombi/releases/download/v0.9.22/tombi-cli-0.9.22-aarch64-unknown-linux-musl.gz"
+checksum = "sha256:abf65df01b3a16e059c18b5b8fdb9931c0b941a5bebb4f577cfd4ca46c05011d"
+url = "https://github.com/tombi-toml/tombi/releases/download/v0.9.24/tombi-cli-0.9.24-aarch64-unknown-linux-musl.tar.gz"
 
 [tools.tombi."platforms.linux-x64"]
-checksum = "sha256:c096ecb926a29993b30ffc92be07befc201f369fd3a945839261d511f89dc52f"
-url = "https://github.com/tombi-toml/tombi/releases/download/v0.9.22/tombi-cli-0.9.22-x86_64-unknown-linux-musl.gz"
+checksum = "sha256:b1e7cec2c165fd5cf2f6c97e607a4ac8870120c3d1163ad6e354198fc67443d5"
+url = "https://github.com/tombi-toml/tombi/releases/download/v0.9.24/tombi-cli-0.9.24-x86_64-unknown-linux-musl.tar.gz"
 
 [tools.tombi."platforms.linux-x64-musl"]
-checksum = "sha256:c096ecb926a29993b30ffc92be07befc201f369fd3a945839261d511f89dc52f"
-url = "https://github.com/tombi-toml/tombi/releases/download/v0.9.22/tombi-cli-0.9.22-x86_64-unknown-linux-musl.gz"
+checksum = "sha256:b1e7cec2c165fd5cf2f6c97e607a4ac8870120c3d1163ad6e354198fc67443d5"
+url = "https://github.com/tombi-toml/tombi/releases/download/v0.9.24/tombi-cli-0.9.24-x86_64-unknown-linux-musl.tar.gz"
 
 [tools.tombi."platforms.macos-arm64"]
-checksum = "sha256:62531c94179070a7ff8a889bb6c3698e7316254fc7c46b28eead003b96d54cca"
-url = "https://github.com/tombi-toml/tombi/releases/download/v0.9.22/tombi-cli-0.9.22-aarch64-apple-darwin.gz"
+checksum = "sha256:860ebb82ec47049239fb52a20c537489100ec1a3a1c1f42d59a5dde647c88d78"
+url = "https://github.com/tombi-toml/tombi/releases/download/v0.9.24/tombi-cli-0.9.24-aarch64-apple-darwin.tar.gz"
 
 [tools.tombi."platforms.macos-x64"]
-checksum = "sha256:2dd343e9475c7904c272887d1381fdbeac05b298c034d102b24d8977022d77a1"
-url = "https://github.com/tombi-toml/tombi/releases/download/v0.9.22/tombi-cli-0.9.22-x86_64-apple-darwin.gz"
+checksum = "sha256:d07b4241de3e58dbdc93304cc2575a694f0468b2323f6dc312809329b6e1574f"
+url = "https://github.com/tombi-toml/tombi/releases/download/v0.9.24/tombi-cli-0.9.24-x86_64-apple-darwin.tar.gz"
 
 [tools.tombi."platforms.windows-x64"]
-checksum = "sha256:e1e2828a4537dc9fe8a7b89df80415ff44a13a1be48623a829b5354ca739d589"
-url = "https://github.com/tombi-toml/tombi/releases/download/v0.9.22/tombi-cli-0.9.22-x86_64-pc-windows-msvc.zip"
+checksum = "sha256:ed619035f4669802a10eac25944f1706b3993bf44727e056ac290d7c9b3b2336"
+url = "https://github.com/tombi-toml/tombi/releases/download/v0.9.24/tombi-cli-0.9.24-x86_64-pc-windows-msvc.zip"
 
 [[tools.trivy]]
 version = "0.70.0"

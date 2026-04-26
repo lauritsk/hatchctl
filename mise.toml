@@ -2,17 +2,17 @@
 HK_MISE = 1
 
 [tools]
-"aqua:gastownhall/beads" = "1.0.2"
-hk = "1.44.0"
+"aqua:gastownhall/beads" = "1.0.3"
+hk = "1.44.1"
 
 actionlint = "1.7.12"
 zizmor = "1.24.1"
 pkl = "0.31.1"
 jq = "1.8.1"
-rumdl = "0.1.80"
+rumdl = "0.1.83"
 shellcheck = "0.11.0"
 shfmt = "3.13.1"
-tombi = "0.9.22"
+tombi = "0.9.24"
 yamllint = "1.38.0"
 yamlfmt = "0.21.0"
 yq = "4.53.2"
@@ -21,7 +21,7 @@ go = "1.26.2"
 gofumpt = "0.9.2"
 
 "aqua:betterleaks/betterleaks" = "1.1.2"
-harper-cli = "2.0.0"
+harper-cli = "2.1.0"
 trivy = "0.70.0"
 lychee = "0.23.0"
 
