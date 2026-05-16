@@ -21,29 +21,17 @@ local preCommitSteps = new Mapping<String, Step> {
   ["pkl-format"] = Builtins.pkl_format
   ["jq"] = Builtins.jq
   ["rumdl"] = (Builtins.rumdl) {
-    exclude =
-      List(
-        ".beads/**",
-        "CHANGELOG.md",
-      )
+    exclude = List("CHANGELOG.md")
   }
   ["shellcheck"] = Builtins.shellcheck
   ["shfmt"] = Builtins.shfmt
   ["tombi"] = Builtins.tombi
   ["tombi-format"] = Builtins.tombi_format
   ["yamllint"] = (Builtins.yamllint) {
-    exclude =
-      List(
-        ".beads/**",
-        ".github/**",
-      )
+    exclude = List(".github/**")
   }
   ["yamlfmt"] = (Builtins.yamlfmt) {
-    exclude =
-      List(
-        ".beads/**",
-        ".github/**",
-      )
+    exclude = List(".github/**")
   }
   // ["yq"] = Builtins.yq
   ["goreleaser-check"] = new Step {
@@ -73,7 +61,6 @@ local preCommitSteps = new Mapping<String, Step> {
   ["lychee"] = (Builtins.lychee) {
     exclude =
       List(
-        ".beads/**",
         "internal/**",
         "mise.lock",
       )

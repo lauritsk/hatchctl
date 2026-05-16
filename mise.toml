@@ -2,7 +2,6 @@
 HK_MISE = 1
 
 [tools]
-"aqua:gastownhall/beads" = "1.0.3"
 hk = "1.44.3"
 
 actionlint = "1.7.12"
