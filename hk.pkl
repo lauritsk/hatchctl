@@ -1,7 +1,7 @@
-amends "package://github.com/jdx/hk/releases/download/v1.43.0/hk@1.43.0#/Config.pkl"
-import "package://github.com/jdx/hk/releases/download/v1.43.0/hk@1.43.0#/Builtins.pkl"
+amends "package://github.com/jdx/hk/releases/download/v1.44.2/hk@1.44.2#/Config.pkl"
+import "package://github.com/jdx/hk/releases/download/v1.44.2/hk@1.44.2#/Builtins.pkl"
 
-local preCommitSteps = new Mapping<String, Step> {
+local linters = new Mapping<String, Step> {
   ["byte-order-marker"] = Builtins.byte_order_marker
   ["check-added-large-files"] = Builtins.check_added_large_files
   ["check-case-conflict"] = Builtins.check_case_conflict
@@ -12,17 +12,12 @@ local preCommitSteps = new Mapping<String, Step> {
   ["mixed-line-ending"] = Builtins.mixed_line_ending
   ["end-of-file-fixer"] = Builtins.newlines
   ["trailing-whitespace"] = Builtins.trailing_whitespace
-  // ["no-commit-to-branch"] = Builtins.no_commit_to_branch
-
   ["mise"] = Builtins.mise
   ["actionlint"] = Builtins.actionlint
   ["zizmor"] = Builtins.zizmor
   ["pkl"] = Builtins.pkl
   ["pkl-format"] = Builtins.pkl_format
   ["jq"] = Builtins.jq
-  ["rumdl"] = (Builtins.rumdl) {
-    exclude = List("CHANGELOG.md")
-  }
   ["shellcheck"] = Builtins.shellcheck
   ["shfmt"] = Builtins.shfmt
   ["tombi"] = Builtins.tombi
@@ -33,25 +28,16 @@ local preCommitSteps = new Mapping<String, Step> {
   ["yamlfmt"] = (Builtins.yamlfmt) {
     exclude = List(".github/**")
   }
-  // ["yq"] = Builtins.yq
-  ["goreleaser-check"] = new Step {
+  ["goreleaser"] = new Step {
     glob = ".goreleaser.yaml"
     check = "goreleaser check"
   }
-
   ["gomod-tidy"] = Builtins.gomod_tidy
   ["go-fumpt"] = Builtins.go_fumpt
   ["go-vet"] = Builtins.go_vet
-
   ["betterleaks"] = Builtins.betterleaks
   ["harper"] = (Builtins.harper) {
-    glob =
-      List(
-        "README.md",
-        "AGENTS.md",
-        "CONTRIBUTING.md",
-        "SECURITY.md",
-      )
+    glob = List("README.md", "AGENTS.md", "CONTRIBUTING.md", "SECURITY.md")
   }
   ["trivy-fs"] = new Step {
     glob = "**/*"
@@ -59,11 +45,7 @@ local preCommitSteps = new Mapping<String, Step> {
       "trivy fs --scanners vuln,misconfig,secret --severity HIGH,CRITICAL --ignore-unfixed --skip-dirs internal/devcontainer/testdata --exit-code 1 ."
   }
   ["lychee"] = (Builtins.lychee) {
-    exclude =
-      List(
-        "internal/**",
-        "mise.lock",
-      )
+    exclude = List("internal/**", "mise.lock")
   }
 }
 
@@ -71,20 +53,18 @@ hooks {
   ["pre-commit"] {
     fix = true
     stash = "git"
-    steps = preCommitSteps
-  }
-  ["commit-msg"] {
-    steps {
-      ["conventional-commit"] {
-        check = "hk util check-conventional-commit {{commit_msg_file}}"
-      }
-    }
+    steps = linters
   }
   ["fix"] {
     fix = true
-    steps = preCommitSteps
+    steps = linters
   }
   ["check"] {
-    steps = preCommitSteps
+    steps = linters
+  }
+  ["commit-msg"] {
+    steps {
+      ["cocogitto-commit-msg"] = Builtins.cocogitto_commit_msg
+    }
   }
 }

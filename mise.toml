@@ -2,32 +2,28 @@
 HK_MISE = 1
 
 [tools]
-hk = "1.44.3"
-
 actionlint = "1.7.12"
-zizmor = "1.24.1"
-pkl = "0.31.1"
-jq = "1.8.1"
-rumdl = "0.1.88"
-shellcheck = "0.11.0"
-shfmt = "3.13.1"
-tombi = "0.10.4"
-yamllint = "1.38.0"
-yamlfmt = "0.21.0"
-yq = "4.53.2"
-
+betterleaks = "1.1.2"
+cocogitto = "7.0.0"
+cosign = "3.0.6"
 go = "1.26.2"
 gofumpt = "0.10.0"
-harper-cli = "2.1.0"
-trivy = "0.70.0"
-lychee = "0.24.2"
-
-cocogitto = "7.0.0"
-
-cosign = "3.0.6"
-syft = "1.44.0"
 goreleaser = "2.15.4"
-betterleaks = "1.1.2"
+harper-cli = "2.1.0"
+hk = "1.44.3"
+jq = "1.8.1"
+lychee = "0.24.2"
+pkl = "0.31.1"
+rumdl = "0.1.87"
+shellcheck = "0.11.0"
+shfmt = "3.13.1"
+syft = "1.44.0"
+tombi = "0.10.2"
+trivy = "0.70.0"
+yamlfmt = "0.21.0"
+yamllint = "1.38.0"
+yq = "4.53.2"
+zizmor = "1.24.1"
 
 [hooks]
 postinstall = "hk install --mise"
@@ -36,13 +32,17 @@ postinstall = "hk install --mise"
 description = "Run project app from source"
 run = "go run ./cmd/hatchctl"
 
-[tasks.lint]
-description = "Run hk-managed checks across the repository"
-run = "hk check --all"
+[tasks.install]
+description = "Install project dependencies"
+run = "go mod download"
 
 [tasks.fix]
 description = "Run hk-managed fixers across the repository"
 run = "hk fix --all"
+
+[tasks.lint]
+description = "Run hk-managed checks across the repository"
+run = "hk check --all"
 
 [tasks.test]
 description = "Run fast Go tests"
@@ -64,34 +64,14 @@ run = "go test -race ./internal/app ./internal/reconcile ./internal/store/fs"
 description = "Build Go packages"
 run = "go build ./..."
 
-[tasks."release:verify"]
-description = "Verify release prerequisites are clean"
-run = """
-tmp=$(mktemp -d)
-trap 'git worktree remove --force "$tmp"' EXIT
-git worktree add --quiet --detach "$tmp" HEAD
-(
-  cd "$tmp" &&
-  go mod tidy &&
-  test -z "$(git status --porcelain -- go.mod go.sum)" &&
-  test -z "$(git status --porcelain)"
-)
-"""
-
-[tasks."release:version"]
-description = "Create, tag, and push the next version"
-depends = ["release:verify"]
-run = "cog bump --auto && git push && git push --tags"
-
-[tasks.release]
-description = "Verify, version, and push the next release"
-depends = ["release:verify", "release:version"]
-
-[tasks."release:publish"]
-description = "Publish release artifacts for the current tag"
-depends = ["check", "release:verify"]
-run = "goreleaser release --clean"
-
 [tasks.check]
 description = "Run project checks"
 depends = ["lint", "test", "build"]
+
+[tasks."release:bump"]
+description = "Bump project version"
+run = "cog bump --auto"
+
+[tasks."release:publish"]
+description = "Publish release"
+run = "goreleaser release --clean"
