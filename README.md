@@ -20,6 +20,12 @@ show resolved configuration, and run life cycle hooks again from the command lin
 > `hatchctl` supports macOS and Linux. The optional bridge for browser opening and
 > localhost callback forwarding is macOS-only.
 
+## Status
+
+- Maturity: strategic developer tool
+- Primary command: `mise run check`
+- Release target: GitHub release binaries
+
 ## Why the CLI
 
 - **Terminal-first Dev Containers**: use Dev Containers without opening VS Code
