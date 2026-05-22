@@ -3,7 +3,7 @@ HK_MISE = 1
 
 [tools]
 actionlint = "1.7.12"
-betterleaks = "1.1.2"
+betterleaks = "v1.2.0"
 cocogitto = "7.0.0"
 cosign = "3.0.6"
 go = "1.26.2"
